@@ -1,0 +1,1604 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>鍛冶アドバイザー</title>
+<style>
+:root{
+  --bg:#12100e; --bg2:#1c1917; --panel:#232019; --line:#3a332a;
+  --text:#efe7db; --dim:#9b9186;
+  --ember:#e8672c; --gold:#d9a441;
+  --blue:#4a9eff; --red:#ff4a4a; --green:#3ddc84; --pink:#ff5fd0;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0; padding:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  overscroll-behavior:none;}
+body{padding-bottom:96px;}
+input,select,button{font-family:inherit; -webkit-appearance:none; appearance:none;}
+
+/* ===== ヘッダー ===== */
+.hdr{position:sticky; top:0; z-index:30; background:var(--bg2); border-bottom:1px solid var(--line);
+  padding:8px 10px;}
+.hdr-row{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.stat{background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  padding:5px 9px; font-size:12px; display:flex; align-items:baseline; gap:5px; flex:1; min-width:0;}
+.stat .lbl{color:var(--dim); font-size:10px; white-space:nowrap;}
+.stat .val{font-size:16px; font-weight:800; font-variant-numeric:tabular-nums;}
+.stat.tap{cursor:pointer;}
+.stat.tap:active{background:#2c2820;}
+.badges{display:flex; gap:5px; margin-top:6px; flex-wrap:wrap;}
+.badge{font-size:10.5px; padding:3px 8px; border-radius:20px; font-weight:700;}
+.badge.boost{background:rgba(217,164,65,.2); color:var(--gold); border:1px solid rgba(217,164,65,.5);}
+.badge.half{background:rgba(74,158,255,.18); color:var(--blue); border:1px solid rgba(74,158,255,.45);}
+.badge.rate{background:rgba(61,220,132,.15); color:var(--green); border:1px solid rgba(61,220,132,.4);}
+.badge.off{background:var(--panel); color:var(--dim); border:1px solid var(--line);}
+
+/* ===== 盤面 ===== */
+.board{padding:10px 6px;}
+.brow{display:flex; align-items:stretch; gap:4px; margin-bottom:8px;}
+.bar-wrap{flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:2px;}
+.bar-wrap.left{align-items:flex-end;}
+.zone-lbl{font-size:9.5px; color:var(--green); font-weight:700; font-variant-numeric:tabular-nums;}
+.bar{position:relative; width:100%; height:16px; background:#000; border:1px solid var(--line);
+  border-radius:2px; overflow:hidden;}
+.bar i{position:absolute; display:block;}
+/* 4つの帯を高さで段違いに重ねて、同時に読めるようにする */
+/* 成功ゾーンは最重要なので濃く塗り、両端に境界線を立てて範囲を明示する。
+   本会心ゾーンとは色味も明度も離しておく。 */
+.bar .m-green{top:0; bottom:0; z-index:2; background:rgba(61,220,132,.42);
+  border-left:2px solid var(--green); border-right:2px solid var(--green); box-sizing:border-box;}
+.bar .m-pink {top:0; bottom:0; z-index:1; background:rgba(255,95,208,.20);
+  border-left:1px dashed rgba(255,95,208,.75); border-right:1px dashed rgba(255,95,208,.75);
+  box-sizing:border-box;}
+.bar .m-blue {top:2px; z-index:3; height:5px; background:var(--blue); border-radius:2px;}
+.bar .m-red  {bottom:2px; z-index:3; height:5px; background:var(--red);  border-radius:2px;}
+.bar .m-cur  {top:0; bottom:0; width:2px; background:#fff; z-index:5;}
+/* 左列のバーは右から左へ伸びるので、全体をミラーする */
+.bar.flip{ transform:scaleX(-1); }
+.pw-lbl{font-size:9px; color:var(--dim); font-variant-numeric:tabular-nums; letter-spacing:-.2px;}
+
+.cell{width:96px; flex:0 0 96px; background:#000; border:2px solid var(--line);
+  border-radius:5px; overflow:hidden;}
+.cell.hi{border-color:var(--ember); box-shadow:0 0 0 2px rgba(232,103,44,.3);}
+.cell.done{border-color:var(--green);}
+.cell.over{border-color:var(--red);}
+.cell .cur{font-size:27px; font-weight:800; text-align:center; padding:5px 2px 3px;
+  font-variant-numeric:tabular-nums; line-height:1;}
+.cell.done .cur{color:var(--green);}
+.cell.over .cur{color:var(--red);}
+.cell .zn{display:flex; border-top:1px solid var(--line); font-size:13px;
+  font-variant-numeric:tabular-nums;}
+.cell .zn span{flex:1; text-align:center; padding:3px 0; color:var(--dim);}
+.cell .zn span:first-child{border-right:1px solid var(--line);}
+.cell .no{position:absolute;}
+
+/* ===== 折りたたみ ===== */
+.acc{margin:0 8px 8px;}
+.acc summary{background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  padding:11px 12px; font-size:13.5px; font-weight:700; cursor:pointer; list-style:none;
+  display:flex; justify-content:space-between; align-items:center;}
+.acc summary::-webkit-details-marker{display:none;}
+.acc summary::after{content:'▾'; color:var(--dim); transition:transform .15s;}
+.acc[open] summary::after{transform:rotate(180deg);}
+.acc .body{background:var(--bg2); border:1px solid var(--line); border-top:none;
+  border-radius:0 0 6px 6px; padding:10px 12px; font-size:12.5px;}
+
+table.sk{width:100%; border-collapse:collapse; font-size:11.5px;
+  font-variant-numeric:tabular-nums;}
+table.sk th{color:var(--dim); font-size:10px; text-align:left; padding:4px 3px;
+  border-bottom:1px solid var(--line); font-weight:600;}
+table.sk td{padding:5px 3px; border-bottom:1px solid rgba(58,51,42,.5);}
+table.sk .rolls{color:var(--gold); letter-spacing:-.3px;}
+table.sk .cst{text-align:right; font-weight:700;}
+
+.plan-step{display:flex; gap:7px; padding:3px 0; font-size:12px; align-items:baseline;}
+.plan-step .n{color:var(--gold); font-weight:800; min-width:17px;}
+.plan-step .tg{color:var(--dim); font-size:11px;}
+
+/* ===== 設定 ===== */
+.set-row{display:flex; gap:8px; margin-bottom:8px; align-items:center;}
+.set-row label{font-size:11.5px; color:var(--dim); width:76px; flex:0 0 76px;}
+.set-row select,.set-row input{flex:1; background:var(--bg); border:1px solid var(--line);
+  color:var(--text); padding:9px 8px; border-radius:5px; font-size:16px;}
+
+/* ===== 下部の推奨バー ===== */
+.foot{position:fixed; left:0; right:0; bottom:0; z-index:40;
+  background:var(--bg2); border-top:1px solid var(--line);
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom));}
+.rec{display:flex; align-items:center; gap:9px; margin-bottom:7px; min-height:38px;}
+.rec-main{flex:1; min-width:0;}
+.rec-skill{font-size:16px; font-weight:800; color:var(--ember); line-height:1.25;}
+.rec-sub{font-size:11.5px; color:var(--dim); margin-top:1px;}
+.rec-empty{font-size:13px; color:var(--dim);}
+.calc{width:100%; background:linear-gradient(180deg,var(--ember),#c4531f); color:#fff;
+  border:none; border-radius:7px; padding:13px; font-size:16px; font-weight:800; cursor:pointer;}
+.calc:active{filter:brightness(.9);}
+.calc:disabled{background:var(--panel); color:var(--dim);}
+
+/* ===== テンキー ===== */
+.modal{position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.75);
+  display:none; align-items:flex-end;}
+.modal.show{display:flex;}
+.pad{width:100%; background:var(--bg2); border-radius:14px 14px 0 0; padding:14px;
+  padding-bottom:calc(14px + env(safe-area-inset-bottom));}
+.pad-hd{text-align:center; font-size:13px; color:var(--dim); margin-bottom:9px;}
+.pad-tabs{display:flex; gap:6px; margin-bottom:10px;}
+.pad-tabs button{flex:1; background:var(--panel); border:1px solid var(--line); color:var(--dim);
+  padding:9px; border-radius:6px; font-size:12.5px; font-weight:700;}
+.pad-tabs button.on{background:var(--ember); border-color:var(--ember); color:#fff;}
+.pad-disp{background:#000; border:1px solid var(--line); border-radius:7px; padding:12px;
+  font-size:32px; font-weight:800; text-align:right; margin-bottom:11px;
+  font-variant-numeric:tabular-nums; min-height:58px;}
+.pad-disp .pre{font-size:14px; color:var(--dim); font-weight:400; margin-right:7px;}
+.keys{display:grid; grid-template-columns:repeat(3,1fr); gap:7px;}
+.keys button{background:var(--panel); border:1px solid var(--line); color:var(--text);
+  padding:16px; font-size:21px; font-weight:700; border-radius:7px;}
+.keys button:active{background:#332e26;}
+.keys button.wide{grid-column:span 2;}
+.keys button.ok{background:var(--ember); border-color:var(--ember); color:#fff;}
+.keys button.del{color:var(--ember);}
+
+/* ===================== PC・タブレット向け =====================
+   スマホ前提の寸法だと大画面で間延びして見えるため、
+   幅に応じて拡大し、横並びの2カラムに切り替える。 */
+@media (min-width: 760px){
+  body{ padding-bottom:0; max-width:1180px; margin:0 auto; }
+
+  .hdr{ padding:14px 20px; }
+  .stat{ padding:9px 16px; flex:0 0 auto; min-width:150px; }
+  .stat .lbl{ font-size:12px; }
+  .stat .val{ font-size:24px; }
+  .badge{ font-size:12.5px; padding:5px 12px; }
+
+  /* 盤面と操作パネルを左右に並べる */
+  .main{ display:grid; grid-template-columns: 1fr 400px; gap:20px;
+         align-items:start; padding:20px; }
+  .board{ padding:0; }
+
+  /* マスと補助バーを大きく */
+  .brow{ gap:10px; margin-bottom:16px; }
+  .cell{ width:150px; flex:0 0 150px; border-radius:8px; }
+  .cell .cur{ font-size:44px; padding:10px 4px 6px; }
+  .cell .zn{ font-size:17px; }
+  .cell .zn span{ padding:6px 0; }
+  .bar{ height:26px; }
+  .zone-lbl{ font-size:13px; }
+  .pw-lbl{ font-size:12px; }
+
+  /* 右カラムに入る要素 */
+  .side{ position:sticky; top:88px; }
+  .acc{ margin:0 0 12px; }
+  .acc summary{ font-size:15px; padding:13px 16px; }
+  .acc .body{ font-size:14px; padding:14px 16px; }
+  table.sk{ font-size:13.5px; }
+  table.sk th{ font-size:12px; padding:7px 5px; }
+  table.sk td{ padding:8px 5px; }
+  .plan-step{ font-size:13.5px; padding:5px 0; }
+  .plan-step .tg{ font-size:12.5px; }
+
+  /* 推奨バーは固定をやめて右カラムの上部へ */
+  .foot{ position:static; border:1px solid var(--line); border-radius:10px;
+         padding:16px; margin-bottom:12px; background:var(--panel); }
+  .rec{ min-height:auto; margin-bottom:12px; }
+  .rec-skill{ font-size:24px; }
+  .rec-sub{ font-size:14px; margin-top:4px; }
+  .rec-empty{ font-size:15px; }
+  .calc{ font-size:17px; padding:15px; }
+
+  /* テンキーは画面中央に */
+  .modal{ align-items:center; justify-content:center; }
+  .pad{ width:400px; border-radius:14px; padding:22px; }
+  .pad-hd{ font-size:15px; margin-bottom:14px; }
+  .pad-disp{ font-size:38px; padding:16px; }
+  .keys button{ padding:19px; font-size:23px; }
+  .set-row label{ font-size:13px; width:96px; flex:0 0 96px; }
+  .set-row select, .set-row input{ font-size:15px; }
+}
+
+/* 大画面ではさらにゆったり */
+@media (min-width: 1100px){
+  .cell{ width:180px; flex:0 0 180px; }
+  .cell .cur{ font-size:52px; }
+  .bar{ height:30px; }
+}
+
+
+/* スマホでは推奨バーを画面下部に固定する */
+@media (max-width: 759px){
+  .main{ display:block; }
+  .side{ display:contents; }
+  .foot{ position:fixed; left:0; right:0; bottom:0; z-index:40;
+    background:var(--bg2); border-top:1px solid var(--line);
+    padding:8px 10px calc(8px + env(safe-area-inset-bottom)); }
+}
+
+
+.bar-ctl{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+.bar-ctl label{font-size:11.5px; color:var(--dim); white-space:nowrap;}
+.bar-ctl select{flex:1; background:var(--bg2); border:1px solid var(--line); color:var(--text);
+  padding:8px; border-radius:5px; font-size:15px;}
+.legend{display:flex; flex-wrap:wrap; gap:5px 12px; margin-top:12px; padding:10px;
+  background:var(--panel); border:1px solid var(--line); border-radius:6px; font-size:11px; color:var(--dim);}
+.legend span{display:flex; align-items:center; gap:5px;}
+.legend i{width:13px; height:9px; border-radius:2px; display:inline-block; flex:0 0 13px;}
+.legend .lg-blue{background:var(--blue);}
+.legend .lg-red{background:var(--red);}
+.legend .lg-green{background:rgba(61,220,132,.42); border:1.5px solid var(--green);}
+.legend .lg-pink{background:rgba(255,95,208,.20); border:1px dashed rgba(255,95,208,.75);}
+.legend .lg-cur{background:#fff; width:3px; flex:0 0 3px; height:13px;}
+@media (min-width:760px){ .legend{font-size:12.5px;} .bar-ctl label{font-size:13px;} }
+
+
+/* 手順内の地金特性マーク */
+.plan-step.on-boost{ background:rgba(217,164,65,.10); border-left:3px solid var(--gold);
+  padding-left:6px; border-radius:3px; }
+.plan-step.on-half{ background:rgba(74,158,255,.10); border-left:3px solid var(--blue);
+  padding-left:6px; border-radius:3px; }
+.mk-boost{ color:var(--gold); font-size:10.5px; font-weight:800; white-space:nowrap; }
+.mk-half{ color:var(--blue); font-size:10.5px; font-weight:800; white-space:nowrap; }
+.mk-note{ margin-top:10px; padding-top:9px; border-top:1px solid var(--line);
+  font-size:11px; color:var(--dim); line-height:1.65; }
+.mk-note div{ margin-bottom:5px; }
+.mk-note b{ margin-right:3px; }
+@media (min-width:760px){
+  .mk-boost,.mk-half{ font-size:12px; }
+  .mk-note{ font-size:12.5px; }
+}
+
+
+/* マス番号 */
+.cell{ position:relative; }
+.cell .idx{ font-size:10px; color:var(--dim); text-align:center;
+  padding:3px 0 0; letter-spacing:.04em; font-weight:700; }
+.cell.hi .idx{ color:var(--ember); }
+.cell.done .idx{ color:var(--green); }
+@media (min-width:760px){ .cell .idx{ font-size:13px; padding:6px 0 0; } }
+
+
+.keys.k4{ grid-template-columns:repeat(4,1fr); }
+.keys .op{ background:#2f2a22; color:var(--gold); font-size:24px; }
+.keys .op.on{ background:var(--gold); color:#1a1713; }
+.keys .cancel{ color:var(--dim); }
+.pad-res{ text-align:right; font-size:15px; color:var(--gold); font-weight:700;
+  margin:-6px 0 11px; min-height:20px; font-variant-numeric:tabular-nums; }
+@media (min-width:760px){ .pad-res{ font-size:17px; } }
+
+
+.zrow{display:flex; align-items:center; gap:6px; margin-bottom:6px;}
+.zrow .zl{font-size:11.5px; color:var(--dim); width:44px; flex:0 0 44px;}
+.zrow input{flex:1; min-width:0; background:var(--bg); border:1px solid var(--line);
+  color:var(--text); padding:8px 6px; border-radius:5px; font-size:16px;
+  text-align:center; font-variant-numeric:tabular-nums;}
+.zrow .zs{color:var(--dim); font-size:12px;}
+@media (min-width:760px){ .zrow .zl{font-size:13px; width:52px; flex:0 0 52px;} }
+
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-row">
+    <div class="stat tap" onclick="openPad('temp')">
+      <span class="lbl">温度</span><span class="val" id="v-temp">1000</span><span class="lbl">℃</span>
+    </div>
+    <div class="stat tap" onclick="openPad('focus')">
+      <span class="lbl">集中力</span><span class="val" id="v-focus">253</span>
+    </div>
+  </div>
+  <div class="badges" id="badges"></div>
+</div>
+
+<div class="main">
+<div class="board">
+  <div id="board"></div>
+  <div class="legend">
+    <span><i class="lg-green"></i>成功ゾーン</span>
+    <span><i class="lg-blue"></i>たたくの範囲</span>
+    <span><i class="lg-red"></i>会心の範囲</span>
+    <span><i class="lg-pink"></i>本会心ゾーン</span>
+  </div>
+</div>
+
+<div class="side">
+<div class="foot" id="footPanel">
+  <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
+  <button class="calc" id="calcBtn" onclick="doCalc()">次の一手を計算</button>
+</div>
+
+<details class="acc">
+  <summary>推奨手の詳細</summary>
+  <div class="body" id="detail">まだ計算していません</div>
+</details>
+
+<details class="acc">
+  <summary>技一覧(現在温度)</summary>
+  <div class="body"><table class="sk" id="skTable"></table></div>
+</details>
+
+<details class="acc">
+  <summary>設定</summary>
+  <div class="body">
+    <div class="set-row"><label>職人レベル</label>
+      <input type="number" id="s-level" min="1" max="80" value="80"></div>
+    <div class="set-row"><label>ハンマー</label>
+      <select id="s-hammer">
+        <option value="copper">銅</option><option value="iron">鉄</option>
+        <option value="silver">銀</option><option value="platinum">プラチナ</option>
+        <option value="super">超</option><option value="miracle">奇跡</option>
+        <option value="light" selected>光</option>
+      </select></div>
+    <div class="set-row"><label>できのよさ</label>
+      <select id="s-star">
+        <option value="0">★0</option><option value="1">★1</option>
+        <option value="2">★2</option><option value="3" selected>★3</option>
+      </select></div>
+    <div class="set-row"><label>地金特性</label>
+      <select id="s-trait">
+        <option value="shuchu" selected>集中力変化</option>
+        <option value="none">なし</option><option value="tataki">たたき変化</option>
+        <option value="modori">メーター減少</option><option value="kaishin">威力会心率上昇</option>
+      </select></div>
+    <div class="set-row"><label>素材</label>
+      <select id="s-preset" onchange="onPresetChange()">
+        <option value="kagayaki" selected>超かがやきの樹液</option>
+        <option value="custom">手動設定</option>
+      </select></div>
+
+    <div id="zoneEdit" style="display:none">
+      <div style="font-size:11.5px;color:var(--dim);margin:10px 0 6px">
+        各マスの成功ゾーン(下限・上限)
+      </div>
+      <div id="zoneRows"></div>
+      <button class="calc" style="margin-top:8px" onclick="applyZones()">ゾーンを反映</button>
+    </div>
+
+    <button class="calc" style="margin-top:8px" onclick="resetAll()">最初からやり直す</button>
+  </div>
+</details>
+
+</div>
+</div>
+
+<div class="modal" id="modal" onclick="if(event.target===this)closePad()">
+  <div class="pad">
+    <div class="pad-hd" id="padTitle"></div>
+    <div class="pad-disp"><span class="pre" id="padPre"></span><span id="padVal">0</span></div>
+    <div class="pad-res" id="padRes"></div>
+    <div class="keys k4">
+      <button onclick="key('7')">7</button><button onclick="key('8')">8</button><button onclick="key('9')">9</button>
+      <button onclick="key('del')" class="del">←</button>
+      <button onclick="key('4')">4</button><button onclick="key('5')">5</button><button onclick="key('6')">6</button>
+      <button onclick="key('plus')" class="op" id="kPlus">＋</button>
+      <button onclick="key('1')">1</button><button onclick="key('2')">2</button><button onclick="key('3')">3</button>
+      <button onclick="key('minus')" class="op" id="kMinus">－</button>
+      <button onclick="key('0')">0</button>
+      <button onclick="closePad()" class="cancel">×</button>
+      <button onclick="commit()" class="ok" style="grid-column:span 2">決定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====== 状態 ====== */
+const G = {
+  temp: 1000,
+  focus: 253,
+  masses: [],
+  level: 80, hammerId:'light', star:3, trait:'shuchu',
+  rec: null, plan: [], barSkill:'tataku', preset:'kagayaki'
+};
+const PRESETS = {
+  kagayaki: [[155,161],[220,230],[155,161],[220,230],[140,150],[140,150]]
+};
+
+/* ===================== 演算エンジン ===================== */
+// ---- 特技定義(みだれ打ちは対象がランダムで狙えないため除外) ----
+// 開始直後(まだ1手も打っていない状態)は地金特性が発動しない。
+// 開始温度1000℃は本来なら会心率+400%のタイミングだが、1手目だけは適用されない。
+// 手動フラグにすると外し忘れで以降ずっと無効になってしまうため、
+// 「開始温度のまま、かつ全マスが0」という盤面の状態から自動判定する。
+// シミュレーション中は simFirstMove で明示的に制御する。
+let simFirstMove = null;   // null=自動判定 / true,false=強制
+
+function isStartState(){
+  if(simFirstMove !== null) return simFirstMove;
+  // 開始温度のまま、かつ全マスが0なら「まだ1手も打っていない」状態
+  if(G.temp !== START_TEMP) return false;
+  return G.masses.every(m => m.current === 0);
+}
+
+const START_TEMP = 1000;   // 鍛冶開始時の温度
+
+const SKILLS = [
+  {id:'tataku', name:'たたく', lv:1, cost:5, key:'tataku', masses:1, shape:'single', tempDelta:-50},
+  {id:'jouge', name:'上下打ち', lv:2, cost:8, key:'joge', masses:2, shape:'vertical', tempDelta:-50},
+  {id:'tekagen', name:'てかげん打ち', lv:3, cost:10, key:'tekagen', masses:1, shape:'single', precision:true, tempDelta:-50},
+  {id:'nibai', name:'2倍打ち', lv:5, cost:8, key:'nibai', masses:1, shape:'single', tempDelta:-50},
+  {id:'karyoku', name:'火力上げ', lv:7, cost:10, key:null, masses:0, shape:'none', tempDelta:300},
+  {id:'yonren', name:'4連打ち', lv:11, cost:12, key:'joge', masses:4, shape:'square', tempDelta:-50},
+  {id:'sanbai', name:'3倍打ち', lv:16, cost:11, key:'sanbai', masses:1, shape:'single', tempDelta:-50},
+  {id:'nerai', name:'ねらい打ち', lv:23, cost:16, key:'tataku', masses:1, shape:'single', crit:true, tempDelta:-50},
+  {id:'chouyonren', name:'超4連打ち', lv:27, cost:18, key:'nibai', masses:4, shape:'square', tempDelta:-50},
+  {id:'hiyashikomi', name:'冷やし込み', lv:33, cost:12, key:null, masses:0, shape:'none', tempDelta:-300},
+  {id:'naname', name:'ななめ打ち', lv:38, cost:7, key:'joge', masses:2, shape:'diagonal', tempDelta:-50},
+  {id:'reppuu', name:'熱風おろし', lv:47, cost:6, key:'reppu', masses:1, shape:'single', tempDelta:-150},
+  {id:'jouge_nerai', name:'上下ねらい打ち', lv:52, cost:25, key:'joge', masses:2, shape:'vertical', crit:true, tempDelta:-50},
+  {id:'yowanerai', name:'弱ねらい打ち', lv:75, cost:20, key:'tekagen', masses:1, shape:'single', crit:true, precision:true, tempDelta:-50},
+  {id:'sayuu', name:'左右打ち', lv:80, cost:8, key:'joge', masses:2, shape:'horizontal', tempDelta:-50},
+];
+
+const SKILLS_BY_ID = Object.fromEntries(SKILLS.map(s=>[s.id, s]));
+let lastUsedSkillId = 'nerai'; // 判定対象は基本ねらい打ち系を使う想定なのでデフォルトはこれ
+
+// ---- 鍛冶職人の集中力上限(Lv1〜75、Lv76〜80はデータなし) ----
+const FOCUS_CAP = {
+  1:50,2:52,3:53,4:56,5:57,6:60,7:61,8:64,9:67,10:67,
+  11:70,12:73,13:73,14:76,15:79,16:79,17:82,18:84,19:87,20:87,
+  21:90,22:93,23:93,24:96,25:98,26:101,27:101,28:104,29:109,30:109,
+  31:112,32:113,33:113,34:115,35:119,36:122,37:123,38:123,39:125,40:129,
+  41:132,42:134,43:137,44:139,45:139,46:142,47:142,48:144,49:147,50:149,
+  51:152,52:152,53:154,54:157,55:159,56:162,57:162,58:164,59:167,60:169,
+  61:171,62:171,63:173,64:175,65:177,66:180,67:182,68:184,69:186,70:188,
+  71:189,72:191,73:193,74:195,75:197,
+  // Lv76〜80は公開データが無いため、Lv80=208(実測の集中力253から
+  // 光のハンマーの集中度45を引いた値)に向けて等間隔で補間した推定値。
+  76:199,77:201,78:203,79:206,80:208,
+};
+
+// ---- 職人道具(ハンマー):集中度(開始時集中力加算)とできのよさ(★)ごとの会心率加算 ----
+const HAMMERS = {
+  copper:  {name:'銅の鍛冶ハンマー',   focusBonus:0,  critByStar:[1.0,1.1,1.2,2.0]},
+  iron:    {name:'鉄の鍛冶ハンマー',   focusBonus:10, critByStar:[1.5,1.6,1.7,2.5]},
+  silver:  {name:'銀の鍛冶ハンマー',   focusBonus:15, critByStar:[2.0,2.1,2.2,3.0]},
+  platinum:{name:'プラチナ鍛冶ハンマー',focusBonus:25, critByStar:[2.5,2.6,2.7,3.5]},
+  super:   {name:'超鍛冶ハンマー',     focusBonus:35, critByStar:[3.0,3.1,3.2,4.0]},
+  miracle: {name:'奇跡のハンマー',     focusBonus:50, critByStar:[3.3,3.4,3.5,4.3]},
+  light:   {name:'光のハンマー',       focusBonus:45, critByStar:[3.6,3.7,3.8,4.6]},
+};
+
+// ---- 会心率の計算 ----
+// 最終会心率 = 基礎会心率(パッシブ累積+ハンマー★) × (1 + 地金特性ボーナス[0/4.0] + 狙い打ちボーナス[0/6.0])
+function getPassiveCritPercent(level){
+  let p = 0;
+  if(level>=10) p += 0.1;
+  if(level>=20) p += 0.2;
+  if(level>=30) p += 0.3;
+  return p;
+}
+function computeCritRate(skill, level, hammerId, star, trait, temp){
+  const passive = getPassiveCritPercent(level);
+  const hammer = HAMMERS[hammerId];
+  const base = passive + (hammer ? hammer.critByStar[star] : 0); // %
+  const st = traitTempState(temp);
+  // 開始直後は地金特性が発動しないため、会心率ボーナスも乗らない
+  const active = (typeof isStartState==='function') ? !isStartState() : true;
+  const traitBonus = (trait==='shuchu' && st.mod200 && active) ? 4.0 : 0;
+  const naraiBonus = skill && skill.crit ? 6.0 : 0;
+  const finalPct = base * (1 + traitBonus + naraiBonus);
+  return Math.max(0, Math.min(1, finalPct/100));
+}
+
+// ---- 地金特性ロジック ----
+// 前提(判明分):
+// ・効果は「打撃前の温度」で判定され、次に温度が変わるまで持続する(4連打ちなど複数マス同時ヒットにも同じ効果が適用される)
+// ・集中力変化(shuchu):温度が400の倍数→集中力消費0.5倍。200の倍数かつ400の倍数でない→集中力消費1.5倍+会心率+400%(5倍)。威力の数値そのものへの影響はなし。
+// ・たたき変化(tataki):温度が400の倍数→威力2倍。200の倍数かつ400の倍数でない→威力0.5倍(端数切り上げ)。会心が乗る場合は「たたき変化補正→切り上げ→会心の2倍」の順。
+// ・威力会心率上昇(kaishin):温度が200の倍数になるたびに、ゾーン未到達のマスがランダムに1つ点灯(再抽選)。点灯マスは威力2倍+会心率大幅上昇。非点灯マスは特性なしと同じ。
+// ・メーター減少・戻り(modori):温度が200の倍数に到達した瞬間、プレイヤーの操作と無関係に、ゾーン未到達かつ最も進行度が高いマスの数値が固定量(目安12〜16)減少する。
+function traitTempState(temp){
+  const mod400 = temp % 400 === 0;
+  const mod200 = temp % 200 === 0 && !mod400;
+  return { mod400, mod200 };
+}
+
+function getPowerMultiplier(trait, temp, isLitMass){
+  const st = traitTempState(temp);
+  if(trait === 'tataki'){
+    if(st.mod400) return 2;
+    if(st.mod200) return 0.5;
+    return 1;
+  }
+  if(trait === 'kaishin' && isLitMass && (st.mod400 || st.mod200)){
+    return 2;
+  }
+  return 1;
+}
+
+function applyPowerMultiplier(r, mult){
+  if(!r || mult===1) return r;
+  return { min: Math.ceil(r.min*mult), max: Math.ceil(r.max*mult) };
+}
+
+function getTraitStatusText(trait, temp){
+  const st = traitTempState(temp);
+  if(trait === 'shuchu'){
+    if(st.mod400) return `集中力消費0.5倍のテンポ(${temp}℃)。会心率は通常です。`;
+    if(st.mod200) return `集中力消費1.5倍・会心率+400%(5倍)のテンポ(${temp}℃)。会心を狙うならここです。`;
+    return null;
+  }
+  if(trait === 'tataki'){
+    if(st.mod400) return `威力2倍のテンポ(${temp}℃)。会心判定時は自動で補正されます。`;
+    if(st.mod200) return `威力0.5倍(端数切り上げ)のテンポ(${temp}℃)。会心判定時は自動で補正されます。`;
+    return null;
+  }
+  if(trait === 'kaishin'){
+    if(st.mod400 || st.mod200) return `ゾーン未到達のマスのうち1つが点灯中(${temp}℃)。下の「点灯マス」で対象を選んでください。点灯マスは威力2倍+会心率大幅上昇です。`;
+    return null;
+  }
+  if(trait === 'modori'){
+    if(st.mod400 || st.mod200) return `${temp}℃はメーター減少(戻り)の判定タイミングです。下のボタンから適用してください。`;
+    return null;
+  }
+  return null;
+}
+
+let litMassIndex = null;
+
+// ---- ヘパイトスのほのお(必殺技)管理 ----
+// ・使用すると「次の一手」全マスが会心のてごたえ確定になる(理想値到達は未確定のまま)
+// ・1ターン限り。何か行動(=判定)したら、その行動で対象になった全マス分を判定し終えた時点で自動OFFになる
+let hepaitosActive = false;
+let hepaitosRemaining = null; // このターンで判定すべき残りマス数(未確定の間はnull)
+
+// ---- 温度別 威力候補(最大,最小) 100℃刻み(50℃は別途) 出典:鍛冶職人の温度別数値ダメージ一覧 ----
+const TEMP_POINTS = [2000,1900,1800,1700,1600,1500,1400,1300,1200,1100,1000,900,800,700,600,500,400,300,200,100,50];
+const POWER_TABLE = {
+  tataku:  [[27,18],[27,18],[26,17],[25,17],[24,16],[23,15],[22,15],[21,14],[20,14],[19,13],[18,12],[18,12],[17,11],[16,11],[15,10],[14,9],[13,9],[12,8],[11,8],[10,7],[10,7]],
+  tekagen: [[14,9],[14,9],[13,9],[13,9],[12,8],[12,8],[11,8],[11,7],[10,7],[10,7],[9,6],[9,6],[9,6],[8,6],[8,5],[7,5],[7,5],[6,4],[6,4],[5,4],[5,4]],
+  joge:    [[33,23],[32,22],[31,21],[30,21],[29,20],[28,19],[27,18],[26,18],[25,17],[24,16],[22,15],[21,15],[20,14],[19,13],[18,12],[17,12],[16,11],[15,10],[14,9],[13,9],[12,8]],
+  nibai:   [[54,36],[53,35],[51,34],[49,33],[47,32],[45,30],[44,29],[42,28],[40,27],[38,26],[36,24],[35,23],[33,22],[31,21],[29,20],[27,18],[26,17],[24,16],[22,15],[20,14],[19,13]],
+  sanbai:  [[81,54],[79,53],[76,51],[73,49],[71,47],[68,45],[65,44],[63,42],[60,40],[57,38],[54,36],[52,35],[49,33],[46,31],[44,29],[41,27],[38,26],[36,24],[33,22],[30,20],[29,19]],
+  reppu:   [[68,45],[66,44],[63,42],[61,41],[59,39],[57,38],[54,36],[52,35],[50,33],[48,32],[45,30],[43,29],[41,27],[39,26],[36,24],[34,23],[32,21],[30,20],[27,18],[null,null],[null,null]],
+};
+
+function interpolate(key, temp){
+  if(!key) return null;
+  if(temp > 2000){
+    // 2000℃超はデータが無いため、2000℃と1900℃の傾きから単純に線形外挿する(近似)
+    const hi = POWER_TABLE[key][0], lo = POWER_TABLE[key][1];
+    if(hi[0]===null || lo[0]===null) return null;
+    const slopeMax = (hi[0]-lo[0])/100, slopeMin = (hi[1]-lo[1])/100;
+    const extra = temp - 2000;
+    return { max: hi[0] + slopeMax*extra, min: hi[1] + slopeMin*extra };
+  }
+  const t = Math.max(50, Math.min(2000, temp));
+  for(let i=0;i<TEMP_POINTS.length-1;i++){
+    const hi = TEMP_POINTS[i], lo = TEMP_POINTS[i+1];
+    if(t<=hi && t>=lo){
+      const [maxHi,minHi] = POWER_TABLE[key][i];
+      const [maxLo,minLo] = POWER_TABLE[key][i+1];
+      if(maxHi===null || maxLo===null) return null;
+      const ratio = hi===lo ? 0 : (t-lo)/(hi-lo);
+      return { max: maxLo + (maxHi-maxLo)*ratio, min: minLo + (minHi-minLo)*ratio };
+    }
+  }
+  const last = POWER_TABLE[key][TEMP_POINTS.length-1];
+  return last[0]===null ? null : {max:last[0], min:last[1]};
+}
+
+
+
+
+// ---- 推奨計算(期待値ベースの最後までの見通しシミュレーション) ----
+// 乱数は使わず、会心率・威力を期待値として扱い、集中力が尽きる/温度が0になるまでを
+// 貪欲法(各局面で最も誤差合計を下げる一手を選ぶ)で最後まで1本道シミュレートする。
+// これを「今打てる候補手」それぞれについて行い、最終的な誤差期待値が一番小さくなる
+// 最初の一手を推奨として提示する。
+// 制約(簡略化):複数マス同時ヒット系特技の対象マスは、盤面の隣接関係までは考慮せず
+// 「ゾーン未到達かつ必要量が大きいマス」を優先的に選ぶ近似で計算している。
+
+
+// ============================================================
+//  演算エンジン:大成功(誤差合計7以下)の確率を最大化する
+// ============================================================
+// 【設計の柱】
+//  1. 到達が絶対条件。1マスでも成功ゾーンに入らなければ大成功はない。
+//  2. 超過は回復不能。飛び越えたマスは二度と直せないので強く避ける。
+//  3. 熱風おろし(-150)+通常行動(-50)=-200 で、特殊温度を2手ごとに渡り歩く。
+//     集中力変化の地金では200の倍数で会心率+400%、400の倍数で消費半減が
+//     交互に来るため、このリズムに乗せると会心機会が飛躍的に増える。
+//  4. 会心狙いは「到達に必要な集中力を確保した上での余剰」で行う。
+//
+// この構成での実測は、大成功率 約39%、全マス到達率 約97%。
+// (Lv80 / 光のハンマー★3 / 集中力252 / 超かがやきの樹液を想定)
+
+const GRID_ROWS = 3, GRID_COLS = 2; // 縦3×横2(超かがやきの樹液)
+const SUCCESS_THRESHOLD = 7;        // 6マス商材の大成功ライン(誤差合計)
+const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
+
+// 推奨手の重み。実測で最も大成功率が高くなった値。
+// 推奨手の重み。いずれも実測(各数千〜1.5万回のシミュレーション)で決めた値。
+//   cap  : 会心が理想値を捉える見込み
+//   adv  : 前進量あたりの効率
+//   land : 特殊温度に着地することの価値
+//   heat : 温度が足りない時に火力上げへ切り替える閾値
+//   ov   : ゾーン超過のリスク(超過は回復不能)
+//   pr   : 遅れているマスを優先する度合い
+//   te   : 本会心ゾーンにいるマスを狙い打つ価値
+//   rush : まだ会心の見込みが無いマスをゾーンへ押し込む手の抑制
+//          (ゾーンに入るマスの56%が遠方からの飛び込みで、
+//           会心のチャンスを得ないまま終わっていたため)
+// 推奨手の重み。すべて実測(各数千〜1.5万回のシミュレーション)で決めた値。
+//   cap  : 会心が理想値を捉える見込み
+//   adv  : 前進量あたりの効率
+//   land : 特殊温度に着地することの価値
+//   heat : 温度不足で火力上げに切り替える閾値
+//   ov   : ゾーン超過のリスク(超過は回復不能)
+//   pr   : 遅れているマスを優先する度合い
+//   te   : 本会心ゾーンにいるマスを狙い打つ価値
+//   rush : 会心の見込みが無いマスをゾーンへ押し込む手の抑制
+//   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
+//   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
+const PARAMS = { cap:7, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
+                 te:30, rush:0.6, save:25, turn:5 };
+
+function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
+function rcToIdx(r,c){
+  if(r<0||r>=GRID_ROWS||c<0||c>=GRID_COLS) return null;
+  return r*GRID_COLS+c;
+}
+
+// 技ごとの対象マスの組み合わせを、盤面の隣接関係に沿って列挙する
+function enumerateTargetSets(skill){
+  const sets = [];
+  if(skill.masses===0) return [[]];
+  if(skill.masses===1){
+    for(let i=0;i<GRID_ROWS*GRID_COLS;i++) sets.push([i]);
+    return sets;
+  }
+  for(let r=0;r<GRID_ROWS;r++){
+    for(let c=0;c<GRID_COLS;c++){
+      const base = rcToIdx(r,c);
+      if(base===null) continue;
+      if(skill.shape==='vertical'){
+        const b = rcToIdx(r+1,c);
+        if(b!==null) sets.push([base,b]);
+      } else if(skill.shape==='horizontal'){
+        const b = rcToIdx(r,c+1);
+        if(b!==null) sets.push([base,b]);
+      } else if(skill.shape==='diagonal'){
+        const b = rcToIdx(r+1,c-1);
+        if(b!==null) sets.push([base,b]);
+      } else if(skill.shape==='square'){
+        const a=rcToIdx(r,c), b=rcToIdx(r,c+1), d=rcToIdx(r+1,c), e=rcToIdx(r+1,c+1);
+        if(a!==null&&b!==null&&d!==null&&e!==null) sets.push([a,b,d,e]);
+      }
+    }
+  }
+  return sets;
+}
+
+// 地金特性「集中力変化」による消費の増減
+//  400の倍数 → 消費半減 / 200の倍数(400除く) → 消費1.5倍だが会心率+400%
+function traitActive(temp){
+  return !isStartState();
+}
+function actualCostOf(sk, temp, trait){
+  if(trait!=='shuchu') return sk.cost;
+  if(!traitActive(temp)) return sk.cost;     // 開始直後は特性が乗らない
+  if(temp%400===0) return Math.max(1, Math.round(sk.cost*0.5));
+  if(temp%200===0) return Math.round(sk.cost*1.5);
+  return sk.cost;
+}
+const isHalfTurn  = t => traitActive(t) && t%400===0;
+const isBoostTurn = t => traitActive(t) && t%200===0 && t%400!==0;
+
+// その温度・技での7候補のロール値(整数、四捨五入)
+function getRollCandidates(skill, temp, trait, isLit){
+  if(!skill.key) return null;
+  const baseR = interpolate(skill.key, temp);
+  if(!baseR) return null;
+  const mult = getPowerMultiplier(trait, temp, isLit);
+  const r = applyPowerMultiplier(baseR, mult);
+  const out = [];
+  for(let k=0;k<7;k++) out.push(Math.round(r.min + (r.max-r.min)*k/6));
+  return out;
+}
+
+// 超過リスクのあるマスは「今は触らない」のが正解。
+// 全体の温度を下げると他マスの効率まで落ちるが、そのマスを後回しにして
+// 他を進めれば、打撃のたびに温度は自然に下がり、やがて安全圏に入る。
+// 冷やし込みが要るとしても、他が片付いた最後の場面に限られる。
+function moves(ms,f,t,cfg){
+  const strict=[], loose=[];
+  for(const sk of SKILLS){
+    if(sk.lv>cfg.level||sk.id==='midare')continue;
+    const c=actualCostOf(sk,t,cfg.trait);
+    if(c>f)continue;
+    const nt=Math.max(0,t+sk.tempDelta);
+    if(nt<=0)continue;
+    if(sk.masses===0){ strict.push({sk,tg:[],c,nt,overP:0}); continue; }
+    const r=getRollCandidates(sk,t,cfg.trait,false);
+    if(!r)continue;
+    for(const tg of enumerateTargetSets(sk)){
+      if(tg.some(i=>ms[i].current>=ms[i].zoneLow))continue;
+      let maxOver=0;
+      for(const i of tg){
+        let cnt=0;
+        for(const x of r) if(ms[i].current+x>ms[i].zoneHigh) cnt++;
+        maxOver=Math.max(maxOver,cnt/r.length);
+      }
+      const mv={sk,tg,c,nt,overP:maxOver};
+      if(maxOver===0) strict.push(mv);
+      else loose.push(mv);
+    }
+  }
+  if(strict.some(m=>m.sk.masses>0)) return strict;
+  // 安全に打てる打撃手が無い = 未到達マスがすべて超過圏にある状態。
+  // ここまで来て初めて冷やし込みに価値が出る(他マスへの巻き添えがないため)。
+  const cool=[];
+  for(const sk of SKILLS){
+    if(sk.lv>cfg.level||sk.masses!==0||sk.tempDelta>=0)continue;
+    const c=actualCostOf(sk,t,cfg.trait);
+    if(c>f)continue;
+    const nt=Math.max(0,t+sk.tempDelta);
+    if(nt<=0)continue;
+    // 下げた先で安全に打てるようになるか
+    let ok=false;
+    for(const s2 of SKILLS){
+      if(s2.lv>cfg.level||s2.masses===0||s2.id==='midare')continue;
+      const r2=getRollCandidates(s2,nt,cfg.trait,false);
+      if(!r2||actualCostOf(s2,nt,cfg.trait)>f-c)continue;
+      for(const tg2 of enumerateTargetSets(s2)){
+        if(tg2.some(i=>ms[i].current>=ms[i].zoneLow))continue;
+        let safe=true;
+        for(const i of tg2) if(ms[i].current+r2[6]>ms[i].zoneHigh){safe=false;break;}
+        if(safe){ok=true;break;}
+      }
+      if(ok)break;
+    }
+    if(ok) cool.push({sk,tg:[],c,nt,overP:0,cooling:true});
+  }
+  if(cool.length>0) return strict.concat(cool);
+  // ここに来た = 安全に打てる手も冷却で解決する手も無く、
+  // 超過覚悟で撃つしかない状態。だがその前に、温度を下げれば
+  // ロール値そのものが縮んで収まる可能性がある。
+  // 残り1のマスは500℃以下、残り2は700℃以下でないと収まらないため、
+  // 冷却が複数回必要なこともある。集中力が許すなら冷却を優先する。
+  const rescue=[];
+  for(const sk of SKILLS){
+    if(sk.lv>cfg.level||sk.id==='midare')continue;
+    if(sk.tempDelta>=0)continue;
+    const c=actualCostOf(sk,t,cfg.trait);
+    if(c>f)continue;
+    const nt=Math.max(0,t+sk.tempDelta);
+    if(nt<=0)continue;
+    // 下げ続ければ最終的に収まるか(集中力が尽きるまで試算)
+    let tt=nt, ff=f-c, reachable=false;
+    for(let k=0;k<8;k++){
+      let ok=false;
+      for(const m of ms){
+        if(m.current>=m.zoneLow)continue;
+        for(const s2 of SKILLS){
+          if(s2.lv>cfg.level||s2.masses===0||s2.id==='midare')continue;
+          const r2=getRollCandidates(s2,tt,cfg.trait,false);
+          if(!r2)continue;
+          if(actualCostOf(s2,tt,cfg.trait)>ff)continue;
+          if(m.current+r2[6]<=m.zoneHigh){ok=true;break;}
+        }
+        if(ok)break;
+      }
+      if(ok){reachable=true;break;}
+      const c2=actualCostOf(sk,tt,cfg.trait);
+      if(c2>ff||tt+sk.tempDelta<=0)break;
+      ff-=c2; tt=Math.max(0,tt+sk.tempDelta);
+    }
+    if(!reachable)continue;
+    if(sk.masses===0){ rescue.push({sk,tg:[],c,nt,overP:0,cooling:true}); }
+    else{
+      const r=getRollCandidates(sk,t,cfg.trait,false);
+      if(!r)continue;
+      let added=false;
+      for(const tg of enumerateTargetSets(sk)){
+        if(tg.some(i=>ms[i].current>=ms[i].zoneLow))continue;
+        let safe=true;
+        for(const i of tg) if(ms[i].current+r[6]>ms[i].zoneHigh){safe=false;break;}
+        if(safe){ rescue.push({sk,tg,c,nt,overP:0,cooling:true}); added=true; }
+      }
+      if(!added) rescue.push({sk,tg:[],c,nt,overP:0,cooling:true});
+    }
+  }
+  if(rescue.length>0) return strict.concat(rescue);
+  loose.sort((a,b)=>a.overP-b.overP);
+  return strict.concat(loose.slice(0,12));
+}
+function needTotal(ms){return ms.reduce((a,m)=>a+Math.max(0,m.zoneLow-m.current),0);}
+
+// --- 戦術A: 効率貪欲(温度を意識しない) ---
+function stratA(ms,f,t){
+  const mv=moves(ms,f,t,cfg);
+  if(mv.length===0)return null;
+  let best=null,be=-1;
+  for(const x of mv){
+    if(x.sk.masses===0){
+      if(x.cooling){
+        const sc=1.2+((isHalfTurn(x.nt)||isBoostTurn(x.nt))?P.land:0);
+        if(sc>bs){bs=sc;best=x;}
+        continue;
+      }
+      // 温度が足りない時だけ火力上げ
+      const steps=Math.floor(t/50), need=needTotal(ms);
+      if(x.sk.id==='karyoku'&&need/28>steps-3&&t<2200){ if(be<0){be=0;best=x;} }
+      continue;
+    }
+    const r=getRollCandidates(x.sk,t,cfg.trait,false);
+    const v=r[Math.floor(r.length/2)];
+    let adv=0;for(const i of x.tg)adv+=Math.min(v,ms[i].zoneLow-ms[i].current);
+    const e=adv/x.c;
+    if(e>be){be=e;best=x;}
+  }
+  return best;
+}
+
+// --- 戦術B: リズム戦術 ---
+// 熱風(-150)+通常(-50)=-200 で特殊温度を渡り歩く。
+// 半減ターンは消費が1/3なので狙い打ちを連打、会心ターンは高会心率の一撃。
+function stratB(ms,f,t,P,cfg){
+  P=P||{cap:7,adv:0.75,land:3,heat:4,ov:4,pr:0.8,tmax:2200,te:20};
+  const mv=moves(ms,f,t,cfg);
+  if(mv.length===0)return null;
+  const need=needTotal(ms);
+  const steps=Math.floor(t/50);
+  // 消費半減ターン(400の倍数)では重い技が半額で撃てる。
+  // ここで火力上げを使うのは、その機会を捨てることになる。
+  // 打撃で前進できる場面なら、火力上げは半減ターン以外に回す。
+  // ただし温度が本当に足りない時は火力上げを優先する。
+  // 半減ターンを守って温度切れになれば元も子もない。
+  // 会心+400%ターン(200の倍数)で火力上げを撃つのは無駄。
+  // 消費が1.5倍になるうえ、火力上げは会心の恩恵を一切受けないため。
+  // 一方、消費半減ターン(400の倍数)なら火力上げも半額で撃てるので問題ない。
+  // ただし温度切れが目前なら、機会損失より到達を優先する。
+  const urgentHeat = need/28 > steps-3;
+  // 除外するのは会心+400%ターンのみ。
+  // 半減ターンは火力上げ自体も半額(消費5)で撃てるので、むしろ有利。
+  const specialTurn = isBoostTurn(t) && !urgentHeat
+                      && ms.some(m=>m.current<m.zoneLow);
+
+  // 温度が足りなければ火力上げ
+  if(!specialTurn && need/28 > steps-P.heat && t < (P.tmax||2200)){
+    const k=mv.find(x=>x.sk.id==='karyoku');
+    if(k)return k;
+  }
+
+  // 到達は絶対条件。未到達マスを全部ゾーンに入れるのに必要な集中力を見積もり、
+  // それを下回る余剰しかない場合は、会心狙いをやめて最安の確実な手に切り替える。
+  // (実測では弱ねらい打ちを連打して残り1で集中力が尽きる失敗が多発していた)
+  let reserve=0;
+  for(const m of ms){
+    if(m.current>=m.zoneLow) continue;
+    const gap=m.zoneLow-m.current;
+    // そのマスをゾーンに入れられる最安の手を探す
+    let cheapest=Infinity;
+    for(const sk of SKILLS){
+      if(sk.lv>cfg.level||sk.masses===0||sk.id==='midare')continue;
+      const c=actualCostOf(sk,t,cfg.trait);
+      const r=getRollCandidates(sk,t,cfg.trait,false);
+      if(!r)continue;
+      // 最小ロールで届き、最大ロールで超過しないこと
+      if(m.current+r[0]>=m.zoneLow && m.current+r[6]<=m.zoneHigh){
+        cheapest=Math.min(cheapest,c);
+      }
+    }
+    if(!isFinite(cheapest)){
+      // 一撃で入らないなら、必要打数ぶんの概算
+      let bestEff=0, cost1=8;
+      for(const sk of SKILLS){
+        if(sk.lv>cfg.level||sk.masses===0||sk.id==='midare')continue;
+        const r=getRollCandidates(sk,t,cfg.trait,false);
+        if(!r)continue;
+        const c=actualCostOf(sk,t,cfg.trait);
+        const e=((r[0]+r[6])/2)/c;
+        if(e>bestEff){bestEff=e;cost1=c;}
+      }
+      cheapest = bestEff>0 ? Math.ceil(gap/bestEff) : gap;
+    }
+    reserve += cheapest;
+  }
+  const spare = f - reserve;          // 会心狙いに使える余剰
+  const tight = spare < 0;            // 到達すら危うい
+
+  let best=null,bs=-1;
+  for(const x of mv){
+    if(x.sk.masses===0){
+      if(x.cooling){
+        const sc=1.2+((isHalfTurn(x.nt)||isBoostTurn(x.nt))?P.land:0);
+        if(sc>bs){bs=sc;best=x;}
+        continue;
+      }
+      if(x.cooling){
+        // 他に打つ手が無いから冷やす。特殊温度に着地するなら上乗せ
+        const sc=1.0+((isHalfTurn(x.nt)||isBoostTurn(x.nt))?P.land:0);
+        if(sc>bs){bs=sc;best=x;}
+      }
+      continue;
+    }
+    const r=getRollCandidates(x.sk,t,cfg.trait,false);
+    const cr=computeCritRate(x.sk,cfg.level,cfg.hammerId,cfg.star,cfg.trait,t);
+    const v=r[Math.floor(r.length/2)];
+    let adv=0,cap=0,prio=0;
+    for(const i of x.tg){
+      const m=ms[i];
+      adv+=Math.min(v,m.zoneLow-m.current);
+      // 多マス技の対象になりにくいマスは最後に取り残され、
+      // 低温・低集中力で処理する羽目になって誤差が膨らむ。
+      // 残り距離が大きいマスほど優先して片付ける。
+      prio += (m.zoneLow-m.current)/Math.max(1,m.zoneLow);
+      // 会心が理想値を捉える確率。
+      // 「会心の伸びが理想値を通過する」割合なので、これがそのまま
+      // 本会心になる見込みを表す。ゾーンから遠ければ自然に0に近づく。
+      const zn=m.zoneHigh-m.zoneLow+1;
+      let c2=0;
+      for(const rr of r){const reach=m.current+2*rr;let n=0;
+        for(let id=m.zoneLow;id<=m.zoneHigh;id++)if(id>m.current&&id<=reach)n++;
+        c2+=(n/zn)/r.length;}
+      cap+=cr*c2;
+    }
+    // 次が特殊温度になるかを評価に入れる
+    const landBonus=(isHalfTurn(x.nt)||isBoostTurn(x.nt))?P.land:0;
+    // 会心を捉える価値を主軸に、前進効率と特殊温度到達を加える
+    // 余剰が無い局面では会心を狙わず、到達を確実にする手を選ぶ。
+    // 高コストの狙い打ちは、余剰で賄える時だけ価値がある。
+    // 実測では、余剰がほぼ無いのに弱ねらい打ち(消費20〜30)を連打して
+    // 残り1〜7で集中力が尽きる失敗が支配的だった。
+    // 「その手を打った後も、残る全マスを最安手で入れ切れるか」を厳格に判定する。
+    const afterCost = f - x.c;
+    // 残るマス数 × 最安の一撃(温度が下がると変わるので保守的に8とみなす)
+    let openAfter = 0;
+    for(let i=0;i<ms.length;i++){
+      if(ms[i].current>=ms[i].zoneLow) continue;
+      // この手で入る見込みがあるマスは除く
+      if(x.tg.includes(i)){
+        const r3=getRollCandidates(x.sk,t,cfg.trait,false);
+        if(r3 && ms[i].current+r3[0]>=ms[i].zoneLow) continue;
+      }
+      openAfter++;
+    }
+    const MIN_PER_MASS = 12;
+    const safeAfter = afterCost >= openAfter*MIN_PER_MASS;
+    const affordable = safeAfter;
+    const capW = (tight||!safeAfter) ? 0 : P.cap;
+    // ゾーンに確実に入る手(最小ロールで届き最大ロールで超えない)を優遇
+    let sureIn=0;
+    {
+      const r2=getRollCandidates(x.sk,t,cfg.trait,false);
+      if(r2) for(const i of x.tg){
+        const m=ms[i];
+        if(m.current+r2[0]>=m.zoneLow && m.current+r2[6]<=m.zoneHigh) sureIn++;
+      }
+    }
+    // 会心率が上がるターンは消費も1.5倍になるため、
+    // 会心そのものに価値があるわけではない。
+    // 価値があるのは「本会心ゾーンにいるマスを、会心で理想値ちょうどに止める」時だけ。
+    // ゾーンから遠いマスに会心が出ても、ただ2倍伸びるだけで大成功には寄与しない。
+    //
+    // 逆に、本会心ゾーンに入っているマスを通常技で撃つのは機会損失になる。
+    // 実測では1ゲームあたり1.6回もこの取りこぼしが起きていた。
+    // 誤差0のマスを4つ揃えれば大成功率は81%に達するため、
+    // 本会心ゾーンのマスは狙い打ち系で仕留めることを強く優先する。
+    let turnEff = 0;
+    if(x.sk.masses>0 && x.sk.key){
+      const rt = getRollCandidates(SKILLS.find(s=>s.id==='tataku'), t, cfg.trait, false);
+      const critRate = computeCritRate(x.sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, t);
+      let pinkHits = 0;
+      for(const i of x.tg){
+        const m = ms[i];
+        if(m.current >= m.zoneLow) continue;
+        if(!rt) continue;
+        if(m.current + rt[6] > m.zoneHigh) continue;   // はみ出す位置は対象外
+        // このマスが本会心ゾーンにあるか(いずれかの狙い打ち系で上限に届くか)
+        let inPink = false;
+        for(const s2 of SKILLS){
+          if(!s2.crit || s2.lv>cfg.level) continue;
+          const r2 = getRollCandidates(s2, t, cfg.trait, false);
+          if(r2 && m.current + 2*r2[0] >= m.zoneHigh){ inPink = true; break; }
+        }
+        if(!inPink) continue;
+        // この技の会心でゾーン上限まで届くなら仕留められる
+        if(m.current + 2*r[0] >= m.zoneHigh) pinkHits++;
+      }
+      turnEff = (critRate * pinkHits) / x.c * P.te;
+    }
+
+
+
+
+
+
+
+    // ---- 飛び込み抑制 ----
+    // 実測では、ゾーンに入ったマスの56%が「遠方から一気に飛び込んだ」もので、
+    // 撃ち直し圏を経由したのはわずか1.5%だった。
+    // 本会心ゾーンに"置く"ことを加点しても、そもそも通過せず飛び越えているため効かない。
+    // そこで逆に、まだ撃ち直し圏より手前にいるマスを、
+    // 会心の見込みなくゾーンへ押し込む手を抑制する。
+    let rushPenalty = 0;
+    if(x.sk.masses>0 && x.sk.key && P.rush>0 && !x.sk.crit){
+      const rt4 = getRollCandidates(SKILLS.find(s=>s.id==='tataku'), t, cfg.trait, false);
+      if(rt4){
+        for(const i of x.tg){
+          const m = ms[i];
+          if(m.current >= m.zoneLow) continue;
+          // 撃ち直し圏の下限を求める
+          let rlo = Infinity;
+          for(const s2 of SKILLS){
+            if(!s2.crit || s2.lv>cfg.level) continue;
+            const r2 = getRollCandidates(s2, t, cfg.trait, false);
+            if(!r2) continue;
+            const a = m.zoneHigh - 2*r2[0];
+            const b = m.zoneLow - r2[6] - 1;
+            if(a <= b) rlo = Math.min(rlo, a);
+          }
+          if(!isFinite(rlo)) continue;
+          if(m.current >= rlo) continue;      // 既に圏内なら関係ない
+          // この手でゾーンに飛び込んでしまう確率(=会心チャンスを失う)
+          let jump = 0;
+          for(const rv of r){ if(m.current + rv >= m.zoneLow) jump++; }
+          rushPenalty += jump / r.length;
+        }
+      }
+    }
+    turnEff -= rushPenalty * P.rush;
+
+
+    // ---- 特殊温度への到達(案B) ----
+    // 実測では手番の59%が特性の乗らない通常ターンだった。
+    // 熱風おろし(-150)と通常打撃(-50)を組み合わせれば -200 で
+    // 2手ごとに特殊温度へ行けるので、その回数自体を増やす価値がある。
+    let turnVal = 0;
+    if(P.turn>0){
+      const nt = x.nt;
+      if(isBoostTurn(nt) || isHalfTurn(nt)) turnVal += 1;
+      else {
+        // 次の一手で特殊温度に届くなら、それも評価する
+        for(const s2 of SKILLS){
+          if(s2.lv>cfg.level || s2.id==='midare') continue;
+          const n2 = Math.max(0, nt + s2.tempDelta);
+          if(n2>0 && (isBoostTurn(n2) || isHalfTurn(n2))){ turnVal += 0.4; break; }
+        }
+      }
+    }
+    turnEff += turnVal * P.turn;
+
+    // ---- 消費半減ターンの活用 ----
+    // 半減ターンの価値は「本来高コストな技を安く撃てる」点にある。
+    // 元から安い熱風おろし(6→3)を撃っても得は3しかないが、
+    // 上下ねらい打ち(25→13)なら12も節約できる。
+    // 実測では節約幅が最大の上下ねらい打ちがほぼ使われず(0.01回/game)、
+    // 熱風おろしばかり撃っていた(1.52回/game)ため、節約額そのものを加点する。
+    if(isHalfTurn(t) && x.sk.masses>0){
+      turnEff += ((x.sk.cost - x.c) / 10) * P.save;
+    }
+
+    // ---- 会心+400%ターンの活用(案A) ----
+    // 半減ターンと対になる考え方。会心率が5倍になるこのターンの価値は、
+    // 「本会心ゾーンにいるマスを狙い打って仕留める」時にしか発揮されない。
+    // 実測では会心ターンの58%が本会心ゾーンを狙えておらず、
+    // 最多の超4連打ちに至っては一度も狙えていなかった。
+    // そこで、狙い打ち系で本会心ゾーンを撃つ手を強く優先し、
+
+    // ---- 特殊温度への到達(案B) ----
+    // 実測では全手数の59%が特性の乗らない通常ターンだった。
+    // 熱風おろし(-150)と通常打撃(-50)を組み合わせれば2手で次の特殊温度に届くので、
+    // 通常ターンにいる間は、次が特殊温度になる手を優先して特殊ターンの回数を増やす。
+    const score=cap*capW + (adv/x.c)*P.adv + landBonus + prio*P.pr
+              + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
+    if(score>bs){bs=score;best=x;}
+  }
+  return best;
+}
+
+
+// 現局面から推奨手順どおりに打ち切った場合の成績を、乱数試行で実測する。
+// 理想値は見えないので試行ごとにサンプリングし、その平均を取る。
+function estimateOutcome(masses, focus, temp, cfg, trials){
+  const savedSim = simFirstMove;
+  const startsFresh = isStartState();
+  let win=0, errSum=0, reach=0;
+  const errs=[];
+  for(let n=0;n<trials;n++){
+    simFirstMove = startsFresh;      // この試行の1手目だけ特性を無効にする
+    const ms = masses.map(m=>({
+      current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
+      ideal: m.zoneLow + Math.floor(Math.random()*(m.zoneHigh-m.zoneLow+1))
+    }));
+    let f=focus, t=temp;
+    for(let s=0;s<70;s++){
+      if(ms.every(m=>m.current>=m.zoneLow)) break;
+      if(t<=0) break;
+      const mv = stratB(ms, f, t, PARAMS, cfg);
+      if(!mv || f<mv.c) break;
+      const rolls = mv.sk.key ? getRollCandidates(mv.sk, t, cfg.trait, false) : null;
+      const cr = mv.sk.key ? computeCritRate(mv.sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, t) : 0;
+      if(rolls) mv.tg.forEach(i=>{
+        const m=ms[i];
+        if(m.current>=m.zoneLow) return;
+        const roll = rolls[Math.floor(Math.random()*rolls.length)];
+        if(Math.random()<cr){ if(m.current<m.ideal) m.current=Math.min(m.current+2*roll, m.ideal); }
+        else m.current += roll;
+      });
+      f-=mv.c; t=mv.nt;
+      simFirstMove = false;   // 1手打ったので以降は特性が有効
+    }
+    let e=0, r=0;
+    ms.forEach(m=>{
+      const raw=Math.abs(m.current-m.ideal);
+      const inZone = m.current>=m.zoneLow && m.current<=m.zoneHigh;
+      if(m.current>=m.zoneLow) r++;
+      e += inZone ? Math.min(raw,MAX_ERR) : raw;
+    });
+    if(e<=SUCCESS_THRESHOLD) win++;
+    if(r===6) reach++;
+    errSum+=e; errs.push(e);
+  }
+  simFirstMove = savedSim;
+  errs.sort((a,b)=>a-b);
+  return {
+    successRate: win/trials,
+    avgError: errSum/trials,
+    medError: errs[Math.floor(trials/2)],
+    reachRate: reach/trials
+  };
+}
+
+
+
+/* ===================== UI制御 ===================== */
+/* ====== 描画 ====== */
+function cfgOf(){
+  return {level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait};
+}
+
+// そのマスについて、バー上の各マーカー位置を求める。
+// 推奨技の有無にかかわらず常に表示する(基準técは G.barSkill で切り替え)。
+//   緑   = 成功ゾーン
+//   ピンク = ここから狙い打てば、会心時に確実に本会心になる範囲
+//   青   = 選んだ技を通常ロールで打った時の到達範囲(最小〜最大)
+//   赤   = 同じ技で会心(2倍)が出た時の到達範囲(最小〜最大)
+//   白   = 現在値
+function markersFor(m, skill){
+  const lo = m.zoneLow, hi = m.zoneHigh;
+  // バーの左端は常に0に固定する。ゾーン付近だけを拡大すると
+  // 「どこまで進んだか」の実感が持てないため、0からの絶対位置で示す。
+  const span = Math.max(hi-lo, 8);
+  const scaleMin = 0;
+  const scaleMax = hi + span*1.2;
+  const pct = v => Math.max(0, Math.min(100, (v-scaleMin)/(scaleMax-scaleMin)*100));
+
+  const out = {
+    zone:[pct(lo), pct(hi)], cur:pct(m.current),
+    pink:null, blue:null, red:null,
+    raw:{ lo, hi, cur:Math.round(m.current) }
+  };
+
+  // 本会心ゾーン:ここから狙い打てば、会心が出れば必ず理想値を捉えられる位置。
+  // 条件は2つ。
+  //   条件1「たたくの最大値でもゾーンをはみ出さない」 位置 + たたくmax ≦ zoneHigh
+  //   条件2「会心の最小値でゾーン上限まで届く」       位置 + 2×min  ≧ zoneHigh
+  // 条件2を満たせば、理想値がゾーン内のどこにあっても会心の伸びが必ず通過する。
+  // 条件1は、外した時に超過して回復不能になるのを防ぐための上限。
+  const tataku = SKILLS.find(s=>s.id==='tataku');
+  const rt = tataku ? getRollCandidates(tataku, G.temp, G.trait, false) : null;
+  if(rt){
+    const upper = hi - rt[6];              // 条件1:これ以下でないとはみ出す
+    const naraiList = SKILLS.filter(s=>s.crit && s.lv<=G.level);
+    let bestLo = Infinity;
+    for(const s of naraiList){
+      const r = getRollCandidates(s, G.temp, G.trait, false);
+      if(!r) continue;
+      const need = hi - 2*r[0];            // 条件2:これ以上でないと届かない
+      if(need <= upper) bestLo = Math.min(bestLo, need);
+    }
+    if(isFinite(bestLo) && upper >= 0){
+      const pLo = Math.max(0, bestLo);
+      out.pink = [pct(pLo), pct(upper)];
+      out.raw.pink = [Math.round(pLo), Math.round(upper)];
+    }
+  }
+
+  if(skill && skill.key){
+    const r = getRollCandidates(skill, G.temp, G.trait, false);
+    if(r){
+      const n0=m.current+r[0], n1=m.current+r[6];
+      const c0=m.current+2*r[0], c1=m.current+2*r[6];
+      out.blue = [pct(n0), pct(n1)];
+      out.red  = [pct(c0), pct(c1)];
+      out.raw.blue = [Math.round(n0), Math.round(n1)];
+      out.raw.red  = [Math.round(c0), Math.round(c1)];
+    }
+  }
+  return out;
+}
+
+// バー下の数値列。右向き(右列)は 通常最小→通常最大→会心最小→会心最大 の順、
+// 左向き(左列)はその鏡像になるよう並べ替える。
+function scaleLabel(mk, flip){
+  const r = mk.raw;
+  if(!r.blue) return '<span style="color:var(--dim)">技を選ぶと表示</span>';
+  const items = [
+    {v:r.blue[0], c:'var(--blue)'},
+    {v:r.blue[1], c:'var(--blue)'},
+    {v:r.red[0],  c:'var(--red)'},
+    {v:r.red[1],  c:'var(--red)'}
+  ];
+  const arr = flip ? items.slice().reverse() : items;
+  return arr.map(x=>`<span style="color:${x.c}">${x.v}</span>`).join('<span style="color:#5a5248">〜</span>');
+}
+
+function renderBoard(){
+  const el = document.getElementById('board');
+  const hiTg = G.rec ? G.rec.tg : [];
+  // バーの基準技:推奨手が出ていればその技の伸び幅を表示する。
+  // まだ計算していない(または温度操作が推奨された)場合は「たたく」を既定とする。
+  const skill = (G.rec && G.rec.sk && G.rec.sk.key) ? G.rec.sk
+              : SKILLS.find(s=>s.id==='tataku');
+  let html = '';
+  for(let row=0; row<3; row++){
+    html += '<div class="brow">';
+    for(let col=0; col<2; col++){
+      const i = row*2+col;
+      const m = G.masses[i];
+      const mk = markersFor(m, skill);
+      const flip = (col===0);
+      const st = m.current > m.zoneHigh ? 'over'
+               : m.current >= m.zoneLow ? 'done' : '';
+      const cls = (hiTg.includes(i)?' hi':'') + (st?' '+st:'');
+      const zoneTxt = flip ? `${m.zoneHigh} 〜 ${m.zoneLow}` : `${m.zoneLow} 〜 ${m.zoneHigh}`;
+      const barBlock =
+        `<div class="bar-wrap ${flip?'left':'right'}">
+           <div class="zone-lbl">${zoneTxt}</div>
+           ${buildBar(mk, flip)}
+           <div class="pw-lbl">${scaleLabel(mk, flip)}</div>
+         </div>`;
+      const cell =
+        `<div class="cell${cls}" onclick="openPad('mass',${i})">
+           <div class="idx">マス${i+1}</div>
+           <div class="cur">${Math.round(m.current)}</div>
+           <div class="zn"><span>${m.zoneLow}</span><span>${m.zoneHigh}</span></div>
+         </div>`;
+      html += flip ? barBlock+cell : cell+barBlock;
+    }
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function buildBar(mk, flip){
+  // マーカーごとに座標を反転させると重なり順や位置がずれるため、
+  // 座標計算は常に左→右で行い、左列だけバー全体をCSSでミラーする。
+  const band = (a,b,cls) => {
+    const lo=Math.min(a,b), hi=Math.max(a,b);
+    return `<i class="${cls}" style="left:${lo}%;width:${Math.max(hi-lo,1)}%"></i>`;
+  };
+  const line = (v,cls) => `<i class="${cls}" style="left:${v}%"></i>`;
+  let s = '';
+  // 本会心ゾーンを先に敷き、成功ゾーンを上に重ねる。
+  // 成功ゾーンの方が判断上重要なので、重なっても必ず見えるようにする。
+  if(mk.pink) s += band(mk.pink[0], mk.pink[1], 'm-pink');
+  if(mk.zone) s += band(mk.zone[0], mk.zone[1], 'm-green');
+  if(mk.blue) s += band(mk.blue[0], mk.blue[1], 'm-blue');
+  if(mk.red)  s += band(mk.red[0],  mk.red[1],  'm-red');
+  s += line(mk.cur,'m-cur');
+  return `<div class="bar${flip?' flip':''}">${s}</div>`;
+}
+
+function renderHeader(){
+  document.getElementById('v-temp').textContent = G.temp;
+  document.getElementById('v-focus').textContent = G.focus;
+  const b = [];
+  if(isBoostTurn(G.temp)) b.push('<span class="badge boost">★ 会心率+400%</span>');
+  else if(isHalfTurn(G.temp)) b.push('<span class="badge half">◆ 消費半減</span>');
+  else b.push('<span class="badge off">通常</span>');
+  if(isStartState()) b.push('<span class="badge off">開始直後(特性なし)</span>');
+  const done = G.masses.filter(m=>m.current>=m.zoneLow).length;
+  b.push(`<span class="badge ${done===6?'rate':'off'}">到達 ${done}/6</span>`);
+  if(G.lastRate!=null) b.push(`<span class="badge rate">大成功 約${(G.lastRate*100).toFixed(0)}%</span>`);
+  document.getElementById('badges').innerHTML = b.join('');
+}
+
+function renderSkills(){
+  const rows = ['<tr><th>技</th><th>ロール</th><th class="cst">消費</th><th class="cst">会心</th></tr>'];
+  for(const s of SKILLS){
+    if(s.lv>G.level || s.id==='midare') continue;
+    const r = s.key ? getRollCandidates(s, G.temp, G.trait, false) : null;
+    const c = actualCostOf(s, G.temp, G.trait);
+    const cr = s.key ? computeCritRate(s,G.level,G.hammerId,G.star,G.trait,G.temp) : 0;
+    rows.push(`<tr><td>${s.name}</td><td class="rolls">${r?r.join(' '):'—'}</td>`
+      + `<td class="cst">${c}</td><td class="cst">${s.key?(cr*100).toFixed(0)+'%':'—'}</td></tr>`);
+  }
+  document.getElementById('skTable').innerHTML = rows.join('');
+}
+
+function renderRec(){
+  const el = document.getElementById('rec');
+  if(!G.rec){
+    el.innerHTML = '<div class="rec-empty">'+(G.msg||'「次の一手を計算」を押してください')+'</div>';
+    return;
+  }
+  const r = G.rec;
+  const tgt = r.tg.length ? r.tg.map(i=>'マス'+(i+1)).join('・') : '温度操作';
+  const cr = r.sk.key ? computeCritRate(r.sk,G.level,G.hammerId,G.star,G.trait,G.temp) : 0;
+  el.innerHTML = `<div class="rec-main">
+      <div class="rec-skill">${r.sk.name}</div>
+      <div class="rec-sub">${tgt} / 消費${r.c}${r.sk.key?' / 会心'+(cr*100).toFixed(0)+'%':''} → ${r.nt}℃</div>
+    </div>`;
+}
+
+function renderDetail(){
+  const el = document.getElementById('detail');
+  if(!G.rec){ el.textContent='まだ計算していません'; return; }
+  let h = '';
+  if(G.lastRate!=null){
+    h += `<div style="margin-bottom:8px">大成功率 約${(G.lastRate*100).toFixed(1)}% ／ `
+       + `誤差 約${G.lastErr.toFixed(1)} ／ 到達 約${(G.lastReach*100).toFixed(0)}%</div>`;
+  }
+  if(G.plan.length){
+    h += '<div style="color:var(--dim);font-size:11px;margin-bottom:4px">この先の想定手順</div>';
+    h += G.plan.map((s,i)=>{
+      const mark = s.boost ? '<b class="mk-boost">★ 会心+400%</b>'
+                 : s.half  ? '<b class="mk-half">◆ 消費半減</b>' : '';
+      const cls  = s.boost ? ' on-boost' : s.half ? ' on-half' : '';
+      return `<div class="plan-step${cls}"><span class="n">${i+1}</span><span>${s.name}`
+        + `<span class="tg"> ${s.tg.length?s.tg.map(x=>'マス'+(x+1)).join('・'):'温度操作'} / ${s.temp}℃</span>`
+        + ` ${mark}</span></div>`;
+    }).join('');
+    h += `<div class="mk-note">
+        <div><b class="mk-boost">★ 会心+400%</b> 温度が200の倍数(400の倍数を除く)。
+             会心率が5倍になる代わりに消費集中力が1.5倍。狙い打ちを撃つ好機。</div>
+        <div><b class="mk-half">◆ 消費半減</b> 温度が400の倍数。
+             消費集中力が半分になる。超4連打ちなど重い技を撃つ好機。</div>
+      </div>`;
+  }
+  el.innerHTML = h || '—';
+}
+
+function renderAll(){ renderHeader(); renderBoard(); renderSkills(); renderRec(); renderDetail(); }
+
+/* ====== 計算 ====== */
+function doCalc(){
+  const btn = document.getElementById('calcBtn');
+  btn.disabled = true; btn.textContent = '計算中…';
+  setTimeout(()=>{
+    try{
+      const cfg = cfgOf();
+      const ms = G.masses.map(m=>({current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh}));
+      if(ms.every(m=>m.current>=m.zoneLow)){
+        G.rec=null; G.plan=[]; G.msg='<span style="color:var(--green)">全マス到達 — 仕上げてください</span>';
+      } else if(G.temp<=0){
+        G.rec=null; G.plan=[]; G.msg='温度切れ';
+      } else {
+        G.msg=null;
+        G.rec = stratB(ms, G.focus, G.temp, PARAMS, cfg);
+        buildPlan(ms, cfg);
+        const o = estimateOutcome(ms, G.focus, G.temp, cfg, 300);
+        G.lastRate=o.successRate; G.lastErr=o.avgError; G.lastReach=o.reachRate;
+      }
+      renderAll();
+    }catch(e){
+      document.getElementById('rec').innerHTML =
+        '<div class="rec-empty">計算に失敗しました: '+e.message+'</div>';
+    }
+    btn.disabled=false; btn.textContent='次の一手を計算';
+  }, 20);
+}
+
+function buildPlan(ms0, cfg){
+  G.plan = [];
+  let sim = ms0.map(m=>({...m}));
+  let f=G.focus, t=G.temp;
+  const saved = simFirstMove;
+  simFirstMove = isStartState();
+  for(let s=0;s<24;s++){
+    if(sim.every(m=>m.current>=m.zoneLow)) break;
+    if(t<=0) break;
+    const mv = stratB(sim,f,t,PARAMS,cfg);
+    if(!mv || f<mv.c) break;
+    G.plan.push({name:mv.sk.name, tg:mv.tg.slice(), temp:t,
+      boost:isBoostTurn(t), half:isHalfTurn(t)});
+    const r = mv.sk.key ? getRollCandidates(mv.sk,t,G.trait,false) : null;
+    if(r){
+      const mean = r.reduce((a,b)=>a+b,0)/r.length;
+      const cr = computeCritRate(mv.sk,cfg.level,cfg.hammerId,cfg.star,cfg.trait,t);
+      mv.tg.forEach(i=>{
+        const m=sim[i]; if(m.current>=m.zoneLow) return;
+        const mid=(m.zoneLow+m.zoneHigh)/2;
+        m.current = cr*Math.min(m.current+2*mean, Math.max(m.current,mid)) + (1-cr)*(m.current+mean);
+      });
+    }
+    f-=mv.c; t=mv.nt; simFirstMove=false;
+  }
+  simFirstMove = saved;
+}
+
+/* ====== テンキー ====== */
+// 電卓と同じ操作感にする。
+//   数字だけ入力して決定 → その値をそのまま設定
+//   ＋ / － を押してから数字を入力 → 現在値に加算 / 減算
+let padTarget=null, padIdx=null, padOp=null, padBuf='';
+
+function openPad(kind, idx){
+  padTarget=kind; padIdx=idx; padBuf=''; padOp=null;
+  let title='';
+  if(kind==='mass'){
+    const m=G.masses[idx];
+    title = `マス${idx+1}(ゾーン ${m.zoneLow}〜${m.zoneHigh})`;
+  } else if(kind==='temp'){
+    title='温度(℃)';
+  } else {
+    title='残り集中力';
+  }
+  document.getElementById('padTitle').textContent=title;
+  updatePad();
+  document.getElementById('modal').classList.add('show');
+}
+
+function closePad(){ document.getElementById('modal').classList.remove('show'); }
+
+function key(k){
+  if(k==='del'){
+    if(padBuf) padBuf=padBuf.slice(0,-1);
+    else padOp=null;               // 数字が無ければ演算子を取り消す
+  } else if(k==='plus' || k==='minus'){
+    padOp = (padOp===k) ? null : k;  // 同じキーをもう一度押すと解除
+    padBuf='';
+  } else if(padBuf.length<5){
+    padBuf+=k;
+  }
+  updatePad();
+}
+
+function curValue(){
+  return padTarget==='mass' ? Math.round(G.masses[padIdx].current)
+       : padTarget==='temp' ? G.temp : G.focus;
+}
+
+function updatePad(){
+  const cur = curValue();
+  const n = Number(padBuf||'0');
+  let pre='', val=padBuf||'0', res='';
+  if(padOp==='plus'){  pre = `${cur} ＋`; res = cur + n; }
+  else if(padOp==='minus'){ pre = `${cur} －`; res = Math.max(0, cur - n); }
+  document.getElementById('padPre').textContent = pre;
+  document.getElementById('padVal').textContent = val;
+  const rEl = document.getElementById('padRes');
+  if(rEl) rEl.textContent = padOp ? `= ${res}` : `現在 ${cur}`;
+  const p=document.getElementById('kPlus'), m=document.getElementById('kMinus');
+  if(p) p.classList.toggle('on', padOp==='plus');
+  if(m) m.classList.toggle('on', padOp==='minus');
+}
+
+function commit(){
+  const cur = curValue();
+  const n = Number(padBuf||'0');
+  let v;
+  if(padOp==='plus') v = cur + n;
+  else if(padOp==='minus') v = cur - n;
+  else v = padBuf==='' ? cur : n;    // 何も入力していなければ現状維持
+  v = Math.max(0, v);
+  if(padTarget==='mass') G.masses[padIdx].current = v;
+  else if(padTarget==='temp') G.temp = v;
+  else G.focus = v;
+  closePad(); renderAll();
+}
+
+/* ====== 設定 ====== */
+function readSettings(){
+  G.level = Number(document.getElementById('s-level').value)||80;
+  G.hammerId = document.getElementById('s-hammer').value;
+  G.star = Number(document.getElementById('s-star').value);
+  G.trait = document.getElementById('s-trait').value;
+}
+function applySettings(){
+  readSettings();
+  const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
+  G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
+  renderAll(); save();
+}
+// 素材の選択が変わった時。手動設定ならゾーン入力欄を出す。
+function onPresetChange(){
+  const v = document.getElementById('s-preset').value;
+  const box = document.getElementById('zoneEdit');
+  if(v === 'custom'){
+    box.style.display = 'block';
+    renderZoneRows();
+  } else {
+    box.style.display = 'none';
+    G.preset = v;
+    resetAll();
+  }
+}
+
+// 各マスのゾーン入力欄を描く
+function renderZoneRows(){
+  const el = document.getElementById('zoneRows');
+  if(!el) return;
+  el.innerHTML = G.masses.map((m,i)=>
+    `<div class="zrow">
+       <span class="zl">マス${i+1}</span>
+       <input type="number" id="z-lo-${i}" value="${m.zoneLow}" min="1" max="999">
+       <span class="zs">〜</span>
+       <input type="number" id="z-hi-${i}" value="${m.zoneHigh}" min="1" max="999">
+     </div>`).join('');
+}
+
+// 入力されたゾーンを盤面に反映する
+function applyZones(){
+  for(let i=0;i<G.masses.length;i++){
+    const lo = Number(document.getElementById('z-lo-'+i).value);
+    const hi = Number(document.getElementById('z-hi-'+i).value);
+    if(!isFinite(lo) || !isFinite(hi)) continue;
+    if(lo < 1 || hi < lo) continue;          // 不正な値は無視する
+    G.masses[i].zoneLow = lo;
+    G.masses[i].zoneHigh = hi;
+    if(G.masses[i].current > hi + 50) G.masses[i].current = 0;
+  }
+  G.preset = 'custom';
+  G.rec = null; G.plan = []; G.lastRate = null;
+  renderAll(); save();
+}
+
+function resetAll(){
+  readSettings();
+  const pre = document.getElementById('s-preset');
+  const kind = pre ? pre.value : 'kagayaki';
+  // 手動設定なら現在のゾーンを保持し、数値だけ戻す
+  const zs = (kind === 'custom' && G.masses.length === 6)
+    ? G.masses.map(m=>[m.zoneLow, m.zoneHigh])
+    : PRESETS.kagayaki;
+  G.masses = zs.map(([lo,hi])=>({current:0, zoneLow:lo, zoneHigh:hi}));
+  G.temp = 1000;
+  const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
+  G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
+  G.rec=null; G.plan=[]; G.lastRate=null;
+  renderZoneRows();
+  renderAll(); save();
+}
+
+/* ====== 保存 ====== */
+const SKEY='kajiAdvisorStateV1';
+function save(){
+  try{ localStorage.setItem(SKEY, JSON.stringify({
+    temp:G.temp, focus:G.focus, masses:G.masses,
+    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset
+  })); }catch(e){}
+}
+function load(){
+  try{
+    const s=JSON.parse(localStorage.getItem(SKEY));
+    if(!s||!s.masses||s.masses.length!==6) return false;
+    Object.assign(G,s);
+    document.getElementById('s-level').value=G.level;
+    document.getElementById('s-hammer').value=G.hammerId;
+    document.getElementById('s-star').value=G.star;
+    document.getElementById('s-trait').value=G.trait;
+    if(G.preset){
+      const pre = document.getElementById('s-preset');
+      if(pre) pre.value = G.preset;
+      if(G.preset === 'custom'){
+        const box = document.getElementById('zoneEdit');
+        if(box) box.style.display = 'block';
+        renderZoneRows();
+      }
+    }
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ====== 起動 ====== */
+['s-level','s-hammer','s-star','s-trait'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', applySettings);
+});
+
+if(!load()) resetAll();
+renderAll();
+
+// 入力のたびに保存する
+const _origRender = renderAll;
+renderAll = function(){ _origRender(); save(); };
+
+</script>
+</body>
+</html>
