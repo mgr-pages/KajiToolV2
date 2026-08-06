@@ -56,7 +56,11 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
   box-sizing:border-box;}
 .bar .m-blue {top:2px; z-index:3; height:5px; background:var(--blue); border-radius:2px;}
 .bar .m-red  {bottom:2px; z-index:3; height:5px; background:var(--red);  border-radius:2px;}
-.bar .m-cur  {top:0; bottom:0; width:2px; background:#fff; z-index:5;}
+/* 現在値は0からの塗りで表す。線より進捗が掴みやすい。
+   塗り自体は他のマーカーを隠さないよう最背面(z-index:0)、
+   右端の白線だけは常に見えるように別要素で最前面に出す。 */
+.bar .m-cur  {top:0; bottom:0; left:0; background:rgba(255,255,255,.42); z-index:0;}
+.bar .m-curline{top:0; bottom:0; width:2px; background:#fff; z-index:6;}
 /* 左列のバーは右から左へ伸びるので、全体をミラーする */
 .bar.flip{ transform:scaleX(-1); }
 .pw-lbl{font-size:9px; color:var(--dim); font-variant-numeric:tabular-nums; letter-spacing:-.2px;}
@@ -342,9 +346,14 @@ table.sk .cst{text-align:right; font-weight:700;}
         <option value="none">なし</option><option value="tataki">たたき変化</option>
         <option value="modori">メーター減少</option><option value="kaishin">威力会心率上昇</option>
       </select></div>
+    <div class="set-row"><label>バー最大値</label>
+      <input type="number" id="s-barmax" min="10" max="9999" placeholder="自動"
+             oninput="onBarMaxChange()"></div>
     <div class="set-row"><label>素材</label>
       <select id="s-preset" onchange="onPresetChange()">
         <option value="kagayaki" selected>超かがやきの樹液</option>
+        <option value="amatsuyu">超あまつゆのいと</option>
+        <option value="yousei">超ようせいのひだね</option>
         <option value="custom">手動設定</option>
       </select></div>
 
@@ -389,10 +398,30 @@ const G = {
   focus: 253,
   masses: [],
   level: 80, hammerId:'light', star:3, trait:'shuchu',
-  rec: null, plan: [], barSkill:'tataku', preset:'kagayaki'
+  rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null
 };
+// 素材ごとのプリセット。zones は各マスの成功ゾーン[下限,上限]、
+// trait はその素材が持つ地金特性(選択時に自動で切り替える)。
 const PRESETS = {
-  kagayaki: [[155,161],[220,230],[155,161],[220,230],[140,150],[140,150]]
+  kagayaki: {
+    name: '超かがやきの樹液',
+    trait: 'shuchu',
+    zones: [[155,161],[220,230],[155,161],[220,230],[140,150],[140,150]]
+  },
+  // 超あまつゆのいと(地金特性:たたき変化)
+  //   400℃の倍数で威力2倍、その±200℃で威力半減。
+  //   ゾーンは 左上・左下・右中が180〜190(幅11)、右上・右下が245〜251(幅7)、
+  //   左中が150〜156(幅7)。盤面は縦3×横2で [1][2] / [3][4] / [5][6]。
+  amatsuyu: {
+    name: '超あまつゆのいと',
+    trait: 'tataki',
+    zones: [[180,190],[245,251],[150,156],[180,190],[180,190],[245,251]]
+  },
+  yousei: {
+    name: '超ようせいのひだね',
+    trait: 'shuchu',
+    zones: [[155,161],[220,230],[155,161],[220,230],[140,150],[140,150]]
+  }
 };
 
 /* ===================== 演算エンジン ===================== */
@@ -634,7 +663,7 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 const PARAMS = { cap:7, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:30, rush:0.6, save:25, turn:5 };
+                 te:10, rush:0.6, save:25, turn:5, tatakiFit:1.5 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -684,8 +713,14 @@ function actualCostOf(sk, temp, trait){
   if(temp%200===0) return Math.round(sk.cost*1.5);
   return sk.cost;
 }
-const isHalfTurn  = t => traitActive(t) && t%400===0;
-const isBoostTurn = t => traitActive(t) && t%200===0 && t%400!==0;
+// 消費半減 / 会心率+400% は地金特性「集中力変化」でのみ発生する。
+// 他の特性(たたき変化など)では、同じ温度でも別の効果になるため false を返す。
+const isHalfTurn  = t => traitActive(t) && G.trait==='shuchu' && t%400===0;
+const isBoostTurn = t => traitActive(t) && G.trait==='shuchu' && t%200===0 && t%400!==0;
+
+// たたき変化:400の倍数で威力2倍、200の倍数(400除く)で威力半減
+const isPowerUpTurn   = t => traitActive(t) && G.trait==='tataki' && t%400===0;
+const isPowerDownTurn = t => traitActive(t) && G.trait==='tataki' && t%200===0 && t%400!==0;
 
 // その温度・技での7候補のロール値(整数、四捨五入)
 function getRollCandidates(skill, temp, trait, isLit){
@@ -981,26 +1016,35 @@ function stratB(ms,f,t,P,cfg){
     // 本会心ゾーンのマスは狙い打ち系で仕留めることを強く優先する。
     let turnEff = 0;
     if(x.sk.masses>0 && x.sk.key){
-      const rt = getRollCandidates(SKILLS.find(s=>s.id==='tataku'), t, cfg.trait, false);
       const critRate = computeCritRate(x.sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, t);
-      let pinkHits = 0;
+      let pinkVal = 0;
       for(const i of x.tg){
         const m = ms[i];
         if(m.current >= m.zoneLow) continue;
-        if(!rt) continue;
-        if(m.current + rt[6] > m.zoneHigh) continue;   // はみ出す位置は対象外
-        // このマスが本会心ゾーンにあるか(いずれかの狙い打ち系で上限に届くか)
-        let inPink = false;
-        for(const s2 of SKILLS){
-          if(!s2.crit || s2.lv>cfg.level) continue;
-          const r2 = getRollCandidates(s2, t, cfg.trait, false);
-          if(r2 && m.current + 2*r2[0] >= m.zoneHigh){ inPink = true; break; }
+        // 今まさに使おうとしている技で、この位置から本会心が成立するか。
+        // 判定は技ごとに行う(倍率が違えば成立範囲も違うため)。
+        if(m.current + r[6] > m.zoneHigh) continue;      // 条件1:はみ出す
+        if(m.current + 2*r[0] < m.zoneHigh) continue;    // 条件2:会心でも届かない
+
+        // 成立していても、位置によって価値は大きく違う。
+        // 外した時にゾーン手前で止まれば撃ち直せるが、
+        // ゾーン内に着弾すると誤差がその場で確定してしまう。
+        // 実測では同じ本会心ゾーン内でも期待誤差が1.18〜6.36と5倍以上開くため、
+        // 二値で数えず、期待誤差の小ささを価値として使う。
+        let e = 0, n = 0;
+        for(let id = m.zoneLow; id <= m.zoneHigh; id++){
+          for(const rv of r){
+            const land = m.current + rv;
+            const inZ = land >= m.zoneLow && land <= m.zoneHigh;
+            const eN = inZ ? Math.min(Math.abs(land - id), MAX_ERR) : Math.abs(land - id);
+            e += (1 - critRate) * eN;   // 会心なら誤差0なので加算しない
+            n++;
+          }
         }
-        if(!inPink) continue;
-        // この技の会心でゾーン上限まで届くなら仕留められる
-        if(m.current + 2*r[0] >= m.zoneHigh) pinkHits++;
+        const expErr = e / n;
+        pinkVal += Math.max(0, MAX_ERR - expErr) / MAX_ERR;   // 誤差が小さいほど高評価
       }
-      turnEff = (critRate * pinkHits) / x.c * P.te;
+      turnEff = (critRate * pinkVal) / x.c * P.te;
     }
 
 
@@ -1022,17 +1066,10 @@ function stratB(ms,f,t,P,cfg){
         for(const i of x.tg){
           const m = ms[i];
           if(m.current >= m.zoneLow) continue;
-          // 撃ち直し圏の下限を求める
-          let rlo = Infinity;
-          for(const s2 of SKILLS){
-            if(!s2.crit || s2.lv>cfg.level) continue;
-            const r2 = getRollCandidates(s2, t, cfg.trait, false);
-            if(!r2) continue;
-            const a = m.zoneHigh - 2*r2[0];
-            const b = m.zoneLow - r2[6] - 1;
-            if(a <= b) rlo = Math.min(rlo, a);
-          }
-          if(!isFinite(rlo)) continue;
+          // 本会心を狙える位置の下限(技ごとに求めた範囲の和)
+          const cz2 = critZoneRange(m.zoneLow, m.zoneHigh, t, cfg.level, cfg.trait);
+          if(!cz2) continue;
+          const rlo = cz2[0];
           if(m.current >= rlo) continue;      // 既に圏内なら関係ない
           // この手でゾーンに飛び込んでしまう確率(=会心チャンスを失う)
           let jump = 0;
@@ -1062,6 +1099,28 @@ function stratB(ms,f,t,P,cfg){
       }
     }
     turnEff += turnVal * P.turn;
+
+    // ---- たたき変化への対応 ----
+    // この特性では威力そのものが変わる(400の倍数で2倍、その中間で半減)。
+    // 威力2倍ターンは遠いマスを一気に詰めるのに向き、
+    // 威力半減ターンはゾーン間近の微調整に向く。
+    // 温度によって「今どちらの用途に適した局面か」が変わるため、
+    // マスの残り距離と噛み合っているかを評価する。
+    if(P.tatakiFit>0 && x.sk.masses>0 && x.sk.key){
+      let fit = 0;
+      const up = isPowerUpTurn(t), down = isPowerDownTurn(t);
+      if(up || down){
+        for(const i of x.tg){
+          const m = ms[i];
+          if(m.current >= m.zoneLow) continue;
+          const gap = m.zoneLow - m.current;
+          const mean = (r[0] + r[6]) / 2;
+          if(up)   fit += gap > mean*1.5 ? 1 : -0.5;   // 2倍は遠いマス向き
+          if(down) fit += gap < mean*2.5 ? 1 : -0.3;   // 半減は近いマス向き
+        }
+      }
+      turnEff += fit * P.tatakiFit;
+    }
 
     // ---- 消費半減ターンの活用 ----
     // 半減ターンの価値は「本来高コストな技を安く撃てる」点にある。
@@ -1152,6 +1211,52 @@ function cfgOf(){
   return {level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait};
 }
 
+// バーの最大値(全マス共通)。設定で手入力された値があればそれを使い、
+// 無ければ全マスのゾーン上限の最大値に少し余裕を足した値を自動で決める。
+function barScaleMax(){
+  if(G.barMax && G.barMax > 0) return G.barMax;
+  let hi = 0;
+  for(const m of G.masses) if(m.zoneHigh > hi) hi = m.zoneHigh;
+  return Math.max(50, Math.ceil((hi * 1.15) / 10) * 10);
+}
+
+// ある位置から本会心を狙える技を探す。
+// 条件は技ごとに異なる:
+//   条件1「その技の最大ロールでもゾーンをはみ出さない」 pos + max ≦ zoneHigh
+//   条件2「その技の会心(2倍)最小でゾーン上限まで届く」   pos + 2×min ≧ zoneHigh
+// 倍率が違えば成立範囲も変わるため、技を合成して1つの範囲にしてはいけない。
+// 例(幅6・1200℃):上下ねらい127〜136 / ねらい133〜141 / 弱ねらい147〜151。
+// 上下ねらいの上限を超えても、弱ねらいならまだ本会心を狙える。
+function critSkillsAt(pos, zoneHigh, temp, level, trait){
+  const out = [];
+  for(const s of SKILLS){
+    if(!s.crit || s.lv > level) continue;
+    const r = getRollCandidates(s, temp, trait, false);
+    if(!r) continue;
+    if(pos + r[6] > zoneHigh) continue;        // 条件1
+    if(pos + 2*r[0] < zoneHigh) continue;      // 条件2
+    out.push(s);
+  }
+  return out;
+}
+
+// そのマスで本会心を狙える位置の全体範囲(どれか1つでも技が成立する範囲)
+function critZoneRange(zoneLow, zoneHigh, temp, level, trait){
+  let lo = Infinity, hi = -Infinity;
+  for(const s of SKILLS){
+    if(!s.crit || s.lv > level) continue;
+    const r = getRollCandidates(s, temp, trait, false);
+    if(!r) continue;
+    const a = zoneHigh - 2*r[0];     // この位置以上なら会心で届く
+    const b = zoneHigh - r[6];       // この位置以下ならはみ出さない
+    if(a > b) continue;              // その技では成立しない
+    lo = Math.min(lo, a);
+    hi = Math.max(hi, b);
+  }
+  if(!isFinite(lo)) return null;
+  return [Math.max(0, lo), hi];
+}
+
 // そのマスについて、バー上の各マーカー位置を求める。
 // 推奨技の有無にかかわらず常に表示する(基準técは G.barSkill で切り替え)。
 //   緑   = 成功ゾーン
@@ -1163,9 +1268,11 @@ function markersFor(m, skill){
   const lo = m.zoneLow, hi = m.zoneHigh;
   // バーの左端は常に0に固定する。ゾーン付近だけを拡大すると
   // 「どこまで進んだか」の実感が持てないため、0からの絶対位置で示す。
-  const span = Math.max(hi-lo, 8);
+  // バーの目盛りは全マス共通にする。
+  // マスごとに終点が違うと、同じ長さでも意味が変わって比較できないため。
+  // 既定は全マスのゾーン上限のうち最大値に余裕を持たせた値。設定で変更できる。
   const scaleMin = 0;
-  const scaleMax = hi + span*1.2;
+  const scaleMax = barScaleMax();
   const pct = v => Math.max(0, Math.min(100, (v-scaleMin)/(scaleMax-scaleMin)*100));
 
   const out = {
@@ -1174,29 +1281,11 @@ function markersFor(m, skill){
     raw:{ lo, hi, cur:Math.round(m.current) }
   };
 
-  // 本会心ゾーン:ここから狙い打てば、会心が出れば必ず理想値を捉えられる位置。
-  // 条件は2つ。
-  //   条件1「たたくの最大値でもゾーンをはみ出さない」 位置 + たたくmax ≦ zoneHigh
-  //   条件2「会心の最小値でゾーン上限まで届く」       位置 + 2×min  ≧ zoneHigh
-  // 条件2を満たせば、理想値がゾーン内のどこにあっても会心の伸びが必ず通過する。
-  // 条件1は、外した時に超過して回復不能になるのを防ぐための上限。
-  const tataku = SKILLS.find(s=>s.id==='tataku');
-  const rt = tataku ? getRollCandidates(tataku, G.temp, G.trait, false) : null;
-  if(rt){
-    const upper = hi - rt[6];              // 条件1:これ以下でないとはみ出す
-    const naraiList = SKILLS.filter(s=>s.crit && s.lv<=G.level);
-    let bestLo = Infinity;
-    for(const s of naraiList){
-      const r = getRollCandidates(s, G.temp, G.trait, false);
-      if(!r) continue;
-      const need = hi - 2*r[0];            // 条件2:これ以上でないと届かない
-      if(need <= upper) bestLo = Math.min(bestLo, need);
-    }
-    if(isFinite(bestLo) && upper >= 0){
-      const pLo = Math.max(0, bestLo);
-      out.pink = [pct(pLo), pct(upper)];
-      out.raw.pink = [Math.round(pLo), Math.round(upper)];
-    }
+  // 本会心ゾーン:技ごとに成立範囲が違うので、その和をとる
+  const cz = critZoneRange(lo, hi, G.temp, G.level, G.trait);
+  if(cz){
+    out.pink = [pct(cz[0]), pct(cz[1])];
+    out.raw.pink = [Math.round(cz[0]), Math.round(cz[1])];
   }
 
   if(skill && skill.key){
@@ -1281,7 +1370,9 @@ function buildBar(mk, flip){
   if(mk.zone) s += band(mk.zone[0], mk.zone[1], 'm-green');
   if(mk.blue) s += band(mk.blue[0], mk.blue[1], 'm-blue');
   if(mk.red)  s += band(mk.red[0],  mk.red[1],  'm-red');
-  s += line(mk.cur,'m-cur');
+  // 現在値は0から今の位置までを塗り、右端に白線を立てる
+  s += `<i class="m-cur" style="width:${Math.max(mk.cur,0.5)}%"></i>`;
+  s += line(mk.cur,'m-curline');
   return `<div class="bar${flip?' flip':''}">${s}</div>`;
 }
 
@@ -1321,9 +1412,14 @@ function renderRec(){
   const r = G.rec;
   const tgt = r.tg.length ? r.tg.map(i=>'マス'+(i+1)).join('・') : '温度操作';
   const cr = r.sk.key ? computeCritRate(r.sk,G.level,G.hammerId,G.star,G.trait,G.temp) : 0;
+  // この手を打った後に残る集中力と温度も出す。
+  // 仕上げに何発残せるかの判断に直結するため。
+  const leftF = G.focus - r.c;
+  const warn = leftF < 40 ? ' style="color:var(--ember)"' : '';
   el.innerHTML = `<div class="rec-main">
       <div class="rec-skill">${r.sk.name}</div>
-      <div class="rec-sub">${tgt} / 消費${r.c}${r.sk.key?' / 会心'+(cr*100).toFixed(0)+'%':''} → ${r.nt}℃</div>
+      <div class="rec-sub">${tgt} / 消費${r.c}${r.sk.key?' / 会心'+(cr*100).toFixed(0)+'%':''}</div>
+      <div class="rec-sub">実行後 → <b${warn}>集中力 ${leftF}</b> / ${r.nt}℃</div>
     </div>`;
 }
 
@@ -1497,6 +1593,13 @@ function applySettings(){
   G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
   renderAll(); save();
 }
+// バーの最大値を変更した時。空欄なら自動計算に戻す。
+function onBarMaxChange(){
+  const v = Number(document.getElementById('s-barmax').value);
+  G.barMax = (isFinite(v) && v > 0) ? v : null;
+  renderAll(); save();
+}
+
 // 素材の選択が変わった時。手動設定ならゾーン入力欄を出す。
 function onPresetChange(){
   const v = document.getElementById('s-preset').value;
@@ -1504,11 +1607,18 @@ function onPresetChange(){
   if(v === 'custom'){
     box.style.display = 'block';
     renderZoneRows();
-  } else {
-    box.style.display = 'none';
-    G.preset = v;
-    resetAll();
+    G.preset = 'custom';
+    return;
   }
+  box.style.display = 'none';
+  G.preset = v;
+  // 素材ごとに地金特性が決まっているので、選択と同時に切り替える
+  const p = PRESETS[v];
+  if(p && p.trait){
+    const sel = document.getElementById('s-trait');
+    if(sel) sel.value = p.trait;
+  }
+  resetAll();
 }
 
 // 各マスのゾーン入力欄を描く
@@ -1547,7 +1657,7 @@ function resetAll(){
   // 手動設定なら現在のゾーンを保持し、数値だけ戻す
   const zs = (kind === 'custom' && G.masses.length === 6)
     ? G.masses.map(m=>[m.zoneLow, m.zoneHigh])
-    : PRESETS.kagayaki;
+    : (PRESETS[kind] ? PRESETS[kind].zones : PRESETS.kagayaki.zones);
   G.masses = zs.map(([lo,hi])=>({current:0, zoneLow:lo, zoneHigh:hi}));
   G.temp = 1000;
   const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
@@ -1562,7 +1672,7 @@ const SKEY='kajiAdvisorStateV1';
 function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
-    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset
+    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax
   })); }catch(e){}
 }
 function load(){
@@ -1574,6 +1684,10 @@ function load(){
     document.getElementById('s-hammer').value=G.hammerId;
     document.getElementById('s-star').value=G.star;
     document.getElementById('s-trait').value=G.trait;
+    if(G.barMax){
+      const bm = document.getElementById('s-barmax');
+      if(bm) bm.value = G.barMax;
+    }
     if(G.preset){
       const pre = document.getElementById('s-preset');
       if(pre) pre.value = G.preset;
