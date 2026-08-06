@@ -663,7 +663,7 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 const PARAMS = { cap:7, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:10, rush:0.6, save:25, turn:5, tatakiFit:1.5 };
+                 te:10, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -873,6 +873,58 @@ function stratA(ms,f,t){
 // 熱風(-150)+通常(-50)=-200 で特殊温度を渡り歩く。
 // 半減ターンは消費が1/3なので狙い打ちを連打、会心ターンは高会心率の一撃。
 function stratB(ms,f,t,P,cfg){
+  // ---- 会心ターン活用モード ----
+  // 集中力に余裕があり、全未到達マスを会心ターンで仕留める計画が
+  // 成立する局面では、その計画に沿って動く。
+  // 通常ターンで狙い打ちを撃つと会心率36%だが、会心ターンまで待てば57%。
+  // ただし温度が下がるとロール値が落ち、届かなくなるマスが出るため、
+  // 「どのマスをどの会心ターンで仕留めるか」まで含めて検算した上で発動する。
+  // 計画が成立しない(集中力が足りない等)なら、以降の通常評価に落ちる。
+  if(P.boostPlan > 0){
+    const bp = buildBoostPlan(ms, f, t, cfg);
+    if(bp){
+      const step = bp.seq[0];
+      if(step){
+        if(step.type === 'kill'){
+          // 今この温度で仕留められるマスがある
+          const sets = enumerateTargetSets(step.sk).filter(g =>
+            g.includes(step.mass) && g.every(i => ms[i].current < ms[i].zoneLow));
+          if(sets.length){
+            const c = actualCostOf(step.sk, t, cfg.trait);
+            if(c <= f) return {sk: step.sk, tg: sets[0], c, nt: Math.max(0, t + step.sk.tempDelta), overP: 0};
+          }
+        } else {
+          // 次の会心ターンへ温度を下げる
+          const hiya = SKILLS.find(s => s.id === 'hiyashikomi' && s.lv <= cfg.level);
+          if(hiya && t - step.to >= 300){
+            const c = actualCostOf(hiya, t, cfg.trait);
+            if(c <= f) return {sk: hiya, tg: [], c, nt: Math.max(0, t - 300), overP: 0};
+          }
+          // 端数は、未到達マスを進めすぎない最安の打撃で刻む
+          let pick = null, pc = Infinity;
+          for(const s of SKILLS){
+            if(s.lv > cfg.level || s.masses !== 1 || s.id === 'midare') continue;
+            if(s.tempDelta !== -50) continue;
+            const c = actualCostOf(s, t, cfg.trait);
+            if(c < pc){ pc = c; pick = s; }
+          }
+          if(pick && pc <= f){
+            // 進めても計画が崩れないマスを選ぶ(最も遅れているマス)
+            const r = getRollCandidates(pick, t, cfg.trait, false);
+            let idx = -1, worst = -1;
+            for(let i = 0; i < ms.length; i++){
+              if(ms[i].current >= ms[i].zoneLow) continue;
+              if(r && ms[i].current + r[6] > ms[i].zoneHigh) continue;   // 超過させない
+              const gap = ms[i].zoneLow - ms[i].current;
+              if(gap > worst){ worst = gap; idx = i; }
+            }
+            if(idx >= 0) return {sk: pick, tg: [idx], c: pc, nt: Math.max(0, t - 50), overP: 0};
+          }
+        }
+      }
+    }
+  }
+
   P=P||{cap:7,adv:0.75,land:3,heat:4,ov:4,pr:0.8,tmax:2200,te:20};
   const mv=moves(ms,f,t,cfg);
   if(mv.length===0)return null;
@@ -1143,6 +1195,9 @@ function stratB(ms,f,t,P,cfg){
     // 実測では全手数の59%が特性の乗らない通常ターンだった。
     // 熱風おろし(-150)と通常打撃(-50)を組み合わせれば2手で次の特殊温度に届くので、
     // 通常ターンにいる間は、次が特殊温度になる手を優先して特殊ターンの回数を増やす。
+    // 局面ごとに重みを切り替える案は検証したが、
+    // 単体テストでは有効に見えても実プレイでは前進が止まり到達率が落ちた。
+    // 到達は大成功の絶対条件なので、重みは全局面で共通とする。
     const score=cap*capW + (adv/x.c)*P.adv + landBonus + prio*P.pr
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(score>bs){bs=score;best=x;}
@@ -1218,6 +1273,127 @@ function barScaleMax(){
   let hi = 0;
   for(const m of G.masses) if(m.zoneHigh > hi) hi = m.zoneHigh;
   return Math.max(50, Math.ceil((hi * 1.15) / 10) * 10);
+}
+
+// ===== 会心ターン活用プランの動的計算 =====
+// 所要集中力は局面によって変わる。
+//   ・残りマス数、各マスの残り距離
+//   ・現在温度から各会心ターンまでの距離
+//   ・どのマスがどの会心ターンで仕留められるか
+// これらから毎回計算し、収まる場合のみ発動する。
+
+// そのマスをその温度で仕留められる最安の技(なければ null)
+function killerAt(m, temp, cfg){
+  let best = null, bc = Infinity;
+  for(const s of SKILLS){
+    if(!s.crit || s.lv > cfg.level) continue;
+    const r = getRollCandidates(s, temp, cfg.trait, false);
+    if(!r) continue;
+    if(m.current + r[6] > m.zoneHigh) continue;      // はみ出す
+    if(m.current + 2*r[0] < m.zoneHigh) continue;    // 会心でも届かない
+    // 多マス技を1マスにしか使わないなら割高。1マスあたりで比較する。
+    const c = actualCostOf(s, temp, cfg.trait);
+    if(c < bc){ bc = c; best = s; }
+  }
+  return best ? {sk: best, cost: bc} : null;
+}
+
+// 現在温度から到達しうる会心ターンを列挙(近い順)
+function boostTempsFrom(t){
+  const out = [];
+  for(let tt = t; tt >= 100; tt -= 50){
+    if(tt % 200 === 0 && tt % 400 !== 0) out.push(tt);
+  }
+  return out;
+}
+
+// 温度Aから温度Bへ下げるコスト(冷やし込み優先、端数は最安の打撃で刻む)
+function coolCost(from, to, cfg){
+  if(from <= to) return {cost: 0, steps: 0};
+  const hiya = SKILLS.find(s => s.id === 'hiyashikomi' && s.lv <= cfg.level);
+  let cur = from, cost = 0, steps = 0, guard = 0;
+  while(cur > to && guard++ < 30){
+    const diff = cur - to;
+    if(diff >= 300 && hiya){
+      cost += actualCostOf(hiya, cur, cfg.trait);
+      cur -= 300; steps++;
+    } else {
+      // 打撃で刻む。最安の単発技(前進してしまうが仕方ない)
+      let cheap = Infinity;
+      for(const s of SKILLS){
+        if(s.lv > cfg.level || s.masses !== 1 || s.id === 'midare') continue;
+        if(s.tempDelta !== -50) continue;
+        cheap = Math.min(cheap, actualCostOf(s, cur, cfg.trait));
+      }
+      if(!isFinite(cheap)) return null;
+      cost += cheap; cur -= 50; steps++;
+    }
+  }
+  return cur === to ? {cost, steps} : null;
+}
+
+// 会心ターンを使い切る計画を立て、総コストを返す。
+// 各マスは「仕留められる会心ターンのうち最も遅いもの」に割り当てる。
+// 高温でしか撃てないマスを先に処理しないと取りこぼすため。
+function buildBoostPlan(masses, focus, temp, cfg){
+  if(cfg.trait !== 'shuchu') return null;
+  const open = masses.map((m,i)=>({m, i})).filter(x => x.m.current < x.m.zoneLow);
+  if(open.length === 0) return null;
+
+  const boosts = boostTempsFrom(temp);
+  if(boosts.length === 0) return null;
+
+  // 各マスについて、仕留められる会心ターンを調べる
+  const cand = [];
+  for(const {m, i} of open){
+    const list = [];
+    for(const bt of boosts){
+      const k = killerAt(m, bt, cfg);
+      if(k) list.push({temp: bt, ...k});
+    }
+    if(list.length === 0) return null;      // どの会心ターンでも仕留められない
+    cand.push({i, m, list});
+  }
+
+  // 仕留められる機会が少ないマスから順に割り当てる。
+  // 機会が1つしかないマスはそこへ固定するしかないため、先に確保する。
+  cand.sort((a,b) => a.list.length - b.list.length);
+  const assign = new Map();                 // temp -> [{i, cost, sk}]
+  for(const c of cand){
+    // 割り当て先は「仕留めコスト + そこまでの移動コスト」が最小の会心ターン。
+    // 単に最も低温を選ぶと、移動コストが膨らんで成立しなくなる。
+    let best = null, bestCost = Infinity;
+    for(const opt of c.list){
+      // 既にその温度へ行く予定があるなら移動コストは追加で要らない
+      const already = assign.has(opt.temp);
+      const mv = already ? {cost: 0} : coolCost(temp, opt.temp, cfg);
+      if(!mv) continue;
+      const total = opt.cost + mv.cost;
+      if(total < bestCost){ bestCost = total; best = opt; }
+    }
+    if(!best) return null;
+    if(!assign.has(best.temp)) assign.set(best.temp, []);
+    assign.get(best.temp).push({i: c.i, cost: best.cost, sk: best.sk});
+  }
+
+  // 温度が高い順に巡り、移動コストと仕留めコストを積む
+  const used = [...assign.keys()].sort((a,b) => b - a);
+  let cur = temp, total = 0;
+  const seq = [];
+  for(const bt of used){
+    const mv = coolCost(cur, bt, cfg);
+    if(!mv) return null;
+    total += mv.cost;
+    if(mv.steps > 0) seq.push({type: 'move', to: bt, cost: mv.cost});
+    cur = bt;
+    for(const a of assign.get(bt)){
+      total += a.cost;
+      seq.push({type: 'kill', mass: a.i, sk: a.sk, cost: a.cost, temp: bt});
+      cur -= 50;                            // 撃つたびに温度が下がる
+    }
+    if(total > focus) return null;
+  }
+  return {cost: total, seq, spare: focus - total};
 }
 
 // ある位置から本会心を狙える技を探す。
