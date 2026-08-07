@@ -663,7 +663,7 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 const PARAMS = { cap:7, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:10, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1 };
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -1174,14 +1174,70 @@ function stratB(ms,f,t,P,cfg){
       turnEff += fit * P.tatakiFit;
     }
 
+    // ---- 着弾位置の最適化 ----
+    // 会心で理想値を捉えられない場合でも、ゾーン内のどこに着弾するかで
+    // 期待誤差が変わる(幅11なら端3.09、中央2.55)。
+    // 実測では着弾がゾーン全体にほぼ均一に散らばっており、
+    // 6マス合計で理論最良13.61に対し15.09と1.48損していた。
+    // 誤差0が3マスの局面では、この差が大成功の可否を分ける。
+    let center = 0;
+    if(P.center>0 && x.sk.masses>0 && x.sk.key){
+      for(const i of x.tg){
+        const m = ms[i];
+        if(m.current >= m.zoneLow) continue;
+        // 本会心が成立する位置なら、会心で誤差0を狙う方が優先。
+        // 着弾位置の最適化は「会心では捉えられない」場合の次善策なので、
+        // 本会心を狙える局面では評価しない(競合して会心狙いを潰すため)。
+        if(m.current + r[6] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh) continue;
+        // さらに「この一手でゾーンに入る」場合だけに限定する。
+        // 遠い位置から中央を狙おうとすると、多マス技で一度に進める効率を捨てて
+        // 集中力が足りなくなる(実測で確認)。
+        // ゾーンに入る最後の一手なら、他マスへの影響なく位置を選べる。
+        if(m.current + r[0] < m.zoneLow) continue;
+        // この技のロールごとに、着弾位置の期待誤差を平均する
+        let sum = 0, cnt = 0;
+        for(const rv of r){
+          const land = m.current + rv;
+          if(land < m.zoneLow || land > m.zoneHigh) continue;   // ゾーン外は別評価
+          let e = 0, n = 0;
+          for(let id = m.zoneLow; id <= m.zoneHigh; id++){
+            e += Math.min(Math.abs(land - id), MAX_ERR); n++;
+          }
+          sum += e/n; cnt++;
+        }
+        if(cnt > 0){
+          // ゾーン内に入るロールの割合が高く、その期待誤差が小さいほど良い
+          const avgErr = sum / cnt;
+          const inRate = cnt / r.length;
+          center += (MAX_ERR - avgErr) * inRate;
+        }
+      }
+    }
+    turnEff += center * P.center;
+
     // ---- 消費半減ターンの活用 ----
     // 半減ターンの価値は「本来高コストな技を安く撃てる」点にある。
-    // 元から安い熱風おろし(6→3)を撃っても得は3しかないが、
-    // 上下ねらい打ち(25→13)なら12も節約できる。
-    // 実測では節約幅が最大の上下ねらい打ちがほぼ使われず(0.01回/game)、
-    // 熱風おろしばかり撃っていた(1.52回/game)ため、節約額そのものを加点する。
+    // ただし節約額だけで加点すると、本会心が成立しない位置でも
+    // 狙い打ち系(節約額が大きい)を選んでしまう。
+    // 実測では狙い打ち6回中3回が本会心圏外で撃たれ、集中力43を空費していた。
+    // 価値があるのは「撃つべき技が、たまたま半減ターンで安い」時だけなので、
+    // その技を撃つ意味がある場合に限って節約額を評価する。
     if(isHalfTurn(t) && x.sk.masses>0){
-      turnEff += ((x.sk.cost - x.c) / 10) * P.save;
+      let worth = false;
+      if(x.sk.crit){
+        // 狙い打ち系は、本会心が成立する対象がある時だけ意味がある
+        for(const i of x.tg){
+          const m = ms[i];
+          if(m.current >= m.zoneLow) continue;
+          if(m.current + r[6] > m.zoneHigh) continue;
+          if(m.current + 2*r[0] < m.zoneHigh) continue;
+          worth = true; break;
+        }
+      } else {
+        // 通常技は前進が仕事なので、未到達マスを叩けるなら意味がある
+        worth = x.tg.some(i => ms[i].current < ms[i].zoneLow);
+      }
+      if(worth) turnEff += ((x.sk.cost - x.c) / 10) * P.save;
     }
 
     // ---- 会心+400%ターンの活用(案A) ----
