@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超樹液をつくってみよう！</title>
+<title>超樹液を作ってみよう！</title>
 <style>
 :root{
   --bg:#12100e; --bg2:#1c1917; --panel:#232019; --line:#3a332a;
@@ -344,7 +344,7 @@ table.sk .cst{text-align:right; font-weight:700;}
       <select id="s-trait">
         <option value="shuchu" selected>集中力変化</option>
         <option value="none">なし</option><option value="tataki">たたき変化</option>
-        <option value="modori">メーター減少</option><option value="kaishin">威力会心率上昇</option>
+        <option value="modori">メーター減少（実装予定）</option><option value="kaishin">威力会心率上昇（実装予定）</option>
       </select></div>
     <div class="set-row"><label>バー最大値</label>
       <input type="number" id="s-barmax" min="10" max="9999" placeholder="自動"
@@ -352,8 +352,8 @@ table.sk .cst{text-align:right; font-weight:700;}
     <div class="set-row"><label>素材</label>
       <select id="s-preset" onchange="onPresetChange()">
         <option value="kagayaki" selected>超かがやきの樹液</option>
-        <option value="amatsuyu">超あまつゆのいと</option>
-        <option value="yousei">超ようせいのひだね</option>
+        <option value="amatsuyu">超あまつゆのいと（改修中）</option>
+        <option value="yousei">超ようせいのひだね（実装予定）</option>
         <option value="custom">手動設定</option>
       </select></div>
 
@@ -559,7 +559,7 @@ function getTraitStatusText(trait, temp){
     return null;
   }
   if(trait === 'modori'){
-    if(st.mod400 || st.mod200) return `${temp}℃はメーター減少(戻り)の判定タイミングです。下のボタンから適用してください。`;
+    if(st.mod400 || st.mod200) return `${temp}℃はメーター減少(戻り)の判定タイミングです。`;
     return null;
   }
   return null;
@@ -663,7 +663,7 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 const PARAMS = { cap:7, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3 };
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -872,7 +872,137 @@ function stratA(ms,f,t){
 // --- 戦術B: リズム戦術 ---
 // 熱風(-150)+通常(-50)=-200 で特殊温度を渡り歩く。
 // 半減ターンは消費が1/3なので狙い打ちを連打、会心ターンは高会心率の一撃。
+// たたき変化(超あまつゆのいと)の開幕定跡。
+// 実プレイヤーが共有している手順で、倍加ターンに大技を合わせ、
+// 半減ターンを一度も踏まずに進める。
+//   1600★ 熱風(最遠マス) → 2050まで加熱 → 2000★ 超4連 → 1600★ 4連
+// 現状のエンジンは効率だけで選ぶため、半減ターンで打撃したり
+// 通常ターンで超4連を撃ったりと、倍加の恩恵を取りこぼしていた。
+function tatakiOpening(ms, f, t, cfg){
+  if(cfg.trait !== 'tataki') return null;
+  // 定跡は開幕だけ。盤面がある程度進んだら通常の評価に任せる。
+  // (最後まで定跡で動かすと温度調整ばかりになり前進が止まる)
+  const progress = ms.reduce((a,m)=>a+Math.min(m.current, m.zoneLow), 0);
+  const need = ms.reduce((a,m)=>a+m.zoneLow, 0);
+  if(progress > need * 0.65) return null;
+  const untouched = ms.every(m => m.current === 0);
+  const K = SKILLS.find(s => s.id === 'karyoku' && s.lv <= cfg.level);
+  const R = SKILLS.find(s => s.id === 'reppuu' && s.lv <= cfg.level);
+  const C4 = SKILLS.find(s => s.id === 'chouyonren' && s.lv <= cfg.level);
+  const Y4 = SKILLS.find(s => s.id === 'yonren' && s.lv <= cfg.level);
+  const NN = SKILLS.find(s => s.id === 'naname' && s.lv <= cfg.level);
+  if(!K || !R || !C4) return null;
+  const mk = (sk, tg) => {
+    const c = actualCostOf(sk, t, cfg.trait);
+    if(c > f) return null;
+    return { sk, tg, c, nt: Math.max(0, t + sk.tempDelta), overP: 0 };
+  };
+  // 盤面が動く前:1600℃(倍加)まで加熱する
+  if(untouched){
+    if(t < 1600) return mk(K, []);
+    // 1600℃(倍加)で最も遠いマスに熱風を撃つ
+    if(t === 1600){
+      let far = -1, worst = -1;
+      for(let i = 0; i < ms.length; i++){
+        const gap = ms[i].zoneLow - ms[i].current;
+        if(gap > worst){ worst = gap; far = i; }
+      }
+      if(far >= 0) return mk(R, [far]);
+    }
+  }
+  // 2000℃(倍加)で超4連。マス3の上限を超えない組み合わせを選ぶ
+  if(isPowerUpTurn(t) && t >= 1600){
+    const r = getRollCandidates(C4, t, cfg.trait, false);
+    if(r){
+      for(const tg of enumerateTargetSets(C4)){
+        if(tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r[6] <= ms[i].zoneHigh)){
+          const mv = mk(C4, tg);
+          if(mv) return mv;
+        }
+      }
+      // 超4連が超過するなら4連打ちで代替
+      if(Y4){
+        const r2 = getRollCandidates(Y4, t, cfg.trait, false);
+        if(r2) for(const tg of enumerateTargetSets(Y4)){
+          if(tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r2[6] <= ms[i].zoneHigh)){
+            const mv = mk(Y4, tg);
+            if(mv) return mv;
+          }
+        }
+      }
+    }
+  }
+  // 加熱途中:次の倍加ターンへ最短で乗せる。
+  // 定跡は 1450 →(加熱×2)→ 2050 →(打撃)→ 2000★ という流れで、
+  // 「加熱で倍加を通り過ぎたら打撃1回で戻す」のが要点。
+  // 2050℃のように倍加を50℃だけ超えた状態も扱うため上限は2400とする
+  if(!untouched && t <= 2400){
+    // あと1回の加熱で倍加を50℃だけ超えるなら、加熱してから打撃で乗せる
+    if(t + 300 <= 2400){
+      const after = t + 300;
+      // 加熱後、そのまま倍加 or 打撃1回で倍加に届くなら加熱する
+      if(isPowerUpTurn(after) || isPowerUpTurn(after - 50)) return mk(K, []);
+    }
+    // 倍加ターンの1手前。ここは4連打ちで軽く詰めるのが定跡。
+    // 少し進めておくと次の超4連の会心が理想値を捉えやすくなる
+    // (幅11のマスで捕捉率79%、幅7の左中は100%)。
+    // 超4連をここで撃つと次の倍加ターンで突き抜けて撃てなくなる。
+    if(isPowerUpTurn(t - 50)){
+      for(const sk of [Y4, NN, SKILLS.find(s=>s.id==='sayuu'), SKILLS.find(s=>s.id==='tataku')]){
+        if(!sk || sk.lv > cfg.level) continue;
+        const r3 = getRollCandidates(sk, t, cfg.trait, false);
+        if(!r3) continue;
+        for(const tg of enumerateTargetSets(sk)){
+          if(!tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r3[6] <= ms[i].zoneHigh)) continue;
+          // 次の倍加ターンで超4連が撃てなくなる打ち方は避ける
+          const rc = getRollCandidates(C4, t - 50, cfg.trait, false);
+          if(rc && tg.some(i => ms[i].current + r3[6] + rc[6] > ms[i].zoneHigh)) continue;
+          const mv = mk(sk, tg);
+          if(mv) return mv;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// 上下ねらい打ちは2マス同時に本会心を狙える唯一の技。
+// 消費25で2マス分なので、単発のねらい打ち(16×2=32)より安い。
+// 従来は te による加点だけで他の評価項目に埋もれ、実測0.58回/gameしか
+// 使われていなかった。本会心圏で撃てる局面は逃さず取りに行く。
+// (実測12000回で大成功率31.4%→33.1%)
+function pairSnipe(ms, f, t, cfg){
+  const jn = SKILLS.find(s => s.id === 'jouge_nerai' && s.lv <= cfg.level);
+  if(!jn) return null;
+  const c = actualCostOf(jn, t, cfg.trait);
+  if(c > f) return null;
+  const r = getRollCandidates(jn, t, cfg.trait, false);
+  if(!r) return null;
+  for(const tg of enumerateTargetSets(jn)){
+    if(tg.some(i => ms[i].current >= ms[i].zoneLow)) continue;
+    // 対象2マスとも本会心が成立すること
+    const ok = tg.every(i => {
+      const m = ms[i];
+      return m.current + r[6] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh;
+    });
+    if(ok) return { sk: jn, tg, c, nt: Math.max(0, t + jn.tempDelta), overP: 0 };
+  }
+  return null;
+}
+
 function stratB(ms,f,t,P,cfg){
+  // ---- 2マス同時の本会心を最優先 ----
+  if(P.pairSnipe > 0){
+    const ps = pairSnipe(ms, f, t, cfg);
+    if(ps) return ps;
+  }
+
+  // ---- たたき変化の開幕定跡 ----
+  if(P.opening > 0 && cfg.trait === 'tataki'){
+    const open = tatakiOpening(ms, f, t, cfg);
+    if(open) return open;
+  }
+
   // ---- 会心ターン活用モード ----
   // 集中力に余裕があり、全未到達マスを会心ターンで仕留める計画が
   // 成立する局面では、その計画に沿って動く。
@@ -1096,7 +1226,23 @@ function stratB(ms,f,t,P,cfg){
         const expErr = e / n;
         pinkVal += Math.max(0, MAX_ERR - expErr) / MAX_ERR;   // 誤差が小さいほど高評価
       }
-      turnEff = (critRate * pinkVal) / x.c * P.te;
+      // ゾーン幅によって狙い打ちの価値が変わる。
+      // 幅11のマスは中央に入れても誤差4が出るため、本会心で誤差0にする価値が高い。
+      // 幅7のマスは中央着弾で誤差3以下に収まるので、高コストの狙い打ちは割に合わない。
+      // (実プレイヤーも「本会心を狙うのは幅11の3箇所」としている)
+      // 幅11の3マスだけ本会心を取れば期待誤差5.14で大成功圏に入る。
+      let widthW = 1;
+      if(P.wideAim > 0){
+        let wide = 0, narrow = 0;
+        for(const i of x.tg){
+          const m = ms[i];
+          if(m.current >= m.zoneLow) continue;
+          if(m.zoneHigh - m.zoneLow + 1 >= 10) wide++; else narrow++;
+        }
+        if(wide + narrow > 0) widthW = (wide * P.wideAim + narrow) / (wide + narrow);
+      }
+      turnEff = (critRate * pinkVal) / x.c * P.te * widthW;
+
     }
 
 
@@ -1158,6 +1304,7 @@ function stratB(ms,f,t,P,cfg){
     // 威力半減ターンはゾーン間近の微調整に向く。
     // 温度によって「今どちらの用途に適した局面か」が変わるため、
     // マスの残り距離と噛み合っているかを評価する。
+
     if(P.tatakiFit>0 && x.sk.masses>0 && x.sk.key){
       let fit = 0;
       const up = isPowerUpTurn(t), down = isPowerDownTurn(t);
@@ -1167,7 +1314,15 @@ function stratB(ms,f,t,P,cfg){
           if(m.current >= m.zoneLow) continue;
           const gap = m.zoneLow - m.current;
           const mean = (r[0] + r[6]) / 2;
-          if(up)   fit += gap > mean*1.5 ? 1 : -0.5;   // 2倍は遠いマス向き
+          // 旧実装は「残り距離が平均ロールの1.5倍を超えるか」で判定していたため、
+          // 威力の大きい技ほど平均ロールが大きくなり、常に減点される欠陥があった。
+          // (実測では倍加ターンで超4連が一度も選ばれず、4連打ちに負けていた)
+          // 倍加ターンの価値は「大技を安全に撃てること」なので、
+          // 超過しない範囲でどれだけ前進できるかで評価する。
+          if(up){
+            const over = m.current + r[6] > m.zoneHigh;
+            fit += over ? -1 : Math.min(1, mean / Math.max(1, gap));
+          }
           if(down) fit += gap < mean*2.5 ? 1 : -0.3;   // 半減は近いマス向き
         }
       }
@@ -1180,6 +1335,9 @@ function stratB(ms,f,t,P,cfg){
     // 実測では着弾がゾーン全体にほぼ均一に散らばっており、
     // 6マス合計で理論最良13.61に対し15.09と1.48損していた。
     // 誤差0が3マスの局面では、この差が大成功の可否を分ける。
+    // 幅7のマスは中央着弾で誤差3以下に収まる(幅11は中央でも誤差4)。
+    // 狙い打ちに頼らず中央へ入れるだけで大成功圏に近づくため、
+    // 狭いゾーンほど着弾位置の最適化を重く見る。
     let center = 0;
     if(P.center>0 && x.sk.masses>0 && x.sk.key){
       for(const i of x.tg){
