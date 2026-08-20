@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材つくってみよう！</title>
+<title>超素材をつくってみよう！</title>
 <style>
 :root{
   --bg:#12100e; --bg2:#1c1917; --panel:#232019; --line:#3a332a;
@@ -309,8 +309,8 @@ table.sk .cst{text-align:right; font-weight:700;}
 
 <div class="side">
 <div class="foot" id="footPanel">
-  <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
-  <button class="calc" id="calcBtn" onclick="doCalc()">次の一手を計算</button>
+  <div class="rec" id="rec"><div class="rec-empty">「推奨手を計算」を押してください</div></div>
+  <button class="calc" id="calcBtn" onclick="doCalc()">推奨手を計算</button>
 </div>
 
 <details class="acc">
@@ -352,7 +352,7 @@ table.sk .cst{text-align:right; font-weight:700;}
     <div class="set-row"><label>素材</label>
       <select id="s-preset" onchange="onPresetChange()">
         <option value="kagayaki" selected>超かがやきの樹液</option>
-        <option value="amatsuyu">New!超あまつゆのいと</option>
+        <option value="amatsuyu">超あまつゆのいと(New!)</option>
         <option value="yousei">超ようせいのひだね(実装予定)</option>
         <option value="custom">手動設定</option>
       </select></div>
@@ -666,7 +666,7 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, streak:0, far:5 };
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, lone:1, mpm:16 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -1143,11 +1143,6 @@ function stratB(ms,f,t,P,cfg){
         if(sc>bs){bs=sc;best=x;}
         continue;
       }
-      if(x.cooling){
-        // 他に打つ手が無いから冷やす。特殊温度に着地するなら上乗せ
-        const sc=1.0+((isHalfTurn(x.nt)||isBoostTurn(x.nt))?P.land:0);
-        if(sc>bs){bs=sc;best=x;}
-      }
       continue;
     }
     const r=getRollCandidates(x.sk,t,cfg.trait,false);
@@ -1191,7 +1186,8 @@ function stratB(ms,f,t,P,cfg){
       }
       openAfter++;
     }
-    const MIN_PER_MASS = 12;
+    // 未到達1マスあたりに残しておく集中力。実測で16が最適(失敗率を有意に下げ、大成功率は不変)
+    const MIN_PER_MASS = (P.mpm === undefined ? 16 : P.mpm);
     const safeAfter = afterCost >= openAfter*MIN_PER_MASS;
     const affordable = safeAfter;
     const capW = (tight||!safeAfter) ? 0 : P.cap;
@@ -1258,7 +1254,20 @@ function stratB(ms,f,t,P,cfg){
         }
         if(wide + narrow > 0) widthW = (wide * P.wideAim + narrow) / (wide + narrow);
       }
-      turnEff = (critRate * pinkVal) / x.c * P.te * widthW;
+      // 幅11のマス(A・D・E)は本会心の価値が高いが、
+      // A と E は2マス技のペア相手が限られ(A:[AB][AC] E:[EF][CE])、
+      // 相手の必要前進量が大きく離れるため同時に本会心圏へ入れにくい。
+      // 実測では本会心圏での射撃が A/E は38%、他マスは50%前後だった。
+      // 単発のねらい打ちで拾えるよう、これらへの狙いを後押しする。
+      let loneW = 1;
+      if(P.lone > 0 && x.sk.masses === 1){
+        for(const i of x.tg){
+          const m = ms[i];
+          if(m.current >= m.zoneLow) continue;
+          if(m.zoneHigh - m.zoneLow + 1 >= 10) loneW = P.lone;
+        }
+      }
+      turnEff = (critRate * pinkVal) / x.c * P.te * widthW * loneW;
 
     }
 
@@ -1429,19 +1438,10 @@ function stratB(ms,f,t,P,cfg){
     // 局面ごとに重みを切り替える案は検証したが、
     // 単体テストでは有効に見えても実プレイでは前進が止まり到達率が落ちた。
     // 到達は大成功の絶対条件なので、重みは全局面で共通とする。
-    // 熱風おろしは消費6で大きく進むため集中力効率が突出するが、
-    // -150℃と3手分の温度を消費する。実測では4連続が48%、
-    // 5連続以上が24%発生し、温度を使い切って詰む原因になっていた。
-    // 連続して選ばれるほど減点し、他の技に道を譲る。
-    let streakPenalty = 0;
-    if(P.streak > 0 && x.sk.id === 'reppuu' && REPPUU_STREAK > 0){
-      streakPenalty = REPPUU_STREAK * P.streak;
-    }
     // ゾーンが遠いマスほど到達に手数がかかる。
     // 超あまつゆのいとの B・F は必要前進量が245と最大なのに、
     // 4マス技[ABCD][CDEF]では片方ずつしか叩けず取り残されやすい。
     // 実測では未到達の91%がこの2マスだった。
-    // 残り距離が大きいマスを含む手を優先し、置き去りを防ぐ。
     let farBonus = 0;
     if(P.far > 0){
       let maxGap = 0, myGap = 0;
@@ -1455,7 +1455,7 @@ function stratB(ms,f,t,P,cfg){
       }
       if(maxGap > 0) farBonus = (myGap / maxGap) * P.far;
     }
-    const score=cap*capW + (adv/x.c)*P.adv + landBonus + prio*P.pr - streakPenalty + farBonus
+    const score=cap*capW + (adv/x.c)*P.adv + landBonus + prio*P.pr + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(score>bs){bs=score;best=x;}
   }
