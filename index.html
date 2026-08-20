@@ -1839,7 +1839,7 @@ function renderSkills(){
 function renderRec(){
   const el = document.getElementById('rec');
   if(!G.rec){
-    el.innerHTML = '<div class="rec-empty">'+(G.msg||'「次の一手を計算」を押してください')+'</div>';
+    el.innerHTML = '<div class="rec-empty">'+(G.msg||'「推奨手を計算」を押してください')+'</div>';
     return;
   }
   const r = G.rec;
@@ -1910,7 +1910,7 @@ function doCalc(){
       document.getElementById('rec').innerHTML =
         '<div class="rec-empty">計算に失敗しました: '+e.message+'</div>';
     }
-    btn.disabled=false; btn.textContent='次の一手を計算';
+    btn.disabled=false; btn.textContent='推奨手を計算';
   }, 20);
 }
 
