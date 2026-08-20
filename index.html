@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超樹液を作ってみよう！</title>
+<title>これであなたは樹液プロ！</title>
 <style>
 :root{
   --bg:#12100e; --bg2:#1c1917; --panel:#232019; --line:#3a332a;
@@ -344,7 +344,7 @@ table.sk .cst{text-align:right; font-weight:700;}
       <select id="s-trait">
         <option value="shuchu" selected>集中力変化</option>
         <option value="none">なし</option><option value="tataki">たたき変化</option>
-        <option value="modori">メーター減少（実装予定）</option><option value="kaishin">威力会心率上昇（実装予定）</option>
+        <option value="modori">メーター減少</option><option value="kaishin">威力会心率上昇</option>
       </select></div>
     <div class="set-row"><label>バー最大値</label>
       <input type="number" id="s-barmax" min="10" max="9999" placeholder="自動"
@@ -352,8 +352,8 @@ table.sk .cst{text-align:right; font-weight:700;}
     <div class="set-row"><label>素材</label>
       <select id="s-preset" onchange="onPresetChange()">
         <option value="kagayaki" selected>超かがやきの樹液</option>
-        <option value="amatsuyu">超あまつゆのいと（改修中）</option>
-        <option value="yousei">超ようせいのひだね（実装予定）</option>
+        <option value="amatsuyu">超あまつゆのいと</option>
+        <option value="yousei">超ようせいのひだね</option>
         <option value="custom">手動設定</option>
       </select></div>
 
@@ -418,7 +418,7 @@ const PRESETS = {
     zones: [[180,190],[245,251],[150,156],[180,190],[180,190],[245,251]]
   },
   yousei: {
-    name: '超ようせいのひだね',
+    name: '超ようせいのひだね(実装予定)',
     trait: 'shuchu',
     zones: [[155,161],[220,230],[155,161],[220,230],[140,150],[140,150]]
   }
@@ -501,7 +501,10 @@ function getPassiveCritPercent(level){
 function computeCritRate(skill, level, hammerId, star, trait, temp){
   const passive = getPassiveCritPercent(level);
   const hammer = HAMMERS[hammerId];
-  const base = passive + (hammer ? hammer.critByStar[star] : 0); // %
+  // 道具会心率 = 職人スキル(パッシブ) + コツをつかんでいる + ハンマーのできのよさ
+  // 「コツをつかんでいる」は同じ品を作り続けると常時付く +1.0%。
+  const KOTSU = 1.0;
+  const base = passive + KOTSU + (hammer ? hammer.critByStar[star] : 0); // %
   const st = traitTempState(temp);
   // 開始直後は地金特性が発動しないため、会心率ボーナスも乗らない
   const active = (typeof isStartState==='function') ? !isStartState() : true;
@@ -545,13 +548,13 @@ function applyPowerMultiplier(r, mult){
 function getTraitStatusText(trait, temp){
   const st = traitTempState(temp);
   if(trait === 'shuchu'){
-    if(st.mod400) return `集中力消費0.5倍のテンポ(${temp}℃)。会心率は通常です。`;
-    if(st.mod200) return `集中力消費1.5倍・会心率+400%(5倍)のテンポ(${temp}℃)。会心を狙うならここです。`;
+    if(st.mod400) return `集中力消費0.5倍のテンポ(${temp}℃)。`;
+    if(st.mod200) return `集中力消費1.5倍・会心率+400%(5倍)のテンポ(${temp}℃)。`;
     return null;
   }
   if(trait === 'tataki'){
-    if(st.mod400) return `威力2倍のテンポ(${temp}℃)。会心判定時は自動で補正されます。`;
-    if(st.mod200) return `威力0.5倍(端数切り上げ)のテンポ(${temp}℃)。会心判定時は自動で補正されます。`;
+    if(st.mod400) return `威力2倍のテンポ(${temp}℃)。`;
+    if(st.mod200) return `威力0.5倍(端数切り上げ)のテンポ(${temp}℃)。`;
     return null;
   }
   if(trait === 'kaishin'){
@@ -662,8 +665,8 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   rush : 会心の見込みが無いマスをゾーンへ押し込む手の抑制
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
-const PARAMS = { cap:7, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1 };
+const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, streak:0, far:5 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -878,99 +881,11 @@ function stratA(ms,f,t){
 //   1600★ 熱風(最遠マス) → 2050まで加熱 → 2000★ 超4連 → 1600★ 4連
 // 現状のエンジンは効率だけで選ぶため、半減ターンで打撃したり
 // 通常ターンで超4連を撃ったりと、倍加の恩恵を取りこぼしていた。
-function tatakiOpening(ms, f, t, cfg){
-  if(cfg.trait !== 'tataki') return null;
-  // 定跡は開幕だけ。盤面がある程度進んだら通常の評価に任せる。
-  // (最後まで定跡で動かすと温度調整ばかりになり前進が止まる)
-  const progress = ms.reduce((a,m)=>a+Math.min(m.current, m.zoneLow), 0);
-  const need = ms.reduce((a,m)=>a+m.zoneLow, 0);
-  if(progress > need * 0.65) return null;
-  const untouched = ms.every(m => m.current === 0);
-  const K = SKILLS.find(s => s.id === 'karyoku' && s.lv <= cfg.level);
-  const R = SKILLS.find(s => s.id === 'reppuu' && s.lv <= cfg.level);
-  const C4 = SKILLS.find(s => s.id === 'chouyonren' && s.lv <= cfg.level);
-  const Y4 = SKILLS.find(s => s.id === 'yonren' && s.lv <= cfg.level);
-  const NN = SKILLS.find(s => s.id === 'naname' && s.lv <= cfg.level);
-  if(!K || !R || !C4) return null;
-  const mk = (sk, tg) => {
-    const c = actualCostOf(sk, t, cfg.trait);
-    if(c > f) return null;
-    return { sk, tg, c, nt: Math.max(0, t + sk.tempDelta), overP: 0 };
-  };
-  // 盤面が動く前:1600℃(倍加)まで加熱する
-  if(untouched){
-    if(t < 1600) return mk(K, []);
-    // 1600℃(倍加)で最も遠いマスに熱風を撃つ
-    if(t === 1600){
-      let far = -1, worst = -1;
-      for(let i = 0; i < ms.length; i++){
-        const gap = ms[i].zoneLow - ms[i].current;
-        if(gap > worst){ worst = gap; far = i; }
-      }
-      if(far >= 0) return mk(R, [far]);
-    }
-  }
-  // 2000℃(倍加)で超4連。マス3の上限を超えない組み合わせを選ぶ
-  if(isPowerUpTurn(t) && t >= 1600){
-    const r = getRollCandidates(C4, t, cfg.trait, false);
-    if(r){
-      for(const tg of enumerateTargetSets(C4)){
-        if(tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r[6] <= ms[i].zoneHigh)){
-          const mv = mk(C4, tg);
-          if(mv) return mv;
-        }
-      }
-      // 超4連が超過するなら4連打ちで代替
-      if(Y4){
-        const r2 = getRollCandidates(Y4, t, cfg.trait, false);
-        if(r2) for(const tg of enumerateTargetSets(Y4)){
-          if(tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r2[6] <= ms[i].zoneHigh)){
-            const mv = mk(Y4, tg);
-            if(mv) return mv;
-          }
-        }
-      }
-    }
-  }
-  // 加熱途中:次の倍加ターンへ最短で乗せる。
-  // 定跡は 1450 →(加熱×2)→ 2050 →(打撃)→ 2000★ という流れで、
-  // 「加熱で倍加を通り過ぎたら打撃1回で戻す」のが要点。
-  // 2050℃のように倍加を50℃だけ超えた状態も扱うため上限は2400とする
-  if(!untouched && t <= 2400){
-    // あと1回の加熱で倍加を50℃だけ超えるなら、加熱してから打撃で乗せる
-    if(t + 300 <= 2400){
-      const after = t + 300;
-      // 加熱後、そのまま倍加 or 打撃1回で倍加に届くなら加熱する
-      if(isPowerUpTurn(after) || isPowerUpTurn(after - 50)) return mk(K, []);
-    }
-    // 倍加ターンの1手前。ここは4連打ちで軽く詰めるのが定跡。
-    // 少し進めておくと次の超4連の会心が理想値を捉えやすくなる
-    // (幅11のマスで捕捉率79%、幅7の左中は100%)。
-    // 超4連をここで撃つと次の倍加ターンで突き抜けて撃てなくなる。
-    if(isPowerUpTurn(t - 50)){
-      for(const sk of [Y4, NN, SKILLS.find(s=>s.id==='sayuu'), SKILLS.find(s=>s.id==='tataku')]){
-        if(!sk || sk.lv > cfg.level) continue;
-        const r3 = getRollCandidates(sk, t, cfg.trait, false);
-        if(!r3) continue;
-        for(const tg of enumerateTargetSets(sk)){
-          if(!tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r3[6] <= ms[i].zoneHigh)) continue;
-          // 次の倍加ターンで超4連が撃てなくなる打ち方は避ける
-          const rc = getRollCandidates(C4, t - 50, cfg.trait, false);
-          if(rc && tg.some(i => ms[i].current + r3[6] + rc[6] > ms[i].zoneHigh)) continue;
-          const mv = mk(sk, tg);
-          if(mv) return mv;
-        }
-      }
-    }
-  }
-  return null;
-}
+let P_OPEN_TH = 0.65;
+let REPPUU_STREAK = 0;
 
 // 上下ねらい打ちは2マス同時に本会心を狙える唯一の技。
 // 消費25で2マス分なので、単発のねらい打ち(16×2=32)より安い。
-// 従来は te による加点だけで他の評価項目に埋もれ、実測0.58回/gameしか
-// 使われていなかった。本会心圏で撃てる局面は逃さず取りに行く。
-// (実測12000回で大成功率31.4%→33.1%)
 function pairSnipe(ms, f, t, cfg){
   const jn = SKILLS.find(s => s.id === 'jouge_nerai' && s.lv <= cfg.level);
   if(!jn) return null;
@@ -980,12 +895,114 @@ function pairSnipe(ms, f, t, cfg){
   if(!r) return null;
   for(const tg of enumerateTargetSets(jn)){
     if(tg.some(i => ms[i].current >= ms[i].zoneLow)) continue;
-    // 対象2マスとも本会心が成立すること
     const ok = tg.every(i => {
       const m = ms[i];
       return m.current + r[6] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh;
     });
     if(ok) return { sk: jn, tg, c, nt: Math.max(0, t + jn.tempDelta), overP: 0 };
+  }
+  return null;
+}
+
+function tatakiOpening(ms, f, t, cfg){
+  if(cfg.trait !== 'tataki') return null;
+  const K  = SKILLS.find(s => s.id === 'karyoku'    && s.lv <= cfg.level);
+  const R  = SKILLS.find(s => s.id === 'reppuu'     && s.lv <= cfg.level);
+  const C4 = SKILLS.find(s => s.id === 'chouyonren' && s.lv <= cfg.level);
+  const Y4 = SKILLS.find(s => s.id === 'yonren'     && s.lv <= cfg.level);
+  const NN = SKILLS.find(s => s.id === 'naname'     && s.lv <= cfg.level);
+  const TK = SKILLS.find(s => s.id === 'tataku'     && s.lv <= cfg.level);
+  if(!K || !R || !C4 || !Y4 || !NN || !TK) return null;
+  const mk = (sk, tg) => {
+    const c = actualCostOf(sk, t, cfg.trait);
+    if(c > f) return null;
+    const r = sk.masses > 0 ? getRollCandidates(sk, t, cfg.trait, false) : null;
+    if(sk.masses > 0){
+      if(!r) return null;
+      for(const i of tg) if(ms[i].current + r[6] > ms[i].zoneHigh) return null;
+    }
+    return { sk, tg, c, nt: Math.max(0, t + sk.tempDelta), overP: 0 };
+  };
+  const untouched = ms.every(m => m.current === 0);
+
+  // --- 手1〜3: 1600℃(倍加)まで加熱し、最も遠いマスへ熱風 ---
+  if(untouched){
+    if(t < 1600) return mk(K, []);
+    // 実プレイヤーの定跡では、この熱風は必ず A(左上) に入れる。
+    // A は幅11で本会心の価値が高く、超4連の対象[C,D,E,F]から漏れるため、
+    // ここで先に進めておかないと後半で追いつかなくなる。
+    if(t === 1600){
+      const mv = mk(R, [0]);
+      if(mv) return mv;
+    }
+  }
+
+  // 定跡は序盤のみ。盤面が進んだら通常評価へ委ねる。
+  const progress = ms.reduce((a,m)=>a+Math.min(m.current, m.zoneLow), 0);
+  const need = ms.reduce((a,m)=>a+m.zoneLow, 0);
+  if(progress > need * (P_OPEN_TH || 0.65)) return null;
+
+  // --- 超4連の直後: Bをたたき、BとFへ順に熱風を入れる ---
+  // 2000℃の超4連は C・D・E・F を叩くため、A と B が取り残される。
+  // B は最も遠いゾーン(245)なので、たたく+熱風で追い上げる。
+  // 熱風2回で -300℃ となり、次の倍加ターン(1600℃)にちょうど乗る。
+  // この処理は「2000℃の超4連を撃ち終えた直後」に限る。
+  // 判定: C・D・E・F が進んでいて、かつ温度が2000℃未満に落ちている。
+  if(t < 2000 && t >= 1600 && ms[2].current > 50 && ms[3].current > 50
+     && ms[4].current > 0 && ms[5].current > 0){
+    const B = 1, F = 5;
+    // Bがまだ手つかずなら1回たたく(熱風の下地を作る)
+    if(ms[B].current === 0){
+      const mv = mk(TK, [B]);
+      if(mv) return mv;
+    }
+    // BとFのうち低い方へ熱風。目標(zoneHigh-60)に届くまで
+    const rr = getRollCandidates(R, t, cfg.trait, false);
+    if(rr){
+      const order = ms[B].current <= ms[F].current ? [B, F] : [F, B];
+      for(const i of order){
+        if(ms[i].current >= ms[i].zoneHigh - 60) continue;
+        if(ms[i].current + rr[6] > ms[i].zoneHigh) continue;
+        const mv = mk(R, [i]);
+        if(mv) return mv;
+      }
+    }
+  }
+
+  // --- 倍加ターン: 4マス技を安全に撃つ ---
+  if(isPowerUpTurn(t)){
+    for(const sk of [C4, Y4]){
+      const r = getRollCandidates(sk, t, cfg.trait, false);
+      if(!r) continue;
+      for(const tg of enumerateTargetSets(sk)){
+        if(!tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r[6] <= ms[i].zoneHigh)) continue;
+        const mv = mk(sk, tg);
+        if(mv) return mv;
+      }
+    }
+  }
+
+  // --- 倍加ターンの1手前: 4連打ちで軽く詰める ---
+  // 超4連をここで撃つと次の倍加ターンで突き抜けて撃てなくなる。
+  if(isPowerUpTurn(t - 50)){
+    for(const sk of [Y4, NN, SKILLS.find(s=>s.id==='sayuu'), TK]){
+      if(!sk || sk.lv > cfg.level) continue;
+      const r = getRollCandidates(sk, t, cfg.trait, false);
+      if(!r) continue;
+      for(const tg of enumerateTargetSets(sk)){
+        if(!tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r[6] <= ms[i].zoneHigh)) continue;
+        const rc = getRollCandidates(C4, t - 50, cfg.trait, false);
+        if(rc && tg.some(i => ms[i].current + r[6] + rc[6] > ms[i].zoneHigh)) continue;
+        const mv = mk(sk, tg);
+        if(mv) return mv;
+      }
+    }
+  }
+
+  // --- 加熱: 次の倍加ターンへ乗せる ---
+  if(t + 300 <= 2400){
+    const after = t + 300;
+    if(isPowerUpTurn(after) || isPowerUpTurn(after - 50)) return mk(K, []);
   }
   return null;
 }
@@ -1412,7 +1429,33 @@ function stratB(ms,f,t,P,cfg){
     // 局面ごとに重みを切り替える案は検証したが、
     // 単体テストでは有効に見えても実プレイでは前進が止まり到達率が落ちた。
     // 到達は大成功の絶対条件なので、重みは全局面で共通とする。
-    const score=cap*capW + (adv/x.c)*P.adv + landBonus + prio*P.pr
+    // 熱風おろしは消費6で大きく進むため集中力効率が突出するが、
+    // -150℃と3手分の温度を消費する。実測では4連続が48%、
+    // 5連続以上が24%発生し、温度を使い切って詰む原因になっていた。
+    // 連続して選ばれるほど減点し、他の技に道を譲る。
+    let streakPenalty = 0;
+    if(P.streak > 0 && x.sk.id === 'reppuu' && REPPUU_STREAK > 0){
+      streakPenalty = REPPUU_STREAK * P.streak;
+    }
+    // ゾーンが遠いマスほど到達に手数がかかる。
+    // 超あまつゆのいとの B・F は必要前進量が245と最大なのに、
+    // 4マス技[ABCD][CDEF]では片方ずつしか叩けず取り残されやすい。
+    // 実測では未到達の91%がこの2マスだった。
+    // 残り距離が大きいマスを含む手を優先し、置き去りを防ぐ。
+    let farBonus = 0;
+    if(P.far > 0){
+      let maxGap = 0, myGap = 0;
+      for(let i = 0; i < ms.length; i++){
+        const gp = ms[i].zoneLow - ms[i].current;
+        if(gp > maxGap) maxGap = gp;
+      }
+      for(const i of x.tg){
+        const gp = ms[i].zoneLow - ms[i].current;
+        if(gp > myGap) myGap = gp;
+      }
+      if(maxGap > 0) farBonus = (myGap / maxGap) * P.far;
+    }
+    const score=cap*capW + (adv/x.c)*P.adv + landBonus + prio*P.pr - streakPenalty + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(score>bs){bs=score;best=x;}
   }
