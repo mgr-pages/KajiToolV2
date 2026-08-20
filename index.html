@@ -37,6 +37,69 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .badge.rate{background:rgba(61,220,132,.15); color:var(--green); border:1px solid rgba(61,220,132,.4);}
 .badge.off{background:var(--panel); color:var(--dim); border:1px solid var(--line);}
 
+/* ===== ヘッダー上段:今どの商材をどの装備で打っているか ===== */
+.hdr-title{display:flex; align-items:baseline; gap:8px; margin-bottom:6px;}
+.hdr-title .mat{font-size:14px; font-weight:800; color:var(--gold);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;}
+.hdr-title .gear{font-size:10.5px; color:var(--dim); white-space:nowrap; margin-left:auto;}
+
+/* ===== 推奨手順:各手の右に「ここまで実行」ボタン ===== */
+.pstep{display:flex; align-items:center; gap:8px; padding:5px 4px; border-radius:6px;}
+.pstep + .pstep{margin-top:4px;}
+.pstep .n{color:var(--gold); font-weight:800; min-width:18px; font-size:12px; text-align:right;}
+.pstep .pinfo{flex:1; min-width:0;}
+.pstep .pname{font-size:12.5px; font-weight:700;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.pstep .ptg{font-size:10.5px; color:var(--dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.pstep.on-boost{background:rgba(217,164,65,.10); border-left:3px solid var(--gold);}
+.pstep.on-half{background:rgba(74,158,255,.10); border-left:3px solid var(--blue);}
+.pstep.first{box-shadow:inset 0 0 0 1px rgba(232,103,44,.55);}
+.pexec{flex:0 0 auto; background:var(--panel); border:1px solid var(--line);
+  color:var(--text); border-radius:6px; padding:6px 9px; line-height:1.2; font-weight:700;}
+.pexec:active{background:#2c2820;}
+.pexec .t{display:block; font-size:11px; color:var(--gold);}
+.pexec .s{display:block; font-size:9px; color:var(--dim); font-weight:600;}
+.badge.weak{background:rgba(155,145,134,.18); color:var(--dim); border:1px solid var(--line);}
+.mk-weak{ color:var(--dim); font-size:10.5px; font-weight:800; white-space:nowrap; }
+.pstep.on-weak{background:rgba(155,145,134,.10); border-left:3px solid var(--line);}
+.plist-body{max-height:38vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  border:1px solid var(--line); border-radius:6px; padding:5px;}
+.hist-acc{margin:0 0 10px;}
+.hist-acc summary{font-size:11.5px; padding:7px 10px;}
+.hist-body{max-height:20vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  border:1px solid var(--line); border-radius:0 0 6px 6px; border-top:0; padding:5px;}
+.hstep{display:flex; gap:8px; align-items:baseline; font-size:11.5px; padding:2px 2px;}
+.hstep .n{color:var(--dim); font-weight:800; min-width:20px; text-align:right;}
+.hstep .hn{font-weight:700;}
+.hstep .ht{color:var(--dim); font-size:10.5px; margin-left:auto; white-space:nowrap;}
+.lg-tg{display:flex; align-items:center; gap:6px; font-size:11px; color:var(--dim);
+  width:100%; margin-top:2px;}
+/* ===== 実行済みの反映 ===== */
+.exec{margin-top:8px; border-top:1px solid var(--line); padding-top:8px;}
+.exec-lbl{font-size:11px; color:var(--dim); margin-bottom:6px;}
+.exec-row{display:flex; gap:5px;}
+.exec-btn{flex:1; min-width:0; background:var(--panel); border:1px solid var(--line);
+  color:var(--text); border-radius:6px; padding:6px 2px; font-weight:700; line-height:1.25;}
+.exec-btn:active{background:#2c2820;}
+.exec-btn .n{display:block; font-size:14px; color:var(--gold);}
+.exec-btn .s{display:block; font-size:9px; color:var(--dim); font-weight:600;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.need-box{background:rgba(232,103,44,.12); border:1px solid rgba(232,103,44,.55);
+  border-radius:8px; padding:9px 10px;}
+.need-box .t{font-size:12px; font-weight:800; color:var(--ember); margin-bottom:3px;}
+.need-box .d{font-size:10.5px; color:var(--dim); margin-bottom:7px;}
+.need-row{display:flex; gap:6px; flex-wrap:wrap;}
+.need-btn{background:var(--ember); color:#180f0a; border:0; border-radius:6px;
+  padding:7px 13px; font-size:12px; font-weight:800;}
+.need-btn.ok{background:var(--panel); color:var(--dim); border:1px solid var(--line);}
+.undo-btn{margin-top:7px; width:100%; background:transparent; border:1px solid var(--line);
+  color:var(--dim); border-radius:6px; padding:6px; font-size:11px;}
+.calc:disabled{opacity:.45;}
+.cell.need{border-color:var(--ember) !important; animation:needpulse 1.3s ease-in-out infinite;}
+@keyframes needpulse{0%,100%{box-shadow:0 0 0 0 rgba(232,103,44,.55);}
+  50%{box-shadow:0 0 0 5px rgba(232,103,44,0);}}
+
 /* ===== 盤面 ===== */
 .board{padding:10px 6px;}
 .brow{display:flex; align-items:stretch; gap:4px; margin-bottom:8px;}
@@ -285,6 +348,10 @@ table.sk .cst{text-align:right; font-weight:700;}
 <body>
 
 <div class="hdr">
+  <div class="hdr-title">
+    <span class="mat" id="v-mat">—</span>
+    <span class="gear" id="v-gear">—</span>
+  </div>
   <div class="hdr-row">
     <div class="stat tap" onclick="openPad('temp')">
       <span class="lbl">温度</span><span class="val" id="v-temp">1000</span><span class="lbl">℃</span>
@@ -301,19 +368,22 @@ table.sk .cst{text-align:right; font-weight:700;}
   <div id="board"></div>
   <div class="legend">
     <span><i class="lg-green"></i>成功ゾーン</span>
-    <span><i class="lg-blue"></i>たたくの範囲</span>
-    <span><i class="lg-red"></i>会心の範囲</span>
+    <span class="rg-lg"><i class="lg-blue"></i>たたくの範囲</span>
+    <span class="rg-lg"><i class="lg-red"></i>会心の範囲</span>
     <span><i class="lg-pink"></i>本会心ゾーン</span>
+    <label class="lg-tg"><input type="checkbox" id="s-range" checked onchange="toggleRange()">
+      増加量の目安(青・赤)を表示する</label>
   </div>
 </div>
 
 <div class="side">
 <div class="foot" id="footPanel">
-  <div class="rec" id="rec"><div class="rec-empty">「推奨手を計算」を押してください</div></div>
-  <button class="calc" id="calcBtn" onclick="doCalc()">推奨手を計算</button>
+  <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
+  <div id="execPanel"></div>
+  <button class="calc" id="calcBtn" onclick="doCalc()">次の一手を計算</button>
 </div>
 
-<details class="acc">
+<details class="acc" open>
   <summary>推奨手の詳細</summary>
   <div class="body" id="detail">まだ計算していません</div>
 </details>
@@ -352,8 +422,7 @@ table.sk .cst{text-align:right; font-weight:700;}
     <div class="set-row"><label>素材</label>
       <select id="s-preset" onchange="onPresetChange()">
         <option value="kagayaki" selected>超かがやきの樹液</option>
-        <option value="amatsuyu">超あまつゆのいと(New!)</option>
-        <option value="yousei">超ようせいのひだね(実装予定)</option>
+        <option value="amatsuyu">超あまつゆのいと</option>
         <option value="custom">手動設定</option>
       </select></div>
 
@@ -365,7 +434,7 @@ table.sk .cst{text-align:right; font-weight:700;}
       <button class="calc" style="margin-top:8px" onclick="applyZones()">ゾーンを反映</button>
     </div>
 
-    <button class="calc" style="margin-top:8px" onclick="resetAll()">最初からやり直す</button>
+    <button class="calc" style="margin-top:8px" onclick="confirmReset()">最初からやり直す</button>
   </div>
 </details>
 
@@ -398,7 +467,9 @@ const G = {
   focus: 253,
   masses: [],
   level: 80, hammerId:'light', star:3, trait:'shuchu',
-  rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null
+  rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null,
+  // 実行済み反映で「数値の手入力待ち」になっているマス番号
+  pending: [], undoSnap: null, showRange: true, hist: []
 };
 // 素材ごとのプリセット。zones は各マスの成功ゾーン[下限,上限]、
 // trait はその素材が持つ地金特性(選択時に自動で切り替える)。
@@ -416,12 +487,8 @@ const PRESETS = {
     name: '超あまつゆのいと',
     trait: 'tataki',
     zones: [[180,190],[245,251],[150,156],[180,190],[180,190],[245,251]]
-  },
-  yousei: {
-    name: '超ようせいのひだね',
-    trait: 'shuchu',
-    zones: [[155,161],[220,230],[155,161],[220,230],[140,150],[140,150]]
   }
+  // 超ようせいのひだね は盤面データ未確認のため未実装
 };
 
 /* ===================== 演算エンジン ===================== */
@@ -548,13 +615,13 @@ function applyPowerMultiplier(r, mult){
 function getTraitStatusText(trait, temp){
   const st = traitTempState(temp);
   if(trait === 'shuchu'){
-    if(st.mod400) return `集中力消費0.5倍のテンポ(${temp}℃)。`;
-    if(st.mod200) return `集中力消費1.5倍・会心率+400%(5倍)のテンポ(${temp}℃)。`;
+    if(st.mod400) return `集中力消費0.5倍のテンポ(${temp}℃)。会心率は通常です。`;
+    if(st.mod200) return `集中力消費1.5倍・会心率+400%(5倍)のテンポ(${temp}℃)。会心を狙うならここです。`;
     return null;
   }
   if(trait === 'tataki'){
-    if(st.mod400) return `威力2倍のテンポ(${temp}℃)。`;
-    if(st.mod200) return `威力0.5倍(端数切り上げ)のテンポ(${temp}℃)。`;
+    if(st.mod400) return `威力2倍のテンポ(${temp}℃)。会心判定時は自動で補正されます。`;
+    if(st.mod200) return `威力0.5倍(端数切り上げ)のテンポ(${temp}℃)。会心判定時は自動で補正されます。`;
     return null;
   }
   if(trait === 'kaishin'){
@@ -562,7 +629,7 @@ function getTraitStatusText(trait, temp){
     return null;
   }
   if(trait === 'modori'){
-    if(st.mod400 || st.mod200) return `${temp}℃はメーター減少(戻り)の判定タイミングです。`;
+    if(st.mod400 || st.mod200) return `${temp}℃はメーター減少(戻り)の判定タイミングです。下のボタンから適用してください。`;
     return null;
   }
   return null;
@@ -1739,6 +1806,7 @@ function markersFor(m, skill){
 // 左向き(左列)はその鏡像になるよう並べ替える。
 function scaleLabel(mk, flip){
   const r = mk.raw;
+  if(!G.showRange) return '';
   if(!r.blue) return '<span style="color:var(--dim)">技を選ぶと表示</span>';
   const items = [
     {v:r.blue[0], c:'var(--blue)'},
@@ -1748,6 +1816,40 @@ function scaleLabel(mk, flip){
   ];
   const arr = flip ? items.slice().reverse() : items;
   return arr.map(x=>`<span style="color:${x.c}">${x.v}</span>`).join('<span style="color:#5a5248">〜</span>');
+}
+
+function toggleRange(){
+  G.showRange = document.getElementById('s-range').checked;
+  document.querySelectorAll('.rg-lg').forEach(e=>{ e.style.display = G.showRange ? '' : 'none'; });
+  renderBoard(); save();
+}
+
+/* 表示専用の地金特性マーク。
+   エンジン側の isBoostTurn/isHalfTurn は集中力変化の評価にしか使われないため、
+   たたき変化では常に false になる。画面表示はこちらで素材ごとに出し分ける。 */
+function traitMark(t){
+  if(!traitActive(t)) return null;
+  if(G.trait === 'shuchu'){
+    if(t%400 === 0) return {k:'half',  l:'◆ 消費半減'};
+    if(t%200 === 0) return {k:'boost', l:'★ 会心率+400%'};
+  }else if(G.trait === 'tataki'){
+    if(t%400 === 0) return {k:'boost', l:'◎ 威力2倍'};
+    if(t%200 === 0) return {k:'weak',  l:'▽ 威力1/2'};
+  }
+  return null;
+}
+function traitNote(){
+  if(G.trait === 'shuchu') return `<div class="mk-note">
+      <div><b class="mk-boost">★ 会心率+400%</b> 温度が200の倍数(400の倍数を除く)。
+           会心率が5倍になる代わりに消費集中力が1.5倍。狙い打ちを撃つ好機。</div>
+      <div><b class="mk-half">◆ 消費半減</b> 温度が400の倍数。
+           消費集中力が半分になる。超4連打ちなど重い技を撃つ好機。</div></div>`;
+  if(G.trait === 'tataki') return `<div class="mk-note">
+      <div><b class="mk-boost">◎ 威力2倍</b> 温度が400の倍数。
+           前進量が倍になる。超4連打ちなど多マス技を乗せたい。</div>
+      <div><b class="mk-weak">▽ 威力1/2</b> 温度が200の倍数(400の倍数を除く)。
+           前進量が半分。仕上げの微調整には使えるが、大きく進めたい時は避ける。</div></div>`;
+  return '';
 }
 
 function renderBoard(){
@@ -1767,7 +1869,8 @@ function renderBoard(){
       const flip = (col===0);
       const st = m.current > m.zoneHigh ? 'over'
                : m.current >= m.zoneLow ? 'done' : '';
-      const cls = (hiTg.includes(i)?' hi':'') + (st?' '+st:'');
+      const cls = (hiTg.includes(i)?' hi':'') + (st?' '+st:'')
+                + (G.pending.includes(i)?' need':'');
       const zoneTxt = flip ? `${m.zoneHigh} 〜 ${m.zoneLow}` : `${m.zoneLow} 〜 ${m.zoneHigh}`;
       const barBlock =
         `<div class="bar-wrap ${flip?'left':'right'}">
@@ -1801,8 +1904,8 @@ function buildBar(mk, flip){
   // 成功ゾーンの方が判断上重要なので、重なっても必ず見えるようにする。
   if(mk.pink) s += band(mk.pink[0], mk.pink[1], 'm-pink');
   if(mk.zone) s += band(mk.zone[0], mk.zone[1], 'm-green');
-  if(mk.blue) s += band(mk.blue[0], mk.blue[1], 'm-blue');
-  if(mk.red)  s += band(mk.red[0],  mk.red[1],  'm-red');
+  if(G.showRange && mk.blue) s += band(mk.blue[0], mk.blue[1], 'm-blue');
+  if(G.showRange && mk.red)  s += band(mk.red[0],  mk.red[1],  'm-red');
   // 現在値は0から今の位置までを塗り、右端に白線を立てる
   s += `<i class="m-cur" style="width:${Math.max(mk.cur,0.5)}%"></i>`;
   s += line(mk.cur,'m-curline');
@@ -1810,11 +1913,18 @@ function buildBar(mk, flip){
 }
 
 function renderHeader(){
+  // 複数商材を扱うので、今どれを打っているかを最上段に常時出す
+  const pre = PRESETS[G.preset];
+  document.getElementById('v-mat').textContent =
+    pre ? pre.name : (G.preset === 'custom' ? '手動設定の盤面' : '—');
+  const hm = HAMMERS[G.hammerId];
+  document.getElementById('v-gear').textContent =
+    (hm ? hm.name : G.hammerId) + '★' + G.star + ' / Lv' + G.level;
   document.getElementById('v-temp').textContent = G.temp;
   document.getElementById('v-focus').textContent = G.focus;
   const b = [];
-  if(isBoostTurn(G.temp)) b.push('<span class="badge boost">★ 会心率+400%</span>');
-  else if(isHalfTurn(G.temp)) b.push('<span class="badge half">◆ 消費半減</span>');
+  const tm = traitMark(G.temp);
+  if(tm) b.push(`<span class="badge ${tm.k}">${tm.l}</span>`);
   else b.push('<span class="badge off">通常</span>');
   if(isStartState()) b.push('<span class="badge off">開始直後(特性なし)</span>');
   const done = G.masses.filter(m=>m.current>=m.zoneLow).length;
@@ -1839,7 +1949,7 @@ function renderSkills(){
 function renderRec(){
   const el = document.getElementById('rec');
   if(!G.rec){
-    el.innerHTML = '<div class="rec-empty">'+(G.msg||'「推奨手を計算」を押してください')+'</div>';
+    el.innerHTML = '<div class="rec-empty">'+(G.msg||'「次の一手を計算」を押してください')+'</div>';
     return;
   }
   const r = G.rec;
@@ -1858,33 +1968,118 @@ function renderRec(){
 
 function renderDetail(){
   const el = document.getElementById('detail');
-  if(!G.rec){ el.textContent='まだ計算していません'; return; }
+  if(!G.rec && !G.hist.length){ el.textContent='まだ計算していません'; return; }
   let h = '';
   if(G.lastRate!=null){
     h += `<div style="margin-bottom:8px">大成功率 約${(G.lastRate*100).toFixed(1)}% ／ `
        + `誤差 約${G.lastErr.toFixed(1)} ／ 到達 約${(G.lastReach*100).toFixed(0)}%</div>`;
   }
+  if(G.hist.length){
+    h += '<details class="acc hist-acc"><summary>打った手 ('+G.hist.length+'手)</summary>';
+    h += '<div class="hist-body">' + G.hist.map((st,i)=>
+        `<div class="hstep"><span class="n">${i+1}</span>`
+        + `<span class="hn">${st.name}</span>`
+        + `<span class="ht">${st.tg.length?st.tg.map(x=>'マス'+(x+1)).join('・'):'温度操作'}`
+        + ` / ${st.tempAfter}℃</span></div>`).join('') + '</div></details>';
+  }
   if(G.plan.length){
-    h += '<div style="color:var(--dim);font-size:11px;margin-bottom:4px">この先の想定手順</div>';
-    h += G.plan.map((s,i)=>{
-      const mark = s.boost ? '<b class="mk-boost">★ 会心+400%</b>'
-                 : s.half  ? '<b class="mk-half">◆ 消費半減</b>' : '';
-      const cls  = s.boost ? ' on-boost' : s.half ? ' on-half' : '';
-      return `<div class="plan-step${cls}"><span class="n">${i+1}</span><span>${s.name}`
-        + `<span class="tg"> ${s.tg.length?s.tg.map(x=>'マス'+(x+1)).join('・'):'温度操作'} / ${s.temp}℃</span>`
-        + ` ${mark}</span></div>`;
-    }).join('');
-    h += `<div class="mk-note">
-        <div><b class="mk-boost">★ 会心+400%</b> 温度が200の倍数(400の倍数を除く)。
-             会心率が5倍になる代わりに消費集中力が1.5倍。狙い打ちを撃つ好機。</div>
-        <div><b class="mk-half">◆ 消費半減</b> 温度が400の倍数。
-             消費集中力が半分になる。超4連打ちなど重い技を撃つ好機。</div>
-      </div>`;
+    h += '<div style="color:var(--dim);font-size:11px;margin-bottom:6px">'
+       + 'この先の想定手順 — 実際に打ったところのボタンを押すと温度と集中力に反映されます</div>';
+    let f = G.focus;
+    h += '<div class="plist-body">' + G.plan.map((st,i)=>{
+      f -= st.cost;
+      const mark = st.mk ? ` <b class="mk-${st.mk.k}">${st.mk.l}</b>` : '';
+      const cls  = (st.mk ? ' on-'+st.mk.k : '') + (i===0?' first':'');
+      const tg   = st.tg.length ? st.tg.map(x=>'マス'+(x+1)).join('・') : '温度操作';
+      const btn  = f < 0 ? ''
+        : `<button class="pexec" onclick="applyExecuted(${i+1})">
+             <span class="t">ここまで実行</span>
+             <span class="s">${st.tempAfter}℃ / 集中${f}</span>
+           </button>`;
+      return `<div class="pstep${cls}">
+          <span class="n">${i+1}</span>
+          <div class="pinfo">
+            <div class="pname">${st.name}${mark}</div>
+            <div class="ptg">${tg}</div>
+          </div>${btn}
+        </div>`;
+    }).join('') + '</div>';
+    h += traitNote();
   }
   el.innerHTML = h || '—';
 }
 
-function renderAll(){ renderHeader(); renderBoard(); renderSkills(); renderRec(); renderDetail(); }
+function renderAll(){ renderHeader(); renderBoard(); renderSkills(); renderRec();
+  renderExec(); renderDetail(); }
+
+/* ====== 実行済みの反映 ======
+   実プレイでは推奨手を何手かまとめて打ってから再計算する。
+   何手目まで打ったかを選ぶだけで、温度と集中力は自動で差し引く。
+   マスの数値だけはゲーム画面を見ないと分からないので、手入力を促す。 */
+function renderExec(){
+  const el = document.getElementById('execPanel');
+  const btn = document.getElementById('calcBtn');
+
+  if(G.pending.length){
+    const names = G.pending.map(i=>'マス'+(i+1));
+    el.innerHTML =
+      `<div class="exec"><div class="need-box">
+         <div class="t">${names.join('・')} の数値を入力してください</div>
+         <div class="d">温度と集中力は反映済みです。ゲーム画面の数値を入れると計算できます。</div>
+         <div class="need-row">`
+      + G.pending.map(i=>`<button class="need-btn" onclick="openPad('mass',${i})">マス${i+1}</button>`).join('')
+      + `</div>`
+      + (G.undoSnap ? `<button class="undo-btn" onclick="undoExec()">この反映を取り消す</button>` : '')
+      + `</div></div>`;
+    btn.disabled = true;
+    btn.textContent = '数値を入力してください';
+    return;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '次の一手を計算';
+
+  el.innerHTML = G.undoSnap
+    ? `<div class="exec"><button class="undo-btn" onclick="undoExec()">直前の反映を取り消す</button></div>`
+    : '';
+}
+
+function applyExecuted(k){
+  if(!G.plan.length || k<1 || k>G.plan.length) return;
+  const steps = G.plan.slice(0, k);
+  const cost = steps.reduce((a,x)=>a+x.cost, 0);
+  if(cost > G.focus){ alert('集中力が足りません'); return; }
+
+  // やり直せるように、変更前の状態を控える
+  G.undoSnap = { temp:G.temp, focus:G.focus,
+    masses:G.masses.map(m=>({...m})), pending:G.pending.slice(), histLen:G.hist.length };
+  steps.forEach(st => G.hist.push({name:st.name, tg:st.tg.slice(), tempAfter:st.tempAfter}));
+
+  G.focus -= cost;
+  G.temp   = steps[steps.length-1].tempAfter;
+
+  // 叩いたマスは値が変わっているはずなので、手入力の対象にする。
+  // 温度操作だけの手は対象マスが無いので何も増えない。
+  const hit = new Set(G.pending);
+  steps.forEach(st => st.tg.forEach(i => hit.add(i)));
+  G.pending = [...hit].sort((a,b)=>a-b);
+
+  G.rec = null; G.plan = []; G.lastRate = null;
+  G.msg = '実行分を反映しました';
+  renderAll(); save();
+}
+
+function undoExec(){
+  if(!G.undoSnap) return;
+  const u = G.undoSnap;
+  G.temp = u.temp; G.focus = u.focus;
+  G.masses = u.masses.map(m=>({...m}));
+  G.pending = u.pending.slice();
+  if(typeof u.histLen === 'number') G.hist.length = u.histLen;
+  G.undoSnap = null;
+  G.rec = null; G.plan = []; G.lastRate = null; G.msg = null;
+  renderAll(); save();
+}
 
 /* ====== 計算 ====== */
 function doCalc(){
@@ -1910,7 +2105,7 @@ function doCalc(){
       document.getElementById('rec').innerHTML =
         '<div class="rec-empty">計算に失敗しました: '+e.message+'</div>';
     }
-    btn.disabled=false; btn.textContent='推奨手を計算';
+    btn.disabled=false; btn.textContent='次の一手を計算';
   }, 20);
 }
 
@@ -1926,7 +2121,8 @@ function buildPlan(ms0, cfg){
     const mv = stratB(sim,f,t,PARAMS,cfg);
     if(!mv || f<mv.c) break;
     G.plan.push({name:mv.sk.name, tg:mv.tg.slice(), temp:t,
-      boost:isBoostTurn(t), half:isHalfTurn(t)});
+      cost:mv.c, tempAfter:mv.nt,
+      mk: traitMark(t)});
     const r = mv.sk.key ? getRollCandidates(mv.sk,t,G.trait,false) : null;
     if(r){
       const mean = r.reduce((a,b)=>a+b,0)/r.length;
@@ -2007,10 +2203,14 @@ function commit(){
   else if(padOp==='minus') v = cur - n;
   else v = padBuf==='' ? cur : n;    // 何も入力していなければ現状維持
   v = Math.max(0, v);
-  if(padTarget==='mass') G.masses[padIdx].current = v;
+  if(padTarget==='mass'){
+    G.masses[padIdx].current = v;
+    G.pending = G.pending.filter(i => i !== padIdx);
+    if(!G.pending.length) G.msg = null;
+  }
   else if(padTarget==='temp') G.temp = v;
   else G.focus = v;
-  closePad(); renderAll();
+  closePad(); renderAll(); save();
 }
 
 /* ====== 設定 ====== */
@@ -2021,9 +2221,19 @@ function readSettings(){
   G.trait = document.getElementById('s-trait').value;
 }
 function applySettings(){
+  const before = G.level + '/' + G.hammerId;
   readSettings();
   const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
-  G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
+  const full = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
+  // 打ち始めた後に設定を触っても、進行中の集中力を勝手に満タンへ戻さない。
+  // 上限が変わる項目(レベル・ハンマー)を変えた時だけ確認して入れ替える。
+  const started = G.hist.length > 0 || G.masses.some(m=>m.current > 0);
+  if(!started){
+    G.focus = full;
+  }else if(before !== G.level + '/' + G.hammerId){
+    if(confirm('集中力の上限が変わります。現在値を ' + full + ' に入れ直しますか?\n' +
+               'キャンセルすると今の ' + G.focus + ' のまま続けます。')) G.focus = full;
+  }
   renderAll(); save();
 }
 // バーの最大値を変更した時。空欄なら自動計算に戻す。
@@ -2044,6 +2254,11 @@ function onPresetChange(){
     return;
   }
   box.style.display = 'none';
+  const started = G.hist.length > 0 || G.masses.some(m=>m.current > 0);
+  if(started && !confirm('素材を変えると盤面と履歴が最初に戻ります。よろしいですか?')){
+    document.getElementById('s-preset').value = G.preset;   // 選択を元に戻す
+    return;
+  }
   G.preset = v;
   // 素材ごとに地金特性が決まっているので、選択と同時に切り替える
   const p = PRESETS[v];
@@ -2083,6 +2298,12 @@ function applyZones(){
   renderAll(); save();
 }
 
+function confirmReset(){
+  const started = G.hist.length > 0 || G.masses.some(m=>m.current > 0);
+  if(started && !confirm('盤面・集中力・履歴をすべて初期状態に戻します。よろしいですか?')) return;
+  resetAll();
+}
+
 function resetAll(){
   readSettings();
   const pre = document.getElementById('s-preset');
@@ -2096,6 +2317,7 @@ function resetAll(){
   const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
   G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
   G.rec=null; G.plan=[]; G.lastRate=null;
+  G.pending=[]; G.undoSnap=null; G.msg=null; G.hist=[];
   renderZoneRows();
   renderAll(); save();
 }
@@ -2105,7 +2327,8 @@ const SKEY='kajiAdvisorStateV1';
 function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
-    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax
+    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax,
+    pending:G.pending, showRange:G.showRange, hist:G.hist
   })); }catch(e){}
 }
 function load(){
@@ -2113,6 +2336,15 @@ function load(){
     const s=JSON.parse(localStorage.getItem(SKEY));
     if(!s||!s.masses||s.masses.length!==6) return false;
     Object.assign(G,s);
+    if(!Array.isArray(G.pending)) G.pending = [];
+    if(!Array.isArray(G.hist)) G.hist = [];
+    // 廃止した素材が保存データに残っていた場合は既定へ戻す
+    if(G.preset !== 'custom' && !PRESETS[G.preset]) G.preset = 'kagayaki';
+    if(typeof G.showRange !== 'boolean') G.showRange = true;
+    const rg = document.getElementById('s-range');
+    if(rg){ rg.checked = G.showRange;
+      document.querySelectorAll('.rg-lg').forEach(e=>{ e.style.display = G.showRange ? '' : 'none'; }); }
+    G.undoSnap = null;   // 取り消しは同一セッション内だけ
     document.getElementById('s-level').value=G.level;
     document.getElementById('s-hammer').value=G.hammerId;
     document.getElementById('s-star').value=G.star;
