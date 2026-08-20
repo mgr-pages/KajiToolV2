@@ -41,6 +41,18 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .hdr-title{display:flex; align-items:baseline; gap:8px; margin-bottom:6px;}
 .hdr-title .mat{font-size:14px; font-weight:800; color:var(--gold);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;}
+.hdr-title .mat-sel{background:var(--panel); border:1px solid var(--line);
+  color:var(--gold); font-size:14px; font-weight:800; border-radius:6px;
+  padding:5px 26px 5px 9px; min-width:0; max-width:58%;
+  appearance:none; -webkit-appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),
+    linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+  background-position:calc(100% - 14px) 52%, calc(100% - 9px) 52%;
+  background-size:5px 5px, 5px 5px; background-repeat:no-repeat;}
+.hdr-title .hdr-reset{background:transparent; border:1px solid var(--line);
+  color:var(--dim); border-radius:6px; padding:5px 10px; font-size:11px;
+  font-weight:700; white-space:nowrap; flex:0 0 auto;}
+.hdr-title .hdr-reset:active{background:var(--panel);}
 .hdr-title .gear{font-size:10.5px; color:var(--dim); white-space:nowrap; margin-left:auto;}
 
 /* ===== 推奨手順:各手の右に「ここまで実行」ボタン ===== */
@@ -220,6 +232,9 @@ table.sk .cst{text-align:right; font-weight:700;}
   .stat .lbl{ font-size:12px; }
   .stat .val{ font-size:24px; }
   .badge{ font-size:12.5px; padding:5px 12px; }
+  .hdr-title .mat-sel{ font-size:17px; padding:7px 30px 7px 12px; max-width:none; }
+  .hdr-title .gear{ font-size:12.5px; }
+  .hdr-title .hdr-reset{ font-size:12.5px; padding:7px 14px; }
 
   /* 盤面と操作パネルを左右に並べる */
   .main{ display:grid; grid-template-columns: 1fr 400px; gap:20px;
@@ -349,8 +364,13 @@ table.sk .cst{text-align:right; font-weight:700;}
 
 <div class="hdr">
   <div class="hdr-title">
-    <span class="mat" id="v-mat">—</span>
+    <select class="mat-sel" id="s-preset" onchange="onPresetChange()">
+      <option value="kagayaki" selected>超かがやきの樹液</option>
+      <option value="amatsuyu">超あまつゆのいと</option>
+      <option value="custom">手動設定</option>
+    </select>
     <span class="gear" id="v-gear">—</span>
+    <button class="hdr-reset" onclick="confirmReset()">やり直す</button>
   </div>
   <div class="hdr-row">
     <div class="stat tap" onclick="openPad('temp')">
@@ -393,7 +413,7 @@ table.sk .cst{text-align:right; font-weight:700;}
   <div class="body"><table class="sk" id="skTable"></table></div>
 </details>
 
-<details class="acc">
+<details class="acc" id="setAcc">
   <summary>設定</summary>
   <div class="body">
     <div class="set-row"><label>職人レベル</label>
@@ -419,13 +439,6 @@ table.sk .cst{text-align:right; font-weight:700;}
     <div class="set-row"><label>バー最大値</label>
       <input type="number" id="s-barmax" min="10" max="9999" placeholder="自動"
              oninput="onBarMaxChange()"></div>
-    <div class="set-row"><label>素材</label>
-      <select id="s-preset" onchange="onPresetChange()">
-        <option value="kagayaki" selected>超かがやきの樹液</option>
-        <option value="amatsuyu">超あまつゆのいと</option>
-        <option value="custom">手動設定</option>
-      </select></div>
-
     <div id="zoneEdit" style="display:none">
       <div style="font-size:11.5px;color:var(--dim);margin:10px 0 6px">
         各マスの成功ゾーン(下限・上限)
@@ -434,7 +447,6 @@ table.sk .cst{text-align:right; font-weight:700;}
       <button class="calc" style="margin-top:8px" onclick="applyZones()">ゾーンを反映</button>
     </div>
 
-    <button class="calc" style="margin-top:8px" onclick="confirmReset()">最初からやり直す</button>
   </div>
 </details>
 
@@ -733,7 +745,7 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, lone:1, mpm:16 };
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, lone:1, mpm:16, slack:1, effK:4, slackMax:2 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -1258,6 +1270,23 @@ function stratB(ms,f,t,P,cfg){
     const safeAfter = afterCost >= openAfter*MIN_PER_MASS;
     const affordable = safeAfter;
     const capW = (tight||!safeAfter) ? 0 : P.cap;
+    // 前進効率は「集中力が足りない時にだけ」意味を持つ指標。
+    // 余剰が大きい局面では、安くて伸びる技が本会心の価値を押し流してしまうため、
+    // 余剰の大きさに応じて効率項の重みを落とす。
+    // 残りに必要な集中力の見積り。マス数だけで測ると、まだ遠いマスが多い中盤を
+    // 「余裕あり」と誤判定するため、残り前進量そのものから見積もる。
+    let restAdv = 0;
+    for(let i=0;i<ms.length;i++){
+      const d = ms[i].zoneLow - ms[i].current;
+      if(d > 0) restAdv += d;
+    }
+    const effK = (P.effK === undefined ? 4 : P.effK);
+    const needF = Math.max(openAfter * MIN_PER_MASS, restAdv / effK, 1);
+    const slack = Math.max(0, afterCost - needF);
+    // 余剰が確実に見えるのは終盤(残りマスが少ない時)だけ。中盤で緩めると
+    // 集中力を使い切って失敗が増えるため、残りマス数で発動を絞る。
+    const slackOn = openAfter > 0 && openAfter <= (P.slackMax === undefined ? 1 : P.slackMax);
+    const advW  = slackOn ? P.adv / (1 + (P.slack||0) * slack / needF) : P.adv;
     // ゾーンに確実に入る手(最小ロールで届き最大ロールで超えない)を優遇
     let sureIn=0;
     {
@@ -1522,7 +1551,7 @@ function stratB(ms,f,t,P,cfg){
       }
       if(maxGap > 0) farBonus = (myGap / maxGap) * P.far;
     }
-    const score=cap*capW + (adv/x.c)*P.adv + landBonus + prio*P.pr + farBonus
+    const score=cap*capW + (adv/x.c)*advW + landBonus + prio*P.pr + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(score>bs){bs=score;best=x;}
   }
@@ -1914,9 +1943,8 @@ function buildBar(mk, flip){
 
 function renderHeader(){
   // 複数商材を扱うので、今どれを打っているかを最上段に常時出す
-  const pre = PRESETS[G.preset];
-  document.getElementById('v-mat').textContent =
-    pre ? pre.name : (G.preset === 'custom' ? '手動設定の盤面' : '—');
+  const sel = document.getElementById('s-preset');
+  if(sel && sel.value !== G.preset) sel.value = G.preset;
   const hm = HAMMERS[G.hammerId];
   document.getElementById('v-gear').textContent =
     (hm ? hm.name : G.hammerId) + '★' + G.star + ' / Lv' + G.level;
@@ -2251,6 +2279,10 @@ function onPresetChange(){
     box.style.display = 'block';
     renderZoneRows();
     G.preset = 'custom';
+    // ゾーンの入力欄は設定の中にあるので、選んだら開いて見せる
+    const acc = document.getElementById('setAcc');
+    if(acc) acc.open = true;
+    renderAll(); save();
     return;
   }
   box.style.display = 'none';
