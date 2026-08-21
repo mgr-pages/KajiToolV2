@@ -747,7 +747,7 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, lone:1, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24 };
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -1411,15 +1411,8 @@ function stratB(ms,f,t,P,cfg){
       // 相手の必要前進量が大きく離れるため同時に本会心圏へ入れにくい。
       // 実測では本会心圏での射撃が A/E は38%、他マスは50%前後だった。
       // 単発のねらい打ちで拾えるよう、これらへの狙いを後押しする。
-      let loneW = 1;
-      if(P.lone > 0 && x.sk.masses === 1){
-        for(const i of x.tg){
-          const m = ms[i];
-          if(m.current >= m.zoneLow) continue;
-          if(m.zoneHigh - m.zoneLow + 1 >= 10) loneW = P.lone;
-        }
-      }
-      turnEff = (critRate * pinkVal) / x.c * P.te * widthW * loneW;
+      // 幅11マスへの単発優遇(lone)は検証で効果なしと判明したため撤去した。
+      turnEff = (critRate * pinkVal) / x.c * P.te * widthW;
 
     }
 
@@ -1566,15 +1559,6 @@ function stratB(ms,f,t,P,cfg){
         // ゾーン直前まで詰めたマスでは、どの技を使ってもはみ出す局面で
         // 狙い打ちだけが失格になる。判定は cap 項と同じ捕捉確率に揃える。
         const th = (P.saveCap === undefined ? 0.7 : P.saveCap);
-        if(th < 0){   // 検証用:従来の厳格判定
-          for(const i of x.tg){
-            const m = ms[i];
-            if(m.current >= m.zoneLow) continue;
-            if(m.current + r[6] > m.zoneHigh) continue;
-            if(m.current + 2*r[0] < m.zoneHigh) continue;
-            worth = true; break;
-          }
-        } else
         for(const i of x.tg){
           const m = ms[i];
           if(m.current >= m.zoneLow) continue;
