@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくってみよう！</title>
+<title>超素材をつくろう！</title>
 <style>
 :root{
   --bg:#12100e; --bg2:#1c1917; --panel:#232019; --line:#3a332a;
@@ -38,22 +38,24 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .badge.off{background:var(--panel); color:var(--dim); border:1px solid var(--line);}
 
 /* ===== ヘッダー上段:今どの商材をどの装備で打っているか ===== */
-.hdr-title{display:flex; align-items:baseline; gap:8px; margin-bottom:6px;}
+.hdr-title{display:flex; align-items:center; gap:8px; margin-bottom:6px;}
 .hdr-title .mat{font-size:14px; font-weight:800; color:var(--gold);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;}
 .hdr-title .mat-sel{background:var(--panel); border:1px solid var(--line);
   color:var(--gold); font-size:14px; font-weight:800; border-radius:6px;
-  padding:5px 26px 5px 9px; min-width:0; max-width:58%;
+  padding:7px 26px 7px 10px; min-width:0; flex:1 1 auto; max-width:none;
   appearance:none; -webkit-appearance:none;
   background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),
     linear-gradient(135deg,var(--dim) 50%,transparent 50%);
   background-position:calc(100% - 14px) 52%, calc(100% - 9px) 52%;
   background-size:5px 5px, 5px 5px; background-repeat:no-repeat;}
-.hdr-title .hdr-reset{background:transparent; border:1px solid var(--line);
-  color:var(--dim); border-radius:6px; padding:5px 10px; font-size:11px;
-  font-weight:700; white-space:nowrap; flex:0 0 auto;}
-.hdr-title .hdr-reset:active{background:var(--panel);}
-.hdr-title .gear{font-size:10.5px; color:var(--dim); white-space:nowrap; margin-left:auto;}
+.hdr-title .hdr-reset{background:var(--panel); border:1px solid rgba(232,103,44,.6);
+  color:var(--ember); border-radius:6px; padding:8px 13px; font-size:12.5px;
+  font-weight:800; white-space:nowrap; flex:0 0 auto;}
+.hdr-title .hdr-reset:active{background:var(--ember); color:#fff;}
+/* 装備表示は情報としては最も弱いので、幅が足りない時はここだけを詰める */
+.hdr-title .gear{font-size:10.5px; color:var(--dim); white-space:nowrap;
+  margin-left:auto; flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;}
 
 /* ===== 推奨手順:各手の右に「ここまで実行」ボタン ===== */
 .pstep{display:flex; align-items:center; gap:8px; padding:5px 4px; border-radius:6px;}
@@ -234,7 +236,7 @@ table.sk .cst{text-align:right; font-weight:700;}
   .badge{ font-size:12.5px; padding:5px 12px; }
   .hdr-title .mat-sel{ font-size:17px; padding:7px 30px 7px 12px; max-width:none; }
   .hdr-title .gear{ font-size:12.5px; }
-  .hdr-title .hdr-reset{ font-size:12.5px; padding:7px 14px; }
+  .hdr-title .hdr-reset{ font-size:14px; padding:9px 18px; }
 
   /* 盤面と操作パネルを左右に並べる */
   .main{ display:grid; grid-template-columns: 1fr 400px; gap:20px;
@@ -369,8 +371,8 @@ table.sk .cst{text-align:right; font-weight:700;}
       <option value="amatsuyu">超あまつゆのいと</option>
       <option value="custom">手動設定</option>
     </select>
-    <span class="gear" id="v-gear">—</span>
     <button class="hdr-reset" onclick="confirmReset()">やり直す</button>
+    <span class="gear" id="v-gear">—</span>
   </div>
   <div class="hdr-row">
     <div class="stat tap" onclick="openPad('temp')">
@@ -745,7 +747,7 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, lone:1, mpm:16, slack:1, effK:4, slackMax:2 };
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, lone:1, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -916,7 +918,25 @@ function moves(ms,f,t,cfg){
         for(const i of tg) if(ms[i].current+r[6]>ms[i].zoneHigh){safe=false;break;}
         if(safe){ rescue.push({sk,tg,c,nt,overP:0,cooling:true}); added=true; }
       }
-      if(!added) rescue.push({sk,tg:[],c,nt,overP:0,cooling:true});
+      // 対象マスを持つ技を「対象なし」で出してはいけない。
+      // 熱風おろしはロールがたたくの約2.5倍あり、実際に撃てば必ずどこかのマスが伸びる。
+      // 対象なしで出すと、その前進量が計算から消えたまま推奨されることになり、
+      // プレイヤーが実行した瞬間に盤面と予測がずれる。
+      // 安全な対象が無い場合は、超過が最も小さい対象を選び、その超過リスクを明示する。
+      if(!added){
+        let bestTg = null, bestOv = Infinity;
+        for(const tg of enumerateTargetSets(sk)){
+          if(tg.some(i=>ms[i].current>=ms[i].zoneLow))continue;
+          let ov = 0;
+          for(const i of tg){
+            let cnt = 0;
+            for(const x of r) if(ms[i].current+x>ms[i].zoneHigh) cnt++;
+            ov = Math.max(ov, cnt/r.length);
+          }
+          if(ov < bestOv){ bestOv = ov; bestTg = tg; }
+        }
+        if(bestTg) rescue.push({sk,tg:bestTg,c,nt,overP:bestOv,cooling:true});
+      }
     }
   }
   if(rescue.length>0) return strict.concat(rescue);
@@ -1091,6 +1111,42 @@ function stratB(ms,f,t,P,cfg){
   if(P.pairSnipe > 0){
     const ps = pairSnipe(ms, f, t, cfg);
     if(ps) return ps;
+  }
+
+  // ---- 会心ターンは本会心の回収に使う ----
+  // 会心率が5倍になるこのターンの価値は、本会心を取れる時にしか出ない。
+  // 実測では会心ターンの打撃3.77回のうち超4連打ちが1.61回を占め、
+  // 会心1.97回を発生させながら本会心は0.44回(22%)しか拾えていなかった。
+  // 捕捉できる見込みがあるマスがあるなら、狙い打ち系を優先する。
+  if(P.boostAim > 0 && isBoostTurn(t)){
+    const cand = moves(ms, f, t, cfg);
+    let bA = null, bV = -1;
+    for(const x of cand){
+      if(!x.sk.crit || !x.sk.key || f < x.c) continue;
+      const tg = x.tg.filter(i => ms[i].current < ms[i].zoneLow);
+      if(!tg.length) continue;
+      const r = getRollCandidates(x.sk, t, cfg.trait, false);
+      if(!r) continue;
+      let sum = 0;
+      for(const i of tg){
+        const m = ms[i], zn = m.zoneHigh - m.zoneLow + 1;
+        let c = 0;
+        for(const rv of r){
+          const reach = m.current + 2*rv; let n = 0;
+          for(let id = m.zoneLow; id <= m.zoneHigh; id++) if(id > m.current && id <= reach) n++;
+          c += (n/zn)/r.length;
+        }
+        sum += c;
+      }
+      if(sum / tg.length < P.boostAim) continue;      // 捕捉の見込みが薄いなら見送る
+      // 残るマスを仕上げる集中力を確保できる時だけ撃つ
+      const rest = ms.filter(m => m.current < m.zoneLow).length - tg.length;
+      if(f - x.c < rest * (P.boostRes === undefined ? 24 : P.boostRes)) continue;
+      const cr = computeCritRate(x.sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, t);
+      const v = sum * cr / x.c;
+      if(v > bV){ bV = v; bA = x; }
+    }
+    if(bA) return bA;
   }
 
   // ---- たたき変化の開幕定跡 ----
@@ -1505,13 +1561,31 @@ function stratB(ms,f,t,P,cfg){
     if(isHalfTurn(t) && x.sk.masses>0){
       let worth = false;
       if(x.sk.crit){
-        // 狙い打ち系は、本会心が成立する対象がある時だけ意味がある
+        // 狙い打ち系は、会心が理想値を捉える見込みがある時に意味がある。
+        // 「最大ロールでもゾーンをはみ出さない」ことまで求めると、
+        // ゾーン直前まで詰めたマスでは、どの技を使ってもはみ出す局面で
+        // 狙い打ちだけが失格になる。判定は cap 項と同じ捕捉確率に揃える。
+        const th = (P.saveCap === undefined ? 0.7 : P.saveCap);
+        if(th < 0){   // 検証用:従来の厳格判定
+          for(const i of x.tg){
+            const m = ms[i];
+            if(m.current >= m.zoneLow) continue;
+            if(m.current + r[6] > m.zoneHigh) continue;
+            if(m.current + 2*r[0] < m.zoneHigh) continue;
+            worth = true; break;
+          }
+        } else
         for(const i of x.tg){
           const m = ms[i];
           if(m.current >= m.zoneLow) continue;
-          if(m.current + r[6] > m.zoneHigh) continue;
-          if(m.current + 2*r[0] < m.zoneHigh) continue;
-          worth = true; break;
+          const zn = m.zoneHigh - m.zoneLow + 1;
+          let c3 = 0;
+          for(const rv of r){
+            const reach = m.current + 2*rv; let n = 0;
+            for(let id = m.zoneLow; id <= m.zoneHigh; id++) if(id > m.current && id <= reach) n++;
+            c3 += (n/zn)/r.length;
+          }
+          if(c3 >= th){ worth = true; break; }
         }
       } else {
         // 通常技は前進が仕事なので、未到達マスを叩けるなら意味がある
