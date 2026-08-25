@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！</title>
+<title>超素材を作ろう！</title>
 <style>
 :root{
   --bg:#12100e; --bg2:#1c1917; --panel:#232019; --line:#3a332a;
@@ -57,6 +57,20 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .hdr-title .gear{font-size:10.5px; color:var(--dim); white-space:nowrap;
   margin-left:auto; flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;}
 
+.rec-pick{margin-top:10px; border-top:1px solid var(--line); padding-top:8px;}
+.step-btn{width:100%; background:var(--panel); border:1px solid rgba(232,103,44,.6);
+  color:var(--ember); border-radius:7px; padding:11px; font-size:14px; font-weight:800;}
+.step-btn:active{background:var(--ember); color:#fff;}
+.cand-lab{font-size:11px; color:var(--dim); margin:6px 0 4px;}
+.cand-grp{margin-bottom:8px;}
+.cand-h{font-size:10.5px; color:var(--dim); display:block; margin-bottom:4px;}
+.cand-row{display:flex; flex-wrap:wrap; gap:6px;}
+.cand{background:var(--panel); border:1px solid var(--line); color:var(--text);
+  border-radius:6px; padding:9px 11px; font-size:15px; font-weight:700;
+  font-variant-numeric:tabular-nums; min-width:52px;}
+.cand:active{background:var(--ember); color:#fff;}
+.cand.crit{border-color:rgba(255,95,208,.55); color:var(--pink);}
+.cand.crit:active{background:var(--pink); color:#1a1613;}
 /* ===== 推奨手順:各手の右に「ここまで実行」ボタン ===== */
 .pstep{display:flex; align-items:center; gap:8px; padding:5px 4px; border-radius:6px;}
 .pstep + .pstep{margin-top:4px;}
@@ -74,6 +88,11 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .pexec:active{background:#2c2820;}
 .pexec .t{display:block; font-size:11px; color:var(--gold);}
 .pexec .s{display:block; font-size:9px; color:var(--dim); font-weight:600;}
+.pexec .s.ok{color:var(--green);}
+.pexec .s.warn{color:var(--dim); text-decoration:line-through;}
+.plist-note{font-size:10px; color:var(--dim); line-height:1.5; margin:8px 2px 0;}
+.dup-line{font-size:10.5px; color:var(--dim); text-align:center; margin:8px 0 4px;
+  border-top:1px dashed var(--line); padding-top:6px;}
 .badge.weak{background:rgba(155,145,134,.18); color:var(--dim); border:1px solid var(--line);}
 .mk-weak{ color:var(--dim); font-size:10.5px; font-weight:800; white-space:nowrap; }
 .pstep.on-weak{background:rgba(155,145,134,.10); border-left:3px solid var(--line);}
@@ -400,9 +419,9 @@ table.sk .cst{text-align:right; font-weight:700;}
 
 <div class="side">
 <div class="foot" id="footPanel">
-  <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
+  <div class="rec" id="rec"><div class="rec-empty">「推奨手を計算」を押してください</div></div>
   <div id="execPanel"></div>
-  <button class="calc" id="calcBtn" onclick="doCalc()">次の一手を計算</button>
+  <button class="calc" id="calcBtn" onclick="doCalc()">推奨手を計算</button>
 </div>
 
 <details class="acc" open>
@@ -458,6 +477,7 @@ table.sk .cst{text-align:right; font-weight:700;}
 <div class="modal" id="modal" onclick="if(event.target===this)closePad()">
   <div class="pad">
     <div class="pad-hd" id="padTitle"></div>
+    <div id="padCand" style="display:none"></div>
     <div class="pad-disp"><span class="pre" id="padPre"></span><span id="padVal">0</span></div>
     <div class="pad-res" id="padRes"></div>
     <div class="keys k4">
@@ -483,7 +503,7 @@ const G = {
   level: 80, hammerId:'light', star:3, trait:'shuchu',
   rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null,
   // 実行済み反映で「数値の手入力待ち」になっているマス番号
-  pending: [], undoSnap: null, showRange: true, hist: []
+  pending: [], undoSnap: null, showRange: true, hist: [], posts: null, obs: null
 };
 // 素材ごとのプリセット。zones は各マスの成功ゾーン[下限,上限]、
 // trait はその素材が持つ地金特性(選択時に自動で切り替える)。
@@ -1619,6 +1639,92 @@ function stratB(ms,f,t,P,cfg){
 
 // 現局面から推奨手順どおりに打ち切った場合の成績を、乱数試行で実測する。
 // 理想値は見えないので試行ごとにサンプリングし、その平均を取る。
+/* ====== 理想値の事後分布 ======
+   打撃のたびに「打撃前の値・技のロール候補・会心の有無・打撃後の値」から
+   理想値の確率分布を絞り込む。会心が通常ロールと同じ値で止まって理想値に
+   はまる場合があるため、会心の有無は必ず観測値として受け取る。 */
+function freshPost(m){ const n = m.zoneHigh - m.zoneLow + 1; return new Array(n).fill(1/n); }
+function ensurePosts(){
+  if(!Array.isArray(G.posts) || G.posts.length !== G.masses.length){
+    G.posts = G.masses.map(freshPost);
+  }
+  for(let i=0;i<G.masses.length;i++){
+    const need = G.masses[i].zoneHigh - G.masses[i].zoneLow + 1;
+    if(!Array.isArray(G.posts[i]) || G.posts[i].length !== need) G.posts[i] = freshPost(G.masses[i]);
+  }
+}
+function updatePost(i, before, rolls, critRate, after, wasCrit){
+  ensurePosts();
+  const m = G.masses[i], lo = m.zoneLow, post = G.posts[i], out = [];
+  for(let k=0;k<post.length;k++){
+    const v = lo + k;
+    let n1 = 0, n2 = 0;
+    for(const r of rolls){
+      if(before + r === after) n1++;
+      if(Math.min(before + 2*r, v) === after) n2++;
+    }
+    let L;
+    if(wasCrit === true)       L = n2 / rolls.length;
+    else if(wasCrit === false) L = n1 / rolls.length;
+    else                       L = (1-critRate) * n1 / rolls.length + critRate * n2 / rolls.length;
+    out.push(post[k] * L);
+  }
+  const sum = out.reduce((a,b)=>a+b, 0);
+  if(sum > 0) G.posts[i] = out.map(x => x / sum);
+}
+// 各マスの誤差分布を畳み込んで、誤差合計7以下の確率を出す
+function greatProbFromPosts(masses, posts){
+  let dist = [1];
+  for(let i=0;i<masses.length;i++){
+    const m = masses[i];
+    if(m.current < m.zoneLow) return null;          // 未到達があれば確定できない
+    const e = [0,0,0,0,0];
+    for(let k=0;k<posts[i].length;k++){
+      e[Math.min(Math.abs(m.current - (m.zoneLow + k)), 4)] += posts[i][k];
+    }
+    const nd = new Array(Math.min(dist.length + 4, 30)).fill(0);
+    for(let a=0;a<dist.length;a++) for(let b=0;b<5;b++) nd[Math.min(a+b,29)] += dist[a] * e[b];
+    dist = nd;
+  }
+  let p = 0;
+  for(let i=0;i<=7 && i<dist.length;i++) p += dist[i];
+  return p;
+}
+// 理想値が絞り込めていない(分布が一様のまま)マス数。
+// 通常ロールの結果は理想値の手がかりにならないので、入力しても一様のまま残る
+// 全マス到達後は、理想値の分布から大成功率を直接出せる。
+// 未入力のマスがある場合は確定できないので、最良・最悪の幅で示す。
+function rateFromPosts(detail){
+  if(!G.masses.every(m => m.current >= m.zoneLow && m.current <= m.zoneHigh)) return null;
+  ensurePosts();
+  const p = greatProbFromPosts(G.masses, G.posts);
+  if(p == null) return null;
+  const unk = unknownCount();
+  if(unk === 0) return (p*100).toFixed(0) + '%';
+  if(!detail) return (p*100).toFixed(0) + '%';
+  // 未確定マスを誤差0とみなした上限
+  const best = G.posts.map((q,i)=>{
+    const arr = q.slice();
+    if(arr.every(x=>Math.abs(x-arr[0])<1e-9)){
+      const k = G.masses[i].current - G.masses[i].zoneLow;
+      return arr.map((_,j)=> j===k ? 1 : 0);
+    }
+    return arr;
+  });
+  const hi = greatProbFromPosts(G.masses, best);
+  return (p*100).toFixed(0) + '%(理想値が未確定のマスが' + unk
+       + '。すべて誤差0なら' + (hi*100).toFixed(0) + '%)';
+}
+function unknownCount(){
+  ensurePosts();
+  let n = 0;
+  for(let i=0;i<G.masses.length;i++){
+    const p = G.posts[i];
+    if(p.every(x => Math.abs(x - p[0]) < 1e-9)) n++;
+  }
+  return n;
+}
+
 function estimateOutcome(masses, focus, temp, cfg, trials){
   const savedSim = simFirstMove;
   const startsFresh = isStartState();
@@ -2015,7 +2121,9 @@ function renderHeader(){
   if(isStartState()) b.push('<span class="badge off">開始直後(特性なし)</span>');
   const done = G.masses.filter(m=>m.current>=m.zoneLow).length;
   b.push(`<span class="badge ${done===6?'rate':'off'}">到達 ${done}/6</span>`);
-  if(G.lastRate!=null) b.push(`<span class="badge rate">大成功 約${(G.lastRate*100).toFixed(0)}%</span>`);
+  const gp = rateFromPosts();
+  if(gp) b.push(`<span class="badge rate">大成功 ${gp}</span>`);
+  else if(G.lastRate!=null) b.push(`<span class="badge rate">大成功 約${(G.lastRate*100).toFixed(0)}%</span>`);
   document.getElementById('badges').innerHTML = b.join('');
 }
 
@@ -2045,11 +2153,26 @@ function renderRec(){
   // 仕上げに何発残せるかの判断に直結するため。
   const leftF = G.focus - r.c;
   const warn = leftF < 40 ? ' style="color:var(--ember)"' : '';
+  const rc = recCandidates();
+  let quick = '';
+  if(rc){
+    const b = (v,c) => `<button class="cand${c?' crit':''}" onclick="quickPick(${rc.idx},${v},${c})">${v}</button>`;
+    quick = `<div class="rec-pick">
+        <div class="cand-lab">打った結果のマス${rc.idx+1}の値を選ぶと、1手ぶん反映されます</div>
+        <div class="cand-grp"><span class="cand-h">通常</span>
+          <div class="cand-row">${rc.normal.map(v=>b(v,false)).join('')}</div></div>
+        <div class="cand-grp"><span class="cand-h">会心が出た</span>
+          <div class="cand-row">${rc.crit.map(v=>b(v,true)).join('')}</div></div>
+      </div>`;
+  } else if(r.sk.masses === 0){
+    quick = `<div class="rec-pick">
+        <button class="step-btn" onclick="quickStep()">この手を打った</button></div>`;
+  }
   el.innerHTML = `<div class="rec-main">
       <div class="rec-skill">${r.sk.name}</div>
       <div class="rec-sub">${tgt} / 消費${r.c}${r.sk.key?' / 会心'+(cr*100).toFixed(0)+'%':''}</div>
       <div class="rec-sub">実行後 → <b${warn}>集中力 ${leftF}</b> / ${r.nt}℃</div>
-    </div>`;
+    </div>` + quick;
 }
 
 function renderDetail(){
@@ -2057,7 +2180,8 @@ function renderDetail(){
   if(!G.rec && !G.hist.length){ el.textContent='まだ計算していません'; return; }
   let h = '';
   if(G.lastRate!=null){
-    h += `<div style="margin-bottom:8px">大成功率 約${(G.lastRate*100).toFixed(1)}% ／ `
+    const gp2 = rateFromPosts(true);
+    h += `<div style="margin-bottom:8px">大成功率 ${gp2 ? gp2 : '約'+(G.lastRate*100).toFixed(1)+'%'} ／ `
        + `誤差 約${G.lastErr.toFixed(1)} ／ 到達 約${(G.lastReach*100).toFixed(0)}%</div>`;
   }
   if(G.hist.length){
@@ -2072,17 +2196,44 @@ function renderDetail(){
     h += '<div style="color:var(--dim);font-size:11px;margin-bottom:6px">'
        + 'この先の想定手順 — 実際に打ったところのボタンを押すと温度と集中力に反映されます</div>';
     let f = G.focus;
+    // 理想値が絞れるのは「会心が理想値ちょうどで止まりうる位置」で叩いた時だけ。
+    // 会心で最大まで伸ばしても成功ゾーンに届かない位置なら、結果は理想値と無関係に
+    // 決まるので、何手まとめて実行しても失う情報は無い。
+    // 逆に届きうる手を含めてまとめると、その分の判定ができなくなる。
+    // 途中の値は分からないので、最大ロールの会心が続いた場合の上限で判定する。
+    const ub = G.masses.map(m => m.current);          // 各マスの取りうる最大値
+    const info = []; let cutAt = -1;
+    G.plan.forEach((st,i)=>{
+      const sk = SKILLS.find(k => k.name === st.name);
+      const rr = (sk && sk.key) ? getRollCandidates(sk, st.temp, G.trait, false) : null;
+      let reach = false;
+      if(rr){
+        const top = 2 * rr[rr.length-1];
+        st.tg.forEach(j => {
+          const m = G.masses[j];
+          if(ub[j] >= m.zoneLow) return;              // 既に到達済み
+          if(ub[j] + top >= m.zoneLow) reach = true;  // 会心でゾーンに届きうる
+          ub[j] = Math.min(m.zoneHigh, ub[j] + top);
+        });
+      }
+      if(reach && cutAt < 0) cutAt = i;
+      info.push({ reach, safe: cutAt < 0 || i < cutAt });
+    });
     h += '<div class="plist-body">' + G.plan.map((st,i)=>{
       f -= st.cost;
       const mark = st.mk ? ` <b class="mk-${st.mk.k}">${st.mk.l}</b>` : '';
       const cls  = (st.mk ? ' on-'+st.mk.k : '') + (i===0?' first':'');
       const tg   = st.tg.length ? st.tg.map(x=>'マス'+(x+1)).join('・') : '温度操作';
+      const note = info[i].safe ? '' : `<span class="s warn">大成功率が出せません</span>`;
       const btn  = f < 0 ? ''
         : `<button class="pexec" onclick="applyExecuted(${i+1})">
              <span class="t">ここまで実行</span>
              <span class="s">${st.tempAfter}℃ / 集中${f}</span>
+             ${note}
            </button>`;
-      return `<div class="pstep${cls}">
+      const bar  = (i === cutAt)
+        ? '<div class="dup-line">ここまでで数値の入力を推奨</div>' : '';
+      return bar + `<div class="pstep${cls}">
           <span class="n">${i+1}</span>
           <div class="pinfo">
             <div class="pname">${st.name}${mark}</div>
@@ -2090,6 +2241,8 @@ function renderDetail(){
           </div>${btn}
         </div>`;
     }).join('') + '</div>';
+    h += '<div class="plist-note">数値を入力しなくても手順は進められます。'
+       + '入力しない場合、大成功率が計算できません(推奨手の精度には影響しません)。</div>';
     h += traitNote();
   }
   el.innerHTML = h || '—';
@@ -2146,8 +2299,33 @@ function applyExecuted(k){
 
   // 叩いたマスは値が変わっているはずなので、手入力の対象にする。
   // 温度操作だけの手は対象マスが無いので何も増えない。
+  // 理想値を絞り込むには「1回の打撃ごとの前後の値」が要る。
+  // まとめて実行して同じマスを2回以上叩いた場合は分解できないので、
+  // そのマスの推定は諦めて分布を一様に戻す。
+  const cnt = {};
+  steps.forEach(st => st.tg.forEach(i => { cnt[i] = (cnt[i]||0) + 1; }));
+  ensurePosts();
+  if(!G.obs) G.obs = new Array(G.masses.length).fill(null);
+  let t2 = G.undoSnap.temp;
+  const firstOf = {};
+  steps.forEach(st => {
+    const sk = SKILLS.find(k => k.name === st.name);
+    st.tg.forEach(i => {
+      if(firstOf[i] === undefined && sk && sk.key){
+        firstOf[i] = { before: G.masses[i].current,
+                       rolls: getRollCandidates(sk, st.temp, G.trait, false),
+                       cr: computeCritRate(sk, G.level, G.hammerId, G.star, G.trait, st.temp),
+                       name: st.name };
+      }
+    });
+  });
   const hit = new Set(G.pending);
   steps.forEach(st => st.tg.forEach(i => hit.add(i)));
+  for(const i of hit){
+    if(cnt[i] > 1 || !firstOf[i]){ G.obs[i] = null; G.posts[i] = freshPost(G.masses[i]); }
+    else if(!G.obs[i]) G.obs[i] = firstOf[i];
+    else { G.obs[i] = null; G.posts[i] = freshPost(G.masses[i]); }
+  }
   G.pending = [...hit].sort((a,b)=>a-b);
 
   G.rec = null; G.plan = []; G.lastRate = null;
@@ -2230,6 +2408,76 @@ function buildPlan(ms0, cfg){
 //   ＋ / － を押してから数字を入力 → 現在値に加算 / 減算
 let padTarget=null, padIdx=null, padOp=null, padBuf='';
 
+// 打撃後に起こりうる値を全て列挙する。結果は必ずこの中のどれかになる。
+function candidateValues(idx){
+  const ob = G.obs && G.obs[idx];
+  if(!ob || !ob.rolls) return null;
+  const m = G.masses[idx], b = ob.before;
+  const normal = [], crit = [];
+  for(const r of ob.rolls){
+    if(normal.indexOf(b + r) < 0) normal.push(b + r);
+    if(crit.indexOf(b + 2*r) < 0) crit.push(b + 2*r);
+  }
+  // 会心が理想値ちょうどで止まる場合。値はゾーン内の任意の位置になりうる
+  const cap = [];
+  const top = b + 2*ob.rolls[ob.rolls.length-1];
+  for(let v = Math.max(m.zoneLow, b + 1); v <= m.zoneHigh && v <= top; v++){
+    if(crit.indexOf(v) < 0 && cap.indexOf(v) < 0) cap.push(v);
+  }
+  normal.sort((a,c)=>a-c); crit.sort((a,c)=>a-c); cap.sort((a,c)=>a-c);
+  return { normal, crit, cap, name: ob.name };
+}
+// 候補を選んだとき。会心の有無まで受け取って理想値の分布を更新する
+function pickValue(idx, val, wasCrit){
+  const ob = G.obs && G.obs[idx];
+  if(ob && ob.rolls) updatePost(idx, ob.before, ob.rolls, ob.cr, val, wasCrit);
+  G.masses[idx].current = val;
+  if(G.obs) G.obs[idx] = null;
+  G.pending = G.pending.filter(i => i !== idx);
+  if(G.pending.length){
+    // まだ入力待ちが残っているなら、続けて次のマスを開く
+    renderAll(); save();
+    openPad('mass', G.pending[0]);
+    return;
+  }
+  closePad();
+  G.msg = null;
+  doCalc();                       // 入力が揃った時点で次の一手は確定できる
+  save();
+}
+// 推奨手の対象マスのうち、最初の未到達マスの候補を出す。
+// 候補を選ぶこと自体が「その手を打った」という報告になる。
+function recCandidates(){
+  if(!G.rec || !G.rec.sk || !G.rec.sk.key) return null;
+  const tg = G.rec.tg.filter(i => G.masses[i].current < G.masses[i].zoneLow);
+  if(!tg.length) return null;
+  const idx = tg[0], m = G.masses[idx];
+  const rolls = getRollCandidates(G.rec.sk, G.temp, G.trait, false);
+  if(!rolls) return null;
+  const normal = [], crit = [], cap = [];
+  for(const r of rolls){
+    if(normal.indexOf(m.current + r) < 0) normal.push(m.current + r);
+    if(crit.indexOf(m.current + 2*r) < 0) crit.push(m.current + 2*r);
+  }
+  const top = m.current + 2*rolls[rolls.length-1];
+  for(let v = Math.max(m.zoneLow, m.current + 1); v <= m.zoneHigh && v <= top; v++){
+    if(crit.indexOf(v) < 0) cap.push(v);
+  }
+  normal.sort((a,b)=>a-b); crit.sort((a,b)=>a-b); cap.sort((a,b)=>a-b);
+  return { idx, normal, crit: crit.concat(cap).sort((a,b)=>a-b) };
+}
+// 候補を選んだ = その手を1手打った、として反映まで一気に行う
+function quickPick(idx, val, wasCrit){
+  if(!G.rec) return;
+  applyExecuted(1);
+  pickValue(idx, val, wasCrit);
+}
+// 温度操作だけの手は入力するものが無いので、押すだけで反映する
+function quickStep(){
+  if(!G.rec) return;
+  applyExecuted(1);
+  if(!G.pending.length){ G.msg = null; doCalc(); save(); }
+}
 function openPad(kind, idx){
   padTarget=kind; padIdx=idx; padBuf=''; padOp=null;
   let title='';
@@ -2242,6 +2490,21 @@ function openPad(kind, idx){
     title='残り集中力';
   }
   document.getElementById('padTitle').textContent=title;
+  const box = document.getElementById('padCand');
+  const cand = (kind === 'mass') ? candidateValues(idx) : null;
+  if(box){
+    if(cand){
+      const btn = (v,c) => `<button class="cand${c?' crit':''}" onclick="pickValue(${idx},${v},${c})">${v}</button>`;
+      box.innerHTML =
+        `<div class="cand-lab">${cand.name} の結果を選んでください</div>`
+      + `<div class="cand-grp"><span class="cand-h">通常</span><div class="cand-row">`
+      + cand.normal.map(v=>btn(v,false)).join('') + `</div></div>`
+      + `<div class="cand-grp"><span class="cand-h">会心が出た</span><div class="cand-row">`
+      + cand.crit.concat(cand.cap).sort((a,b)=>a-b).map(v=>btn(v,true)).join('') + `</div></div>`
+      + `<div class="cand-lab">一覧に無い値は下のキーで入力してください</div>`;
+      box.style.display = 'block';
+    } else { box.innerHTML=''; box.style.display='none'; }
+  }
   updatePad();
   document.getElementById('modal').classList.add('show');
 }
@@ -2407,7 +2670,7 @@ function resetAll(){
   const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
   G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
   G.rec=null; G.plan=[]; G.lastRate=null;
-  G.pending=[]; G.undoSnap=null; G.msg=null; G.hist=[];
+  G.pending=[]; G.undoSnap=null; G.msg=null; G.hist=[]; G.posts=null; G.obs=null;
   renderZoneRows();
   renderAll(); save();
 }
@@ -2418,7 +2681,7 @@ function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
     level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax,
-    pending:G.pending, showRange:G.showRange, hist:G.hist
+    pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
   })); }catch(e){}
 }
 function load(){
