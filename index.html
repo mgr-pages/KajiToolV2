@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材を作ろう！</title>
+<title>超素材をつくろう！</title>
 <style>
 :root{
   --bg:#12100e; --bg2:#1c1917; --panel:#232019; --line:#3a332a;
@@ -57,20 +57,20 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .hdr-title .gear{font-size:10.5px; color:var(--dim); white-space:nowrap;
   margin-left:auto; flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;}
 
-.rec-pick{margin-top:10px; border-top:1px solid var(--line); padding-top:8px;}
-.step-btn{width:100%; background:var(--panel); border:1px solid rgba(232,103,44,.6);
-  color:var(--ember); border-radius:7px; padding:11px; font-size:14px; font-weight:800;}
-.step-btn:active{background:var(--ember); color:#fff;}
-.cand-lab{font-size:11px; color:var(--dim); margin:6px 0 4px;}
-.cand-grp{margin-bottom:8px;}
-.cand-h{font-size:10.5px; color:var(--dim); display:block; margin-bottom:4px;}
-.cand-row{display:flex; flex-wrap:wrap; gap:6px;}
+.cand-q{font-size:14px; font-weight:700; text-align:center; margin:2px 0 10px;}
+.cand-grp{margin-bottom:10px;}
+.cand-h{font-size:12px; display:block; margin-bottom:5px; font-weight:700;}
+.cand-h.n{color:var(--dim);}
+.cand-h.c{color:var(--pink);}
+.cand-row{display:grid; grid-template-columns:repeat(auto-fill,minmax(66px,1fr)); gap:6px;}
 .cand{background:var(--panel); border:1px solid var(--line); color:var(--text);
-  border-radius:6px; padding:9px 11px; font-size:15px; font-weight:700;
-  font-variant-numeric:tabular-nums; min-width:52px;}
+  border-radius:7px; padding:13px 4px; font-size:17px; font-weight:700;
+  font-variant-numeric:tabular-nums;}
 .cand:active{background:var(--ember); color:#fff;}
-.cand.crit{border-color:rgba(255,95,208,.55); color:var(--pink);}
+.cand.crit{border-color:rgba(255,95,208,.5); color:var(--pink);}
 .cand.crit:active{background:var(--pink); color:#1a1613;}
+.cand-more{width:100%; background:transparent; border:1px dashed var(--line);
+  color:var(--dim); border-radius:7px; padding:10px; font-size:12.5px; margin:2px 0 10px;}
 /* ===== 推奨手順:各手の右に「ここまで実行」ボタン ===== */
 .pstep{display:flex; align-items:center; gap:8px; padding:5px 4px; border-radius:6px;}
 .pstep + .pstep{margin-top:4px;}
@@ -93,6 +93,8 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .plist-note{font-size:10px; color:var(--dim); line-height:1.5; margin:8px 2px 0;}
 .dup-line{font-size:10.5px; color:var(--dim); text-align:center; margin:8px 0 4px;
   border-top:1px dashed var(--line); padding-top:6px;}
+.badge.wait{background:rgba(232,103,44,.14); color:var(--ember);
+  border:1px solid rgba(232,103,44,.45);}
 .badge.weak{background:rgba(155,145,134,.18); color:var(--dim); border:1px solid var(--line);}
 .mk-weak{ color:var(--dim); font-size:10.5px; font-weight:800; white-space:nowrap; }
 .pstep.on-weak{background:rgba(155,145,134,.10); border-left:3px solid var(--line);}
@@ -224,7 +226,8 @@ table.sk .cst{text-align:right; font-weight:700;}
   display:none; align-items:flex-end;}
 .modal.show{display:flex;}
 .pad{width:100%; background:var(--bg2); border-radius:14px 14px 0 0; padding:14px;
-  padding-bottom:calc(14px + env(safe-area-inset-bottom));}
+  padding-bottom:calc(14px + env(safe-area-inset-bottom));
+  max-height:88vh; overflow-y:auto; -webkit-overflow-scrolling:touch;}
 .pad-hd{text-align:center; font-size:13px; color:var(--dim); margin-bottom:9px;}
 .pad-tabs{display:flex; gap:6px; margin-bottom:10px;}
 .pad-tabs button{flex:1; background:var(--panel); border:1px solid var(--line); color:var(--dim);
@@ -419,9 +422,9 @@ table.sk .cst{text-align:right; font-weight:700;}
 
 <div class="side">
 <div class="foot" id="footPanel">
-  <div class="rec" id="rec"><div class="rec-empty">「推奨手を計算」を押してください</div></div>
+  <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
   <div id="execPanel"></div>
-  <button class="calc" id="calcBtn" onclick="doCalc()">推奨手を計算</button>
+  <button class="calc" id="calcBtn" onclick="doCalc()">次の一手を計算</button>
 </div>
 
 <details class="acc" open>
@@ -478,6 +481,7 @@ table.sk .cst{text-align:right; font-weight:700;}
   <div class="pad">
     <div class="pad-hd" id="padTitle"></div>
     <div id="padCand" style="display:none"></div>
+    <div id="padKeys">
     <div class="pad-disp"><span class="pre" id="padPre"></span><span id="padVal">0</span></div>
     <div class="pad-res" id="padRes"></div>
     <div class="keys k4">
@@ -490,6 +494,7 @@ table.sk .cst{text-align:right; font-weight:700;}
       <button onclick="key('0')">0</button>
       <button onclick="closePad()" class="cancel">×</button>
       <button onclick="commit()" class="ok" style="grid-column:span 2">決定</button>
+    </div>
     </div>
   </div>
 </div>
@@ -1643,6 +1648,15 @@ function stratB(ms,f,t,P,cfg){
    打撃のたびに「打撃前の値・技のロール候補・会心の有無・打撃後の値」から
    理想値の確率分布を絞り込む。会心が通常ロールと同じ値で止まって理想値に
    はまる場合があるため、会心の有無は必ず観測値として受け取る。 */
+// 事後分布から理想値を1つ引く。分布が無ければゾーン内の一様乱数に戻す。
+function sampleIdeal(i, m){
+  const p = (G.posts && G.posts[i] && G.posts[i].length === m.zoneHigh - m.zoneLow + 1)
+          ? G.posts[i] : null;
+  if(!p) return m.zoneLow + Math.floor(Math.random()*(m.zoneHigh - m.zoneLow + 1));
+  let r = Math.random(), acc = 0;
+  for(let k=0;k<p.length;k++){ acc += p[k]; if(r <= acc) return m.zoneLow + k; }
+  return m.zoneHigh;
+}
 function freshPost(m){ const n = m.zoneHigh - m.zoneLow + 1; return new Array(n).fill(1/n); }
 function ensurePosts(){
   if(!Array.isArray(G.posts) || G.posts.length !== G.masses.length){
@@ -1695,7 +1709,9 @@ function greatProbFromPosts(masses, posts){
 // 全マス到達後は、理想値の分布から大成功率を直接出せる。
 // 未入力のマスがある場合は確定できないので、最良・最悪の幅で示す。
 function rateFromPosts(detail){
-  if(!G.masses.every(m => m.current >= m.zoneLow && m.current <= m.zoneHigh)) return null;
+  // 超過はゾーンを通り越した状態で、回復手段が無い。大成功はあり得ない
+  if(G.masses.some(m => m.current > m.zoneHigh)) return '0%(超過)';
+  if(!G.masses.every(m => m.current >= m.zoneLow)) return null;
   ensurePosts();
   const p = greatProbFromPosts(G.masses, G.posts);
   if(p == null) return null;
@@ -1732,9 +1748,12 @@ function estimateOutcome(masses, focus, temp, cfg, trials){
   const errs=[];
   for(let n=0;n<trials;n++){
     simFirstMove = startsFresh;      // この試行の1手目だけ特性を無効にする
-    const ms = masses.map(m=>({
+    // 理想値は一様乱数ではなく、これまでの観測から絞り込んだ分布から引く。
+    // 一様のままだと、本会心で誤差0が確定しているマスまで期待誤差2.7として
+    // 扱われ、終盤ほど実態から外れる。
+    const ms = masses.map((m,i)=>({
       current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
-      ideal: m.zoneLow + Math.floor(Math.random()*(m.zoneHigh-m.zoneLow+1))
+      ideal: sampleIdeal(i, m)
     }));
     let f=focus, t=temp;
     for(let s=0;s<70;s++){
@@ -2122,8 +2141,14 @@ function renderHeader(){
   const done = G.masses.filter(m=>m.current>=m.zoneLow).length;
   b.push(`<span class="badge ${done===6?'rate':'off'}">到達 ${done}/6</span>`);
   const gp = rateFromPosts();
-  if(gp) b.push(`<span class="badge rate">大成功 ${gp}</span>`);
-  else if(G.lastRate!=null) b.push(`<span class="badge rate">大成功 約${(G.lastRate*100).toFixed(0)}%</span>`);
+  if(G.pending.length){
+    // 盤面の数値が未入力の間は計算できない。黙って消さず、理由を出す
+    b.push(`<span class="badge wait">大成功 — 数値の入力待ち</span>`);
+  } else if(gp){
+    b.push(`<span class="badge rate">大成功 ${gp}</span>`);
+  } else if(G.lastRate!=null){
+    b.push(`<span class="badge rate">大成功 約${(G.lastRate*100).toFixed(0)}%</span>`);
+  }
   document.getElementById('badges').innerHTML = b.join('');
 }
 
@@ -2153,26 +2178,13 @@ function renderRec(){
   // 仕上げに何発残せるかの判断に直結するため。
   const leftF = G.focus - r.c;
   const warn = leftF < 40 ? ' style="color:var(--ember)"' : '';
-  const rc = recCandidates();
-  let quick = '';
-  if(rc){
-    const b = (v,c) => `<button class="cand${c?' crit':''}" onclick="quickPick(${rc.idx},${v},${c})">${v}</button>`;
-    quick = `<div class="rec-pick">
-        <div class="cand-lab">打った結果のマス${rc.idx+1}の値を選ぶと、1手ぶん反映されます</div>
-        <div class="cand-grp"><span class="cand-h">通常</span>
-          <div class="cand-row">${rc.normal.map(v=>b(v,false)).join('')}</div></div>
-        <div class="cand-grp"><span class="cand-h">会心が出た</span>
-          <div class="cand-row">${rc.crit.map(v=>b(v,true)).join('')}</div></div>
-      </div>`;
-  } else if(r.sk.masses === 0){
-    quick = `<div class="rec-pick">
-        <button class="step-btn" onclick="quickStep()">この手を打った</button></div>`;
-  }
   el.innerHTML = `<div class="rec-main">
       <div class="rec-skill">${r.sk.name}</div>
       <div class="rec-sub">${tgt} / 消費${r.c}${r.sk.key?' / 会心'+(cr*100).toFixed(0)+'%':''}</div>
       <div class="rec-sub">実行後 → <b${warn}>集中力 ${leftF}</b> / ${r.nt}℃</div>
-    </div>` + quick;
+    </div>`;
+  // 下部は画面に固定されているため、ここにボタンや候補を足すと盤面を覆う。
+  // 手を進めるのは手順リストの「ここまで実行」、数値の入力はモーダル側で行う。
 }
 
 function renderDetail(){
@@ -2201,23 +2213,32 @@ function renderDetail(){
     // 決まるので、何手まとめて実行しても失う情報は無い。
     // 逆に届きうる手を含めてまとめると、その分の判定ができなくなる。
     // 途中の値は分からないので、最大ロールの会心が続いた場合の上限で判定する。
+    // 判定が壊れるのは、同じマスを2打以上まとめてしまい、なおかつ
+    // そのマスが成功ゾーンに入った場合だけ。
+    //   1打しか当たっていない → 前後の値が分かるので何手まとめても分解できる
+    //   ゾーンに入っていない   → 本会心が起きていないので失う情報が無い
+    // 途中の値は分からないので、最大ロールの会心が続いた場合の上限で判定する。
     const ub = G.masses.map(m => m.current);          // 各マスの取りうる最大値
+    const cnt = {};                                   // まとめた中で叩いた回数
     const info = []; let cutAt = -1;
     G.plan.forEach((st,i)=>{
       const sk = SKILLS.find(k => k.name === st.name);
       const rr = (sk && sk.key) ? getRollCandidates(sk, st.temp, G.trait, false) : null;
-      let reach = false;
+      let lost = false;
       if(rr){
         const top = 2 * rr[rr.length-1];
         st.tg.forEach(j => {
           const m = G.masses[j];
-          if(ub[j] >= m.zoneLow) return;              // 既に到達済み
-          if(ub[j] + top >= m.zoneLow) reach = true;  // 会心でゾーンに届きうる
+          // 手順に載っている時点で、その手番では未到達のマス。
+          // 上限値で対象から外すと、まだ遠いマスの打撃回数を数え落とす。
+          cnt[j] = (cnt[j] || 0) + 1;
           ub[j] = Math.min(m.zoneHigh, ub[j] + top);
+          // 2打目以降で、かつゾーンに入りうるなら判定不能になる
+          if(cnt[j] >= 2 && ub[j] >= m.zoneLow) lost = true;
         });
       }
-      if(reach && cutAt < 0) cutAt = i;
-      info.push({ reach, safe: cutAt < 0 || i < cutAt });
+      if(lost && cutAt < 0) cutAt = i;
+      info.push({ safe: cutAt < 0 || i < cutAt });
     });
     h += '<div class="plist-body">' + G.plan.map((st,i)=>{
       f -= st.cost;
@@ -2322,13 +2343,17 @@ function applyExecuted(k){
   const hit = new Set(G.pending);
   steps.forEach(st => st.tg.forEach(i => hit.add(i)));
   for(const i of hit){
-    if(cnt[i] > 1 || !firstOf[i]){ G.obs[i] = null; G.posts[i] = freshPost(G.masses[i]); }
+    // 2打以上まとめた場合は分解できないので更新を見送るだけ。
+    // それまでに絞り込んだ分布は有効なので捨てない。
+    if(cnt[i] > 1 || !firstOf[i]) G.obs[i] = null;
     else if(!G.obs[i]) G.obs[i] = firstOf[i];
-    else { G.obs[i] = null; G.posts[i] = freshPost(G.masses[i]); }
+    else G.obs[i] = null;
   }
   G.pending = [...hit].sort((a,b)=>a-b);
 
   G.rec = null; G.plan = []; G.lastRate = null;
+  // 入力するものが無い手(温度操作だけ)なら、そのまま次の一手まで出す
+  if(!G.pending.length){ G.msg = null; renderAll(); doCalc(); save(); return; }
   G.msg = '実行分を反映しました';
   renderAll(); save();
 }
@@ -2429,54 +2454,17 @@ function candidateValues(idx){
 }
 // 候補を選んだとき。会心の有無まで受け取って理想値の分布を更新する
 function pickValue(idx, val, wasCrit){
+  if(!Number.isFinite(val)) return;      // 想定外の値では状態を壊さない
   const ob = G.obs && G.obs[idx];
   if(ob && ob.rolls) updatePost(idx, ob.before, ob.rolls, ob.cr, val, wasCrit);
   G.masses[idx].current = val;
   if(G.obs) G.obs[idx] = null;
   G.pending = G.pending.filter(i => i !== idx);
-  if(G.pending.length){
-    // まだ入力待ちが残っているなら、続けて次のマスを開く
-    renderAll(); save();
-    openPad('mass', G.pending[0]);
-    return;
-  }
   closePad();
+  if(G.pending.length){ renderAll(); save(); return; }   // 残りは盤面から選んでもらう
   G.msg = null;
   doCalc();                       // 入力が揃った時点で次の一手は確定できる
   save();
-}
-// 推奨手の対象マスのうち、最初の未到達マスの候補を出す。
-// 候補を選ぶこと自体が「その手を打った」という報告になる。
-function recCandidates(){
-  if(!G.rec || !G.rec.sk || !G.rec.sk.key) return null;
-  const tg = G.rec.tg.filter(i => G.masses[i].current < G.masses[i].zoneLow);
-  if(!tg.length) return null;
-  const idx = tg[0], m = G.masses[idx];
-  const rolls = getRollCandidates(G.rec.sk, G.temp, G.trait, false);
-  if(!rolls) return null;
-  const normal = [], crit = [], cap = [];
-  for(const r of rolls){
-    if(normal.indexOf(m.current + r) < 0) normal.push(m.current + r);
-    if(crit.indexOf(m.current + 2*r) < 0) crit.push(m.current + 2*r);
-  }
-  const top = m.current + 2*rolls[rolls.length-1];
-  for(let v = Math.max(m.zoneLow, m.current + 1); v <= m.zoneHigh && v <= top; v++){
-    if(crit.indexOf(v) < 0) cap.push(v);
-  }
-  normal.sort((a,b)=>a-b); crit.sort((a,b)=>a-b); cap.sort((a,b)=>a-b);
-  return { idx, normal, crit: crit.concat(cap).sort((a,b)=>a-b) };
-}
-// 候補を選んだ = その手を1手打った、として反映まで一気に行う
-function quickPick(idx, val, wasCrit){
-  if(!G.rec) return;
-  applyExecuted(1);
-  pickValue(idx, val, wasCrit);
-}
-// 温度操作だけの手は入力するものが無いので、押すだけで反映する
-function quickStep(){
-  if(!G.rec) return;
-  applyExecuted(1);
-  if(!G.pending.length){ G.msg = null; doCalc(); save(); }
 }
 function openPad(kind, idx){
   padTarget=kind; padIdx=idx; padBuf=''; padOp=null;
@@ -2491,24 +2479,36 @@ function openPad(kind, idx){
   }
   document.getElementById('padTitle').textContent=title;
   const box = document.getElementById('padCand');
+  const keys = document.getElementById('padKeys');
   const cand = (kind === 'mass') ? candidateValues(idx) : null;
   if(box){
     if(cand){
       const btn = (v,c) => `<button class="cand${c?' crit':''}" onclick="pickValue(${idx},${v},${c})">${v}</button>`;
+      const critAll = cand.crit.concat(cand.cap).sort((a,b)=>a-b);
       box.innerHTML =
-        `<div class="cand-lab">${cand.name} の結果を選んでください</div>`
-      + `<div class="cand-grp"><span class="cand-h">通常</span><div class="cand-row">`
-      + cand.normal.map(v=>btn(v,false)).join('') + `</div></div>`
-      + `<div class="cand-grp"><span class="cand-h">会心が出た</span><div class="cand-row">`
-      + cand.crit.concat(cand.cap).sort((a,b)=>a-b).map(v=>btn(v,true)).join('') + `</div></div>`
-      + `<div class="cand-lab">一覧に無い値は下のキーで入力してください</div>`;
+        `<div class="cand-q">マス${idx+1}はいくつになりましたか</div>`
+      + `<div class="cand-grp"><span class="cand-h n">会心が出なかった</span>`
+      + `<div class="cand-row">${cand.normal.map(v=>btn(v,false)).join('')}</div></div>`
+      + `<div class="cand-grp"><span class="cand-h c">会心が出た</span>`
+      + `<div class="cand-row">${critAll.map(v=>btn(v,true)).join('')}</div></div>`
+      + `<button class="cand-more" onclick="showKeys()">一覧に無い値を自分で入力する</button>`;
       box.style.display = 'block';
-    } else { box.innerHTML=''; box.style.display='none'; }
+      if(keys) keys.style.display = 'none';       // 候補があるならテンキーは畳む
+    } else {
+      box.innerHTML=''; box.style.display='none';
+      if(keys) keys.style.display = '';
+    }
   }
   updatePad();
   document.getElementById('modal').classList.add('show');
 }
 
+function showKeys(){
+  const k = document.getElementById('padKeys');
+  const b = document.getElementById('padCand');
+  if(k) k.style.display = '';
+  if(b) b.style.display = 'none';
+}
 function closePad(){ document.getElementById('modal').classList.remove('show'); }
 
 function key(k){
