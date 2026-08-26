@@ -693,6 +693,33 @@ const POWER_TABLE = {
   reppu:   [[68,45],[66,44],[63,42],[61,41],[59,39],[57,38],[54,36],[52,35],[50,33],[48,32],[45,30],[43,29],[41,27],[39,26],[36,24],[34,23],[32,21],[30,20],[27,18],[null,null],[null,null]],
 };
 
+function interpolate(key, temp){
+  if(!key) return null;
+  if(temp > 2000){
+    // 2000℃超はデータが無いため、2000℃と1900℃の傾きから単純に線形外挿する(近似)
+    const hi = POWER_TABLE[key][0], lo = POWER_TABLE[key][1];
+    if(hi[0]===null || lo[0]===null) return null;
+    const slopeMax = (hi[0]-lo[0])/100, slopeMin = (hi[1]-lo[1])/100;
+    const extra = temp - 2000;
+    return { max: hi[0] + slopeMax*extra, min: hi[1] + slopeMin*extra };
+  }
+  const t = Math.max(50, Math.min(2000, temp));
+  for(let i=0;i<TEMP_POINTS.length-1;i++){
+    const hi = TEMP_POINTS[i], lo = TEMP_POINTS[i+1];
+    if(t<=hi && t>=lo){
+      const [maxHi,minHi] = POWER_TABLE[key][i];
+      const [maxLo,minLo] = POWER_TABLE[key][i+1];
+      if(maxHi===null || maxLo===null) return null;
+      const ratio = hi===lo ? 0 : (t-lo)/(hi-lo);
+      return { max: maxLo + (maxHi-maxLo)*ratio, min: minLo + (minHi-minLo)*ratio };
+    }
+  }
+  const last = POWER_TABLE[key][TEMP_POINTS.length-1];
+  return last[0]===null ? null : {max:last[0], min:last[1]};
+}
+
+
+
 
 // ---- 推奨計算(期待値ベースの最後までの見通しシミュレーション) ----
 // 乱数は使わず、会心率・威力を期待値として扱い、集中力が尽きる/温度が0になるまでを
