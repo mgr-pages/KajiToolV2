@@ -8,10 +8,15 @@
 <title>超素材をつくろう！</title>
 <style>
 :root{
-  --bg:#12100e; --bg2:#1c1917; --panel:#232019; --line:#3a332a;
-  --text:#efe7db; --dim:#9b9186;
-  --ember:#e8672c; --gold:#d9a441;
-  --blue:#4a9eff; --red:#ff4a4a; --green:#3ddc84; --pink:#ff5fd0;
+  /* 冒険の書調。生成りの紙地に焦茶の文字。
+     補助バーの4色は暗い地を前提に彩度を決めていたため、
+     明るい地でも沈まないよう明度を下げ直してある。 */
+  --bg:#f0e2c2; --bg2:#f7ecd6; --panel:#fbf3e0; --line:#c6ac74;
+  --text:#4a3418; --dim:#7d6842;
+  --ember:#b5480f; --gold:#8a6a12;
+  --blue:#1c6fc4; --red:#c42a2a; --green:#217a3f; --pink:#c41a8f;
+  --ink:#7a5c28;          /* 枠の濃い方 */
+  --sunk:#e6d5ae;         /* バーやテンキーの窪んだ面 */
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{margin:0; padding:0; background:var(--bg); color:var(--text);
@@ -29,12 +34,12 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .stat .lbl{color:var(--dim); font-size:10px; white-space:nowrap;}
 .stat .val{font-size:16px; font-weight:800; font-variant-numeric:tabular-nums;}
 .stat.tap{cursor:pointer;}
-.stat.tap:active{background:#2c2820;}
+.stat.tap:active{background:#e6d5ae;}
 .badges{display:flex; gap:5px; margin-top:6px; flex-wrap:wrap;}
 .badge{font-size:10.5px; padding:3px 8px; border-radius:20px; font-weight:700;}
-.badge.boost{background:rgba(217,164,65,.2); color:var(--gold); border:1px solid rgba(217,164,65,.5);}
-.badge.half{background:rgba(74,158,255,.18); color:var(--blue); border:1px solid rgba(74,158,255,.45);}
-.badge.rate{background:rgba(61,220,132,.15); color:var(--green); border:1px solid rgba(61,220,132,.4);}
+.badge.boost{background:rgba(138,106,18,.13); color:var(--gold); border:1px solid rgba(138,106,18,.5);}
+.badge.half{background:rgba(28,111,196,.12); color:var(--blue); border:1px solid rgba(28,111,196,.45);}
+.badge.rate{background:rgba(47,138,76,.12); color:var(--green); border:1px solid rgba(47,138,76,.4);}
 .badge.off{background:var(--panel); color:var(--dim); border:1px solid var(--line);}
 
 /* ===== ヘッダー上段:今どの商材をどの装備で打っているか ===== */
@@ -49,10 +54,10 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
     linear-gradient(135deg,var(--dim) 50%,transparent 50%);
   background-position:calc(100% - 14px) 52%, calc(100% - 9px) 52%;
   background-size:5px 5px, 5px 5px; background-repeat:no-repeat;}
-.hdr-title .hdr-reset{background:var(--panel); border:1px solid rgba(232,103,44,.6);
+.hdr-title .hdr-reset{background:var(--panel); border:1px solid rgba(181,72,15,.6);
   color:var(--ember); border-radius:6px; padding:8px 13px; font-size:12.5px;
   font-weight:800; white-space:nowrap; flex:0 0 auto;}
-.hdr-title .hdr-reset:active{background:var(--ember); color:#fff;}
+.hdr-title .hdr-reset:active{background:var(--ember); color:#fbf3e0;}
 /* 装備表示は情報としては最も弱いので、幅が足りない時はここだけを詰める */
 .hdr-title .gear{font-size:10.5px; color:var(--dim); white-space:nowrap;
   margin-left:auto; flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;}
@@ -66,9 +71,9 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .cand{background:var(--panel); border:1px solid var(--line); color:var(--text);
   border-radius:7px; padding:13px 4px; font-size:17px; font-weight:700;
   font-variant-numeric:tabular-nums;}
-.cand:active{background:var(--ember); color:#fff;}
-.cand.crit{border-color:rgba(255,95,208,.5); color:var(--pink);}
-.cand.crit:active{background:var(--pink); color:#1a1613;}
+.cand:active{background:var(--ember); color:#fbf3e0;}
+.cand.crit{border-color:rgba(196,26,143,.5); color:var(--pink);}
+.cand.crit:active{background:var(--pink); color:#fbf3e0;}
 .cand-more{width:100%; background:transparent; border:1px dashed var(--line);
   color:var(--dim); border-radius:7px; padding:10px; font-size:12.5px; margin:2px 0 10px;}
 /* ===== 推奨手順:各手の右に「ここまで実行」ボタン ===== */
@@ -80,12 +85,12 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .pstep .ptg{font-size:10.5px; color:var(--dim);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.pstep.on-boost{background:rgba(217,164,65,.10); border-left:3px solid var(--gold);}
-.pstep.on-half{background:rgba(74,158,255,.10); border-left:3px solid var(--blue);}
-.pstep.first{box-shadow:inset 0 0 0 1px rgba(232,103,44,.55);}
+.pstep.on-boost{background:rgba(138,106,18,.13); border-left:3px solid var(--gold);}
+.pstep.on-half{background:rgba(28,111,196,.11); border-left:3px solid var(--blue);}
+.pstep.first{box-shadow:inset 0 0 0 1px rgba(181,72,15,.55);}
 .pexec{flex:0 0 auto; background:var(--panel); border:1px solid var(--line);
   color:var(--text); border-radius:6px; padding:6px 9px; line-height:1.2; font-weight:700;}
-.pexec:active{background:#2c2820;}
+.pexec:active{background:#e6d5ae;}
 .pexec .t{display:block; font-size:11px; color:var(--gold);}
 .pexec .s{display:block; font-size:9px; color:var(--dim); font-weight:600;}
 .pexec .s.ok{color:var(--green);}
@@ -93,11 +98,11 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .plist-note{font-size:10px; color:var(--dim); line-height:1.5; margin:8px 2px 0;}
 .dup-line{font-size:10.5px; color:var(--dim); text-align:center; margin:8px 0 4px;
   border-top:1px dashed var(--line); padding-top:6px;}
-.badge.wait{background:rgba(232,103,44,.14); color:var(--ember);
-  border:1px solid rgba(232,103,44,.45);}
-.badge.weak{background:rgba(155,145,134,.18); color:var(--dim); border:1px solid var(--line);}
+.badge.wait{background:rgba(181,72,15,.12); color:var(--ember);
+  border:1px solid rgba(181,72,15,.45);}
+.badge.weak{background:rgba(138,117,80,.14); color:var(--dim); border:1px solid var(--line);}
 .mk-weak{ color:var(--dim); font-size:10.5px; font-weight:800; white-space:nowrap; }
-.pstep.on-weak{background:rgba(155,145,134,.10); border-left:3px solid var(--line);}
+.pstep.on-weak{background:rgba(138,117,80,.13); border-left:3px solid var(--line);}
 .plist-body{max-height:38vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
   border:1px solid var(--line); border-radius:6px; padding:5px;}
 .hist-acc{margin:0 0 10px;}
@@ -116,11 +121,11 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .exec-row{display:flex; gap:5px;}
 .exec-btn{flex:1; min-width:0; background:var(--panel); border:1px solid var(--line);
   color:var(--text); border-radius:6px; padding:6px 2px; font-weight:700; line-height:1.25;}
-.exec-btn:active{background:#2c2820;}
+.exec-btn:active{background:#e6d5ae;}
 .exec-btn .n{display:block; font-size:14px; color:var(--gold);}
 .exec-btn .s{display:block; font-size:9px; color:var(--dim); font-weight:600;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.need-box{background:rgba(232,103,44,.12); border:1px solid rgba(232,103,44,.55);
+.need-box{background:rgba(181,72,15,.11); border:1px solid rgba(181,72,15,.55);
   border-radius:8px; padding:9px 10px;}
 .need-box .t{font-size:12px; font-weight:800; color:var(--ember); margin-bottom:3px;}
 .need-box .d{font-size:10.5px; color:var(--dim); margin-bottom:7px;}
@@ -132,8 +137,8 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
   color:var(--dim); border-radius:6px; padding:6px; font-size:11px;}
 .calc:disabled{opacity:.45;}
 .cell.need{border-color:var(--ember) !important; animation:needpulse 1.3s ease-in-out infinite;}
-@keyframes needpulse{0%,100%{box-shadow:0 0 0 0 rgba(232,103,44,.55);}
-  50%{box-shadow:0 0 0 5px rgba(232,103,44,0);}}
+@keyframes needpulse{0%,100%{box-shadow:0 0 0 0 rgba(181,72,15,.55);}
+  50%{box-shadow:0 0 0 5px rgba(181,72,15,0);}}
 
 /* ===== 盤面 ===== */
 .board{padding:10px 6px;}
@@ -141,31 +146,31 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .bar-wrap{flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:2px;}
 .bar-wrap.left{align-items:flex-end;}
 .zone-lbl{font-size:9.5px; color:var(--green); font-weight:700; font-variant-numeric:tabular-nums;}
-.bar{position:relative; width:100%; height:16px; background:#000; border:1px solid var(--line);
+.bar{position:relative; width:100%; height:16px; background:var(--sunk); border:1px solid var(--line);
   border-radius:2px; overflow:hidden;}
 .bar i{position:absolute; display:block;}
 /* 4つの帯を高さで段違いに重ねて、同時に読めるようにする */
 /* 成功ゾーンは最重要なので濃く塗り、両端に境界線を立てて範囲を明示する。
    本会心ゾーンとは色味も明度も離しておく。 */
-.bar .m-green{top:0; bottom:0; z-index:2; background:rgba(61,220,132,.42);
+.bar .m-green{top:0; bottom:0; z-index:2; background:rgba(47,138,76,.34);
   border-left:2px solid var(--green); border-right:2px solid var(--green); box-sizing:border-box;}
-.bar .m-pink {top:0; bottom:0; z-index:1; background:rgba(255,95,208,.20);
-  border-left:1px dashed rgba(255,95,208,.75); border-right:1px dashed rgba(255,95,208,.75);
+.bar .m-pink {top:0; bottom:0; z-index:1; background:rgba(196,26,143,.18);
+  border-left:1px dashed rgba(196,26,143,.75); border-right:1px dashed rgba(196,26,143,.75);
   box-sizing:border-box;}
 .bar .m-blue {top:2px; z-index:3; height:5px; background:var(--blue); border-radius:2px;}
 .bar .m-red  {bottom:2px; z-index:3; height:5px; background:var(--red);  border-radius:2px;}
 /* 現在値は0からの塗りで表す。線より進捗が掴みやすい。
    塗り自体は他のマーカーを隠さないよう最背面(z-index:0)、
    右端の白線だけは常に見えるように別要素で最前面に出す。 */
-.bar .m-cur  {top:0; bottom:0; left:0; background:rgba(255,255,255,.42); z-index:0;}
-.bar .m-curline{top:0; bottom:0; width:2px; background:#fff; z-index:6;}
+.bar .m-cur  {top:0; bottom:0; left:0; background:rgba(122,92,40,.28); z-index:0;}
+.bar .m-curline{top:0; bottom:0; width:2px; background:#4a3418; z-index:6;}
 /* 左列のバーは右から左へ伸びるので、全体をミラーする */
 .bar.flip{ transform:scaleX(-1); }
 .pw-lbl{font-size:9px; color:var(--dim); font-variant-numeric:tabular-nums; letter-spacing:-.2px;}
 
-.cell{width:96px; flex:0 0 96px; background:#000; border:2px solid var(--line);
+.cell{width:96px; flex:0 0 96px; background:var(--panel); border:2px solid var(--line);
   border-radius:5px; overflow:hidden;}
-.cell.hi{border-color:var(--ember); box-shadow:0 0 0 2px rgba(232,103,44,.3);}
+.cell.hi{border-color:var(--ember); box-shadow:0 0 0 2px rgba(181,72,15,.3);}
 .cell.done{border-color:var(--green);}
 .cell.over{border-color:var(--red);}
 .cell .cur{font-size:27px; font-weight:800; text-align:center; padding:5px 2px 3px;
@@ -177,6 +182,32 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .cell .zn span{flex:1; text-align:center; padding:3px 0; color:var(--dim);}
 .cell .zn span:first-child{border-right:1px solid var(--line);}
 .cell .no{position:absolute;}
+
+/* ===== 数値の表示(案1) =====
+   盤面の6つの値は常に比較対象なので、等幅数字と字形を明示して桁を揃える。
+   0と6、1と7の取り違えは実プレイで致命的なため、判別性の高い書体から順に指定する。
+   外部フォントは読み込まないので単一ファイルのまま。 */
+.cell .cur, .cell .zn, .stat .val, .zone-lbl, .pw-lbl,
+.pad-disp, .pad-res, table.sk, .zrow input, .cand, .pexec .s, .hstep .ht{
+  font-family:"IBM Plex Sans","Source Sans 3","Noto Sans","Segoe UI",
+    "Hiragino Sans","Noto Sans JP",system-ui,-apple-system,sans-serif;
+  font-variant-numeric:tabular-nums lining-nums;
+  font-feature-settings:"tnum" 1,"lnum" 1;
+}
+
+/* ===== 状態変化の合図(案5) =====
+   値が変わった瞬間だけ動かす。装飾ではなく「反映された」ことの確認に限る。 */
+@keyframes fxPulse{0%{transform:scale(1)}45%{transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes fxShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}
+  75%{transform:translateX(3px)}}
+@keyframes fxEnter{0%{box-shadow:0 0 0 0 rgba(33,122,63,.55)}
+  100%{box-shadow:0 0 0 10px rgba(33,122,63,0)}}
+.cell.fx-pulse{animation:fxPulse .42s ease;}
+.cell.fx-shake{animation:fxShake .3s ease;}
+.cell.fx-enter{animation:fxPulse .42s ease, fxEnter .6s ease;}
+@media (prefers-reduced-motion: reduce){
+  .cell.fx-pulse,.cell.fx-shake,.cell.fx-enter{animation:none;}
+}
 
 /* ===== 折りたたみ ===== */
 .acc{margin:0 8px 8px;}
@@ -193,7 +224,7 @@ table.sk{width:100%; border-collapse:collapse; font-size:11.5px;
   font-variant-numeric:tabular-nums;}
 table.sk th{color:var(--dim); font-size:10px; text-align:left; padding:4px 3px;
   border-bottom:1px solid var(--line); font-weight:600;}
-table.sk td{padding:5px 3px; border-bottom:1px solid rgba(58,51,42,.5);}
+table.sk td{padding:5px 3px; border-bottom:1px solid rgba(198,172,116,.6);}
 table.sk .rolls{color:var(--gold); letter-spacing:-.3px;}
 table.sk .cst{text-align:right; font-weight:700;}
 
@@ -216,7 +247,7 @@ table.sk .cst{text-align:right; font-weight:700;}
 .rec-skill{font-size:16px; font-weight:800; color:var(--ember); line-height:1.25;}
 .rec-sub{font-size:11.5px; color:var(--dim); margin-top:1px;}
 .rec-empty{font-size:13px; color:var(--dim);}
-.calc{width:100%; background:linear-gradient(180deg,var(--ember),#c4531f); color:#fff;
+.calc{width:100%; background:linear-gradient(180deg,var(--ember),#8f3708); color:#fbf3e0;
   border:none; border-radius:7px; padding:13px; font-size:16px; font-weight:800; cursor:pointer;}
 .calc:active{filter:brightness(.9);}
 .calc:disabled{background:var(--panel); color:var(--dim);}
@@ -232,17 +263,17 @@ table.sk .cst{text-align:right; font-weight:700;}
 .pad-tabs{display:flex; gap:6px; margin-bottom:10px;}
 .pad-tabs button{flex:1; background:var(--panel); border:1px solid var(--line); color:var(--dim);
   padding:9px; border-radius:6px; font-size:12.5px; font-weight:700;}
-.pad-tabs button.on{background:var(--ember); border-color:var(--ember); color:#fff;}
-.pad-disp{background:#000; border:1px solid var(--line); border-radius:7px; padding:12px;
+.pad-tabs button.on{background:var(--ember); border-color:var(--ember); color:#fbf3e0;}
+.pad-disp{background:var(--sunk); border:1px solid var(--line); border-radius:7px; padding:12px;
   font-size:32px; font-weight:800; text-align:right; margin-bottom:11px;
   font-variant-numeric:tabular-nums; min-height:58px;}
 .pad-disp .pre{font-size:14px; color:var(--dim); font-weight:400; margin-right:7px;}
 .keys{display:grid; grid-template-columns:repeat(3,1fr); gap:7px;}
 .keys button{background:var(--panel); border:1px solid var(--line); color:var(--text);
   padding:16px; font-size:21px; font-weight:700; border-radius:7px;}
-.keys button:active{background:#332e26;}
+.keys button:active{background:#e6d5ae;}
 .keys button.wide{grid-column:span 2;}
-.keys button.ok{background:var(--ember); border-color:var(--ember); color:#fff;}
+.keys button.ok{background:var(--ember); border-color:var(--ember); color:#fbf3e0;}
 .keys button.del{color:var(--ember);}
 
 /* ===================== PC・タブレット向け =====================
@@ -333,16 +364,16 @@ table.sk .cst{text-align:right; font-weight:700;}
 .legend i{width:13px; height:9px; border-radius:2px; display:inline-block; flex:0 0 13px;}
 .legend .lg-blue{background:var(--blue);}
 .legend .lg-red{background:var(--red);}
-.legend .lg-green{background:rgba(61,220,132,.42); border:1.5px solid var(--green);}
-.legend .lg-pink{background:rgba(255,95,208,.20); border:1px dashed rgba(255,95,208,.75);}
-.legend .lg-cur{background:#fff; width:3px; flex:0 0 3px; height:13px;}
+.legend .lg-green{background:rgba(47,138,76,.34); border:1.5px solid var(--green);}
+.legend .lg-pink{background:rgba(196,26,143,.18); border:1px dashed rgba(196,26,143,.75);}
+.legend .lg-cur{background:#4a3418; width:3px; flex:0 0 3px; height:13px;}
 @media (min-width:760px){ .legend{font-size:12.5px;} .bar-ctl label{font-size:13px;} }
 
 
 /* 手順内の地金特性マーク */
-.plan-step.on-boost{ background:rgba(217,164,65,.10); border-left:3px solid var(--gold);
+.plan-step.on-boost{ background:rgba(138,106,18,.10); border-left:3px solid var(--gold);
   padding-left:6px; border-radius:3px; }
-.plan-step.on-half{ background:rgba(74,158,255,.10); border-left:3px solid var(--blue);
+.plan-step.on-half{ background:rgba(28,111,196,.10); border-left:3px solid var(--blue);
   padding-left:6px; border-radius:3px; }
 .mk-boost{ color:var(--gold); font-size:10.5px; font-weight:800; white-space:nowrap; }
 .mk-half{ color:var(--blue); font-size:10.5px; font-weight:800; white-space:nowrap; }
@@ -366,8 +397,8 @@ table.sk .cst{text-align:right; font-weight:700;}
 
 
 .keys.k4{ grid-template-columns:repeat(4,1fr); }
-.keys .op{ background:#2f2a22; color:var(--gold); font-size:24px; }
-.keys .op.on{ background:var(--gold); color:#1a1713; }
+.keys .op{ background:#e6d5ae; color:var(--gold); font-size:24px; }
+.keys .op.on{ background:var(--gold); color:#fbf3e0; }
 .keys .cancel{ color:var(--dim); }
 .pad-res{ text-align:right; font-size:15px; color:var(--gold); font-weight:700;
   margin:-6px 0 11px; min-height:20px; font-variant-numeric:tabular-nums; }
@@ -508,7 +539,8 @@ const G = {
   level: 80, hammerId:'light', star:3, trait:'shuchu',
   rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null,
   // 実行済み反映で「数値の手入力待ち」になっているマス番号
-  pending: [], undoSnap: null, showRange: true, hist: [], posts: null, obs: null
+  pending: [], undoSnap: null, showRange: true, hist: [], posts: null, obs: null,
+  fx: null   // 値が変わった直後のマスに一度だけ動きを付ける
 };
 // 素材ごとのプリセット。zones は各マスの成功ゾーン[下限,上限]、
 // trait はその素材が持つ地金特性(選択時に自動で切り替える)。
@@ -695,14 +727,8 @@ const POWER_TABLE = {
 
 function interpolate(key, temp){
   if(!key) return null;
-  if(temp > 2000){
-    // 2000℃超はデータが無いため、2000℃と1900℃の傾きから単純に線形外挿する(近似)
-    const hi = POWER_TABLE[key][0], lo = POWER_TABLE[key][1];
-    if(hi[0]===null || lo[0]===null) return null;
-    const slopeMax = (hi[0]-lo[0])/100, slopeMin = (hi[1]-lo[1])/100;
-    const extra = temp - 2000;
-    return { max: hi[0] + slopeMax*extra, min: hi[1] + slopeMin*extra };
-  }
+  // 2000℃超は威力が頭打ちで、2000℃と同じロールになる。
+  // 2500℃で撃っても2000℃と同じ値しか出ない。
   const t = Math.max(50, Math.min(2000, temp));
   for(let i=0;i<TEMP_POINTS.length-1;i++){
     const hi = TEMP_POINTS[i], lo = TEMP_POINTS[i+1];
@@ -2027,7 +2053,7 @@ function scaleLabel(mk, flip){
     {v:r.red[1],  c:'var(--red)'}
   ];
   const arr = flip ? items.slice().reverse() : items;
-  return arr.map(x=>`<span style="color:${x.c}">${x.v}</span>`).join('<span style="color:#5a5248">〜</span>');
+  return arr.map(x=>`<span style="color:${x.c}">${x.v}</span>`).join('<span style="color:#a89268">〜</span>');
 }
 
 function toggleRange(){
@@ -2091,7 +2117,7 @@ function renderBoard(){
            <div class="pw-lbl">${scaleLabel(mk, flip)}</div>
          </div>`;
       const cell =
-        `<div class="cell${cls}" onclick="openPad('mass',${i})">
+        `<div class="cell${cls}${G.fx && G.fx.i===i ? ' fx-'+G.fx.k : ''}" onclick="openPad('mass',${i})">
            <div class="idx">マス${i+1}</div>
            <div class="cur">${Math.round(m.current)}</div>
            <div class="zn"><span>${m.zoneLow}</span><span>${m.zoneHigh}</span></div>
@@ -2311,8 +2337,10 @@ function applyExecuted(k){
   if(cost > G.focus){ alert('集中力が足りません'); return; }
 
   // やり直せるように、変更前の状態を控える
+  ensurePosts();
   G.undoSnap = { temp:G.temp, focus:G.focus,
-    masses:G.masses.map(m=>({...m})), pending:G.pending.slice(), histLen:G.hist.length };
+    masses:G.masses.map(m=>({...m})), pending:G.pending.slice(), histLen:G.hist.length,
+    posts:G.posts.map(p=>p.slice()), obs:(G.obs||[]).slice() };
   steps.forEach(st => G.hist.push({name:st.name, tg:st.tg.slice(), tempAfter:st.tempAfter}));
 
   G.focus -= cost;
@@ -2365,6 +2393,9 @@ function undoExec(){
   G.masses = u.masses.map(m=>({...m}));
   G.pending = u.pending.slice();
   if(typeof u.histLen === 'number') G.hist.length = u.histLen;
+  // 理想値の分布も戻す。戻さないと、取り消した打撃の観測が残ったままになる
+  if(Array.isArray(u.posts)) G.posts = u.posts.map(p=>p.slice());
+  if(Array.isArray(u.obs))   G.obs = u.obs.slice();
   G.undoSnap = null;
   G.rec = null; G.plan = []; G.lastRate = null; G.msg = null;
   renderAll(); save();
@@ -2453,10 +2484,21 @@ function candidateValues(idx){
   return { normal, crit, cap, name: ob.name };
 }
 // 候補を選んだとき。会心の有無まで受け取って理想値の分布を更新する
+// 値の変化に応じた合図を1回だけ仕込む。
+// ゾーンに入った=緑の波紋、超過=横揺れ、それ以外=一度だけ脈動。
+function markFx(idx, before, after){
+  const m = G.masses[idx];
+  let k = 'pulse';
+  if(after > m.zoneHigh) k = 'shake';
+  else if(after >= m.zoneLow && before < m.zoneLow) k = 'enter';
+  G.fx = { i: idx, k };
+  setTimeout(()=>{ if(G.fx && G.fx.i === idx) G.fx = null; }, 700);
+}
 function pickValue(idx, val, wasCrit){
   if(!Number.isFinite(val)) return;      // 想定外の値では状態を壊さない
   const ob = G.obs && G.obs[idx];
   if(ob && ob.rolls) updatePost(idx, ob.before, ob.rolls, ob.cr, val, wasCrit);
+  markFx(idx, G.masses[idx].current, val);
   G.masses[idx].current = val;
   if(G.obs) G.obs[idx] = null;
   G.pending = G.pending.filter(i => i !== idx);
@@ -2553,6 +2595,7 @@ function commit(){
   else v = padBuf==='' ? cur : n;    // 何も入力していなければ現状維持
   v = Math.max(0, v);
   if(padTarget==='mass'){
+    markFx(padIdx, G.masses[padIdx].current, v);
     G.masses[padIdx].current = v;
     G.pending = G.pending.filter(i => i !== padIdx);
     if(!G.pending.length) G.msg = null;
