@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材を作ろう！</title>
+<title>超素材をつくろう！</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -540,7 +540,8 @@ const G = {
   rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null,
   // 実行済み反映で「数値の手入力待ち」になっているマス番号
   pending: [], undoSnap: null, showRange: true, hist: [], posts: null, obs: null,
-  fx: null   // 値が変わった直後のマスに一度だけ動きを付ける
+  fx: null,  // 値が変わった直後のマスに一度だけ動きを付ける
+  rollObs: null   // 実測から学習した威力の範囲(温度ごと)
 };
 // 素材ごとのプリセット。zones は各マスの成功ゾーン[下限,上限]、
 // trait はその素材が持つ地金特性(選択時に自動で切り替える)。
@@ -666,6 +667,7 @@ function traitTempState(temp){
 }
 
 function getPowerMultiplier(trait, temp, isLitMass){
+  if(!traitActive(temp)) return 1;      // 1手目は地金特性が乗らない
   const st = traitTempState(temp);
   if(trait === 'tataki'){
     if(st.mod400) return 2;
@@ -725,88 +727,43 @@ const POWER_TABLE = {
   reppu:   [[68,45],[66,44],[63,42],[61,41],[59,39],[57,38],[54,36],[52,35],[50,33],[48,32],[45,30],[43,29],[41,27],[39,26],[36,24],[34,23],[32,21],[30,20],[27,18],[null,null],[null,null]],
 };
 
-/* 威力は温度の一次式で決まり、表示値はそれを丸めたもの。
-   実測テーブルは100℃刻みしか無いが、実際の温度は50℃刻みで動く
-   (打撃-50 / 熱風-150 / 冷やし-300 / 火力+300)。
-   従来はテーブル間を線形補間して小数のまま7個の候補を作っていたため、
-   1450℃のような温度で候補の一部が1ずれていた。
-   テーブルから一次式を復元し、丸めた整数を返す。 */
-const POWER_FIT = (()=>{
-  const fit = {};
-  for(const key of Object.keys(POWER_TABLE)){
-    const out = [];
-    for(const j of [0,1]){
-      let n=0,sx=0,sy=0,sxx=0,sxy=0;
-      TEMP_POINTS.forEach((t,i)=>{
-        const v = POWER_TABLE[key][i][j];
-        if(v == null) return;
-        n++; sx+=t; sy+=v; sxx+=t*t; sxy+=t*v;
-      });
-      const a = (n*sxy - sx*sy) / (n*sxx - sx*sx);
-      out.push([a, (sy - a*sx)/n]);
-    }
-    fit[key] = { max: out[0], min: out[1] };
-  }
-  return fit;
+/* 威力の計算式(検証済み)
+   1000℃時の基準値 n に対して   値 = ceil( n × (0.0005 × min(温度,2000) + 0.5) )
+   係数は 350℃で0.675、1000℃で1.0、2000℃で1.5。2000℃を超えても頭打ち。
+   候補は「最小と最大を等分」ではなく、基準 n の整数を1つずつ当てはめた結果になる。
+   手持ちの実測テーブル248点のうち245点がこの式で再現でき、
+   残る3点(1400℃の上下打ちと熱風おろし)は転記ミスとみて式を優先する。 */
+const BASE_N = {};   // 1000℃時の基準値 [最小, 最大]
+(function(){
+  const i = TEMP_POINTS.indexOf(1000);
+  for(const key of Object.keys(POWER_TABLE)) BASE_N[key] = [POWER_TABLE[key][i][1], POWER_TABLE[key][i][0]];
 })();
-
-function interpolate(key, temp){
-  if(!key) return null;
-  {
-    const f = POWER_FIT[key];
-    if(f){
-      const t = Math.max(50, Math.min(2000, temp));
-      const mx = Math.round(f.max[0]*t + f.max[1]);
-      const mn = Math.round(f.min[0]*t + f.min[1]);
-      // テーブルに実測値がある温度は、式より実測を優先する
-      const i = TEMP_POINTS.indexOf(t);
-      if(i >= 0 && POWER_TABLE[key][i][0] != null)
-        return { max: POWER_TABLE[key][i][0], min: POWER_TABLE[key][i][1] };
-      return { max: mx, min: Math.min(mn, mx) };
-    }
-  }
-  // 2000℃超は威力が頭打ちで、2000℃と同じロールになる。
-  // 2500℃で撃っても2000℃と同じ値しか出ない。
-  const t = Math.max(50, Math.min(2000, temp));
-  for(let i=0;i<TEMP_POINTS.length-1;i++){
-    const hi = TEMP_POINTS[i], lo = TEMP_POINTS[i+1];
-    if(t<=hi && t>=lo){
-      const [maxHi,minHi] = POWER_TABLE[key][i];
-      const [maxLo,minLo] = POWER_TABLE[key][i+1];
-      if(maxHi===null || maxLo===null) return null;
-      const ratio = hi===lo ? 0 : (t-lo)/(hi-lo);
-      return { max: maxLo + (maxHi-maxLo)*ratio, min: minLo + (minHi-minLo)*ratio };
-    }
-  }
-  const last = POWER_TABLE[key][TEMP_POINTS.length-1];
-  return last[0]===null ? null : {max:last[0], min:last[1]};
+function tempFactor(temp){ return 0.0005 * Math.max(50, Math.min(2000, temp)) + 0.5; }
+function baseValues(key){                     // その技が取りうる基準値の一覧
+  const b = BASE_N[key]; if(!b) return null;
+  const out = []; for(let n = b[0]; n <= b[1]; n++) out.push(n);
+  return out;
 }
 
+/* 実測による補正。
+   式で説明できない値が出た場合は、その基準値を覚えて候補に足す。 */
+function learnRoll(key, temp, roll){
+  if(!key || !Number.isFinite(roll) || roll <= 0) return;
+  const n = roll / tempFactor(temp);
+  const r = Math.round(n);
+  if(Math.abs(n - r) > 0.35) return;          // 基準値として説明が付かない値は覚えない
+  if(!G.rollObs) G.rollObs = {};
+  const k = key;
+  if(!G.rollObs[k]) G.rollObs[k] = [];
+  if(G.rollObs[k].indexOf(r) < 0) G.rollObs[k].push(r);
+}
 
-
-
-// ---- 推奨計算(期待値ベースの最後までの見通しシミュレーション) ----
-// 乱数は使わず、会心率・威力を期待値として扱い、集中力が尽きる/温度が0になるまでを
-// 貪欲法(各局面で最も誤差合計を下げる一手を選ぶ)で最後まで1本道シミュレートする。
-// これを「今打てる候補手」それぞれについて行い、最終的な誤差期待値が一番小さくなる
-// 最初の一手を推奨として提示する。
-// 制約(簡略化):複数マス同時ヒット系特技の対象マスは、盤面の隣接関係までは考慮せず
-// 「ゾーン未到達かつ必要量が大きいマス」を優先的に選ぶ近似で計算している。
-
-
-// ============================================================
-//  演算エンジン:大成功(誤差合計7以下)の確率を最大化する
-// ============================================================
-// 【設計の柱】
-//  1. 到達が絶対条件。1マスでも成功ゾーンに入らなければ大成功はない。
-//  2. 超過は回復不能。飛び越えたマスは二度と直せないので強く避ける。
-//  3. 熱風おろし(-150)+通常行動(-50)=-200 で、特殊温度を2手ごとに渡り歩く。
-//     集中力変化の地金では200の倍数で会心率+400%、400の倍数で消費半減が
-//     交互に来るため、このリズムに乗せると会心機会が飛躍的に増える。
-//  4. 会心狙いは「到達に必要な集中力を確保した上での余剰」で行う。
-//
-// この構成での実測は、大成功率 約39%、全マス到達率 約97%。
-// (Lv80 / 光のハンマー★3 / 集中力252 / 超かがやきの樹液を想定)
+function interpolate(key, temp){
+  const v = baseValues(key);
+  if(!v) return null;
+  const f = tempFactor(temp);
+  return { min: Math.ceil(v[0]*f), max: Math.ceil(v[v.length-1]*f) };
+}
 
 const GRID_ROWS = 3, GRID_COLS = 2; // 縦3×横2(超かがやきの樹液)
 const SUCCESS_THRESHOLD = 7;        // 6マス商材の大成功ライン(誤差合計)
@@ -898,13 +855,19 @@ const isPowerDownTurn = t => traitActive(t) && G.trait==='tataki' && t%200===0 &
 // その温度・技での7候補のロール値(整数、四捨五入)
 function getRollCandidates(skill, temp, trait, isLit){
   if(!skill.key) return null;
-  const baseR = interpolate(skill.key, temp);
-  if(!baseR) return null;
+  let ns = baseValues(skill.key);
+  if(!ns) return null;
+  const extra = G.rollObs && G.rollObs[skill.key];
+  if(extra && extra.length) ns = [...new Set(ns.concat(extra))].sort((a,b)=>a-b);
+  const f = tempFactor(temp);
   const mult = getPowerMultiplier(trait, temp, isLit);
-  const r = applyPowerMultiplier(baseR, mult);
   const out = [];
-  for(let k=0;k<7;k++) out.push(Math.round(r.min + (r.max-r.min)*k/6));
-  return out;
+  for(const n of ns){
+    const v = Math.ceil(n * f);
+    const w = (mult === 1) ? v : Math.ceil(v * mult);
+    if(out.indexOf(w) < 0) out.push(w);
+  }
+  return out.sort((a,b)=>a-b);
 }
 
 // 超過リスクのあるマスは「今は触らない」のが正解。
@@ -954,7 +917,7 @@ function moves(ms,f,t,cfg){
       for(const tg2 of enumerateTargetSets(s2)){
         if(tg2.some(i=>ms[i].current>=ms[i].zoneLow))continue;
         let safe=true;
-        for(const i of tg2) if(ms[i].current+r2[6]>ms[i].zoneHigh){safe=false;break;}
+        for(const i of tg2) if(ms[i].current+r2[r2.length-1]>ms[i].zoneHigh){safe=false;break;}
         if(safe){ok=true;break;}
       }
       if(ok)break;
@@ -986,7 +949,7 @@ function moves(ms,f,t,cfg){
           const r2=getRollCandidates(s2,tt,cfg.trait,false);
           if(!r2)continue;
           if(actualCostOf(s2,tt,cfg.trait)>ff)continue;
-          if(m.current+r2[6]<=m.zoneHigh){ok=true;break;}
+          if(m.current+r2[r2.length-1]<=m.zoneHigh){ok=true;break;}
         }
         if(ok)break;
       }
@@ -1004,7 +967,7 @@ function moves(ms,f,t,cfg){
       for(const tg of enumerateTargetSets(sk)){
         if(tg.some(i=>ms[i].current>=ms[i].zoneLow))continue;
         let safe=true;
-        for(const i of tg) if(ms[i].current+r[6]>ms[i].zoneHigh){safe=false;break;}
+        for(const i of tg) if(ms[i].current+r[r.length-1]>ms[i].zoneHigh){safe=false;break;}
         if(safe){ rescue.push({sk,tg,c,nt,overP:0,cooling:true}); added=true; }
       }
       // 対象マスを持つ技を「対象なし」で出してはいけない。
@@ -1085,7 +1048,7 @@ function pairSnipe(ms, f, t, cfg){
     if(tg.some(i => ms[i].current >= ms[i].zoneLow)) continue;
     const ok = tg.every(i => {
       const m = ms[i];
-      return m.current + r[6] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh;
+      return m.current + r[r.length-1] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh;
     });
     if(ok) return { sk: jn, tg, c, nt: Math.max(0, t + jn.tempDelta), overP: 0 };
   }
@@ -1107,7 +1070,7 @@ function tatakiOpening(ms, f, t, cfg){
     const r = sk.masses > 0 ? getRollCandidates(sk, t, cfg.trait, false) : null;
     if(sk.masses > 0){
       if(!r) return null;
-      for(const i of tg) if(ms[i].current + r[6] > ms[i].zoneHigh) return null;
+      for(const i of tg) if(ms[i].current + r[r.length-1] > ms[i].zoneHigh) return null;
     }
     return { sk, tg, c, nt: Math.max(0, t + sk.tempDelta), overP: 0 };
   };
@@ -1150,7 +1113,7 @@ function tatakiOpening(ms, f, t, cfg){
       const order = ms[B].current <= ms[F].current ? [B, F] : [F, B];
       for(const i of order){
         if(ms[i].current >= ms[i].zoneHigh - 60) continue;
-        if(ms[i].current + rr[6] > ms[i].zoneHigh) continue;
+        if(ms[i].current + rr[rr.length-1] > ms[i].zoneHigh) continue;
         const mv = mk(R, [i]);
         if(mv) return mv;
       }
@@ -1163,7 +1126,7 @@ function tatakiOpening(ms, f, t, cfg){
       const r = getRollCandidates(sk, t, cfg.trait, false);
       if(!r) continue;
       for(const tg of enumerateTargetSets(sk)){
-        if(!tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r[6] <= ms[i].zoneHigh)) continue;
+        if(!tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r[r.length-1] <= ms[i].zoneHigh)) continue;
         const mv = mk(sk, tg);
         if(mv) return mv;
       }
@@ -1178,9 +1141,9 @@ function tatakiOpening(ms, f, t, cfg){
       const r = getRollCandidates(sk, t, cfg.trait, false);
       if(!r) continue;
       for(const tg of enumerateTargetSets(sk)){
-        if(!tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r[6] <= ms[i].zoneHigh)) continue;
+        if(!tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r[r.length-1] <= ms[i].zoneHigh)) continue;
         const rc = getRollCandidates(C4, t - 50, cfg.trait, false);
-        if(rc && tg.some(i => ms[i].current + r[6] + rc[6] > ms[i].zoneHigh)) continue;
+        if(rc && tg.some(i => ms[i].current + r[r.length-1] + rc[rc.length-1] > ms[i].zoneHigh)) continue;
         const mv = mk(sk, tg);
         if(mv) return mv;
       }
@@ -1285,7 +1248,7 @@ function stratB(ms,f,t,P,cfg){
             let idx = -1, worst = -1;
             for(let i = 0; i < ms.length; i++){
               if(ms[i].current >= ms[i].zoneLow) continue;
-              if(r && ms[i].current + r[6] > ms[i].zoneHigh) continue;   // 超過させない
+              if(r && ms[i].current + r[r.length-1] > ms[i].zoneHigh) continue;   // 超過させない
               const gap = ms[i].zoneLow - ms[i].current;
               if(gap > worst){ worst = gap; idx = i; }
             }
@@ -1337,7 +1300,7 @@ function stratB(ms,f,t,P,cfg){
       const r=getRollCandidates(sk,t,cfg.trait,false);
       if(!r)continue;
       // 最小ロールで届き、最大ロールで超過しないこと
-      if(m.current+r[0]>=m.zoneLow && m.current+r[6]<=m.zoneHigh){
+      if(m.current+r[0]>=m.zoneLow && m.current+r[r.length-1]<=m.zoneHigh){
         cheapest=Math.min(cheapest,c);
       }
     }
@@ -1349,7 +1312,7 @@ function stratB(ms,f,t,P,cfg){
         const r=getRollCandidates(sk,t,cfg.trait,false);
         if(!r)continue;
         const c=actualCostOf(sk,t,cfg.trait);
-        const e=((r[0]+r[6])/2)/c;
+        const e=((r[0]+r[r.length-1])/2)/c;
         if(e>bestEff){bestEff=e;cost1=c;}
       }
       cheapest = bestEff>0 ? Math.ceil(gap/bestEff) : gap;
@@ -1438,7 +1401,7 @@ function stratB(ms,f,t,P,cfg){
       const r2=getRollCandidates(x.sk,t,cfg.trait,false);
       if(r2) for(const i of x.tg){
         const m=ms[i];
-        if(m.current+r2[0]>=m.zoneLow && m.current+r2[6]<=m.zoneHigh) sureIn++;
+        if(m.current+r2[0]>=m.zoneLow && m.current+r2[r2.length-1]<=m.zoneHigh) sureIn++;
       }
     }
     // 会心率が上がるターンは消費も1.5倍になるため、
@@ -1459,7 +1422,7 @@ function stratB(ms,f,t,P,cfg){
         if(m.current >= m.zoneLow) continue;
         // 今まさに使おうとしている技で、この位置から本会心が成立するか。
         // 判定は技ごとに行う(倍率が違えば成立範囲も違うため)。
-        if(m.current + r[6] > m.zoneHigh) continue;      // 条件1:はみ出す
+        if(m.current + r[r.length-1] > m.zoneHigh) continue;      // 条件1:はみ出す
         if(m.current + 2*r[0] < m.zoneHigh) continue;    // 条件2:会心でも届かない
 
         // 成立していても、位置によって価値は大きく違う。
@@ -1573,14 +1536,14 @@ function stratB(ms,f,t,P,cfg){
           const m = ms[i];
           if(m.current >= m.zoneLow) continue;
           const gap = m.zoneLow - m.current;
-          const mean = (r[0] + r[6]) / 2;
+          const mean = (r[0] + r[r.length-1]) / 2;
           // 旧実装は「残り距離が平均ロールの1.5倍を超えるか」で判定していたため、
           // 威力の大きい技ほど平均ロールが大きくなり、常に減点される欠陥があった。
           // (実測では倍加ターンで超4連が一度も選ばれず、4連打ちに負けていた)
           // 倍加ターンの価値は「大技を安全に撃てること」なので、
           // 超過しない範囲でどれだけ前進できるかで評価する。
           if(up){
-            const over = m.current + r[6] > m.zoneHigh;
+            const over = m.current + r[r.length-1] > m.zoneHigh;
             fit += over ? -1 : Math.min(1, mean / Math.max(1, gap));
           }
           if(down) fit += gap < mean*2.5 ? 1 : -0.3;   // 半減は近いマス向き
@@ -1606,7 +1569,7 @@ function stratB(ms,f,t,P,cfg){
         // 本会心が成立する位置なら、会心で誤差0を狙う方が優先。
         // 着弾位置の最適化は「会心では捉えられない」場合の次善策なので、
         // 本会心を狙える局面では評価しない(競合して会心狙いを潰すため)。
-        if(m.current + r[6] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh) continue;
+        if(m.current + r[r.length-1] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh) continue;
         // さらに「この一手でゾーンに入る」場合だけに限定する。
         // 遠い位置から中央を狙おうとすると、多マス技で一度に進める効率を捨てて
         // 集中力が足りなくなる(実測で確認)。
@@ -1889,7 +1852,7 @@ function killerAt(m, temp, cfg){
     if(!s.crit || s.lv > cfg.level) continue;
     const r = getRollCandidates(s, temp, cfg.trait, false);
     if(!r) continue;
-    if(m.current + r[6] > m.zoneHigh) continue;      // はみ出す
+    if(m.current + r[r.length-1] > m.zoneHigh) continue;      // はみ出す
     if(m.current + 2*r[0] < m.zoneHigh) continue;    // 会心でも届かない
     // 多マス技を1マスにしか使わないなら割高。1マスあたりで比較する。
     const c = actualCostOf(s, temp, cfg.trait);
@@ -2009,7 +1972,7 @@ function critSkillsAt(pos, zoneHigh, temp, level, trait){
     if(!s.crit || s.lv > level) continue;
     const r = getRollCandidates(s, temp, trait, false);
     if(!r) continue;
-    if(pos + r[6] > zoneHigh) continue;        // 条件1
+    if(pos + r[r.length-1] > zoneHigh) continue;        // 条件1
     if(pos + 2*r[0] < zoneHigh) continue;      // 条件2
     out.push(s);
   }
@@ -2024,7 +1987,7 @@ function critZoneRange(zoneLow, zoneHigh, temp, level, trait){
     const r = getRollCandidates(s, temp, trait, false);
     if(!r) continue;
     const a = zoneHigh - 2*r[0];     // この位置以上なら会心で届く
-    const b = zoneHigh - r[6];       // この位置以下ならはみ出さない
+    const b = zoneHigh - r[r.length-1];       // この位置以下ならはみ出さない
     if(a > b) continue;              // その技では成立しない
     lo = Math.min(lo, a);
     hi = Math.max(hi, b);
@@ -2067,8 +2030,8 @@ function markersFor(m, skill){
   if(skill && skill.key){
     const r = getRollCandidates(skill, G.temp, G.trait, false);
     if(r){
-      const n0=m.current+r[0], n1=m.current+r[6];
-      const c0=m.current+2*r[0], c1=m.current+2*r[6];
+      const n0=m.current+r[0], n1=m.current+r[r.length-1];
+      const c0=m.current+2*r[0], c1=m.current+2*r[r.length-1];
       out.blue = [pct(n0), pct(n1)];
       out.red  = [pct(c0), pct(c1)];
       out.raw.blue = [Math.round(n0), Math.round(n1)];
@@ -2405,7 +2368,7 @@ function applyExecuted(k){
         firstOf[i] = { before: G.masses[i].current,
                        rolls: getRollCandidates(sk, st.temp, G.trait, false),
                        cr: computeCritRate(sk, G.level, G.hammerId, G.star, G.trait, st.temp),
-                       name: st.name };
+                       name: st.name, key: sk.key, temp: st.temp, mult: getPowerMultiplier(G.trait, st.temp, false) };
         simFirstMove = saved;
       }
     });
@@ -2543,6 +2506,13 @@ function pickValue(idx, val, wasCrit){
   if(!Number.isFinite(val)) return;      // 想定外の値では状態を壊さない
   const ob = G.obs && G.obs[idx];
   if(ob && ob.rolls) updatePost(idx, ob.before, ob.rolls, ob.cr, val, wasCrit);
+  // 会心でない打撃なら、増加量がそのまま実測のロール値になる。
+  // 推定していた範囲の外に出た場合は、この観測を覚えて次から正しく出す。
+  if(ob && ob.key && wasCrit === false){
+    const d = val - ob.before;
+    if(ob.mult) learnRoll(ob.key, ob.temp, d / ob.mult);
+    else learnRoll(ob.key, ob.temp, d);
+  }
   markFx(idx, G.masses[idx].current, val);
   G.masses[idx].current = val;
   if(G.obs) G.obs[idx] = null;
@@ -2640,6 +2610,15 @@ function commit(){
   else v = padBuf==='' ? cur : n;    // 何も入力していなければ現状維持
   v = Math.max(0, v);
   if(padTarget==='mass'){
+    // 一覧に無い値を手入力した場合も、通常ロールとして説明が付くなら覚える
+    const ob2 = G.obs && G.obs[padIdx];
+    if(ob2 && ob2.key && ob2.rolls){
+      const d = v - ob2.before;
+      const base = ob2.mult ? d / ob2.mult : d;
+      // 会心(2倍)や理想値での停止と区別できる範囲でのみ学習する
+      if(base > 0 && base <= ob2.rolls[rolls.length-1] * 1.6 && base >= ob2.rolls[0] * 0.6)
+        learnRoll(ob2.key, ob2.temp, base);
+    }
     markFx(padIdx, G.masses[padIdx].current, v);
     G.masses[padIdx].current = v;
     G.pending = G.pending.filter(i => i !== padIdx);
@@ -2769,7 +2748,8 @@ function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
     level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax,
-    pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
+    pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs,
+    rollObs:G.rollObs
   })); }catch(e){}
 }
 function load(){
