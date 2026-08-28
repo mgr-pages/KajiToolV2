@@ -732,26 +732,33 @@ const POWER_TABLE = {
    候補は「最小と最大を等分」ではなく、基準 n の整数を1つずつ当てはめた結果になる。
    手持ちの実測テーブル248点のうち245点がこの式で再現でき、
    残る3点(1400℃の上下打ちと熱風おろし)は転記ミスとみて式を優先する。 */
-/* ロールは常に7通り。
-   もとになるのは「たたく」の12〜18で、各技はそれに固有の倍率を掛ける(端数切り捨て)。
+/* ロールは常に7通り。計算式は
+     会心 × ceil( 特性 × ceil( (0.5 + 0.0005×温度) × ceil(n × 技倍率) ) )
+   n は「たたく」の 12〜18。温度は2000℃で頭打ち。
+   技倍率 y は てかげん0.5 / みだれ0.8 / 通常1 / 上下・4連・ななめ1.2 /
+   2倍・超4連2 / 熱風2.5 / 3倍3。端数はいずれも切り上げ。
+   特性(たたき変化)は 1・2・0.5、会心は最後に2倍する。
    6系列すべての最小値と最大値が実測テーブルと一致することを確認済み。 */
-const SKILL_MULT = { tataku:1, tekagen:0.5, joge:1.25, nibai:2, sanbai:3, reppu:2.5 };
+const SKILL_MULT = { tataku:1, tekagen:0.5, joge:1.2, nibai:2, sanbai:3, reppu:2.5, midare:0.8 };
 const BASE_N = {};   // 1000℃時の7通り
 (function(){
   for(const key of Object.keys(SKILL_MULT)){
     const m = SKILL_MULT[key], v = [];
-    for(let n = 12; n <= 18; n++) v.push(Math.floor(n * m));
+    for(let n = 12; n <= 18; n++) v.push(Math.ceil(n * m));
     BASE_N[key] = v;
   }
 })();
-function tempFactor(temp){ return 0.0005 * Math.max(50, Math.min(2000, temp)) + 0.5; }
+// 係数 (0.5 + 0.0005x) は (1000 + x) / 2000 と同じ。
+// 小数で計算すると 0.0005*1400 が 0.7000000000000001 になり、
+// 切り上げの結果が1ずれるため、整数の分子分母で扱う。
+function tempNum(temp){ return 1000 + Math.max(50, Math.min(2000, temp)); }
+function scaleUp(base, temp){ return Math.ceil(base * tempNum(temp) / 2000); }
 function baseValues(key){ return BASE_N[key] || null; }
 
 function interpolate(key, temp){
   const v = baseValues(key);
   if(!v) return null;
-  const f = tempFactor(temp);
-  return { min: Math.ceil(v[0]*f), max: Math.ceil(v[6]*f) };
+  return { min: scaleUp(v[0], temp), max: scaleUp(v[6], temp) };
 }
 
 const GRID_ROWS = 3, GRID_COLS = 2; // 縦3×横2(超かがやきの樹液)
@@ -846,11 +853,10 @@ function getRollCandidates(skill, temp, trait, isLit){
   if(!skill.key) return null;
   const ns = baseValues(skill.key);
   if(!ns) return null;
-  const f = tempFactor(temp);
   const mult = getPowerMultiplier(trait, temp, isLit);
   const out = [];
   for(let k=0;k<7;k++){                        // 候補は常に7通り
-    const v = Math.ceil(ns[k] * f);
+    const v = scaleUp(ns[k], temp);
     out.push((mult === 1) ? v : Math.ceil(v * mult));
   }
   return out;
