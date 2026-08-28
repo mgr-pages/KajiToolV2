@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！</title>
+<title>鍛冶アドバイザー</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -540,8 +540,7 @@ const G = {
   rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null,
   // 実行済み反映で「数値の手入力待ち」になっているマス番号
   pending: [], undoSnap: null, showRange: true, hist: [], posts: null, obs: null,
-  fx: null,  // 値が変わった直後のマスに一度だけ動きを付ける
-  rollObs: null   // 実測から学習した威力の範囲(温度ごと)
+  fx: null   // 値が変わった直後のマスに一度だけ動きを付ける
 };
 // 素材ごとのプリセット。zones は各マスの成功ゾーン[下限,上限]、
 // trait はその素材が持つ地金特性(選択時に自動で切り替える)。
@@ -733,36 +732,26 @@ const POWER_TABLE = {
    候補は「最小と最大を等分」ではなく、基準 n の整数を1つずつ当てはめた結果になる。
    手持ちの実測テーブル248点のうち245点がこの式で再現でき、
    残る3点(1400℃の上下打ちと熱風おろし)は転記ミスとみて式を優先する。 */
-const BASE_N = {};   // 1000℃時の基準値 [最小, 最大]
+/* ロールは常に7通り。
+   もとになるのは「たたく」の12〜18で、各技はそれに固有の倍率を掛ける(端数切り捨て)。
+   6系列すべての最小値と最大値が実測テーブルと一致することを確認済み。 */
+const SKILL_MULT = { tataku:1, tekagen:0.5, joge:1.25, nibai:2, sanbai:3, reppu:2.5 };
+const BASE_N = {};   // 1000℃時の7通り
 (function(){
-  const i = TEMP_POINTS.indexOf(1000);
-  for(const key of Object.keys(POWER_TABLE)) BASE_N[key] = [POWER_TABLE[key][i][1], POWER_TABLE[key][i][0]];
+  for(const key of Object.keys(SKILL_MULT)){
+    const m = SKILL_MULT[key], v = [];
+    for(let n = 12; n <= 18; n++) v.push(Math.floor(n * m));
+    BASE_N[key] = v;
+  }
 })();
 function tempFactor(temp){ return 0.0005 * Math.max(50, Math.min(2000, temp)) + 0.5; }
-function baseValues(key){                     // その技が取りうる基準値の一覧
-  const b = BASE_N[key]; if(!b) return null;
-  const out = []; for(let n = b[0]; n <= b[1]; n++) out.push(n);
-  return out;
-}
-
-/* 実測による補正。
-   式で説明できない値が出た場合は、その基準値を覚えて候補に足す。 */
-function learnRoll(key, temp, roll){
-  if(!key || !Number.isFinite(roll) || roll <= 0) return;
-  const n = roll / tempFactor(temp);
-  const r = Math.round(n);
-  if(Math.abs(n - r) > 0.35) return;          // 基準値として説明が付かない値は覚えない
-  if(!G.rollObs) G.rollObs = {};
-  const k = key;
-  if(!G.rollObs[k]) G.rollObs[k] = [];
-  if(G.rollObs[k].indexOf(r) < 0) G.rollObs[k].push(r);
-}
+function baseValues(key){ return BASE_N[key] || null; }
 
 function interpolate(key, temp){
   const v = baseValues(key);
   if(!v) return null;
   const f = tempFactor(temp);
-  return { min: Math.ceil(v[0]*f), max: Math.ceil(v[v.length-1]*f) };
+  return { min: Math.ceil(v[0]*f), max: Math.ceil(v[6]*f) };
 }
 
 const GRID_ROWS = 3, GRID_COLS = 2; // 縦3×横2(超かがやきの樹液)
@@ -855,19 +844,16 @@ const isPowerDownTurn = t => traitActive(t) && G.trait==='tataki' && t%200===0 &
 // その温度・技での7候補のロール値(整数、四捨五入)
 function getRollCandidates(skill, temp, trait, isLit){
   if(!skill.key) return null;
-  let ns = baseValues(skill.key);
+  const ns = baseValues(skill.key);
   if(!ns) return null;
-  const extra = G.rollObs && G.rollObs[skill.key];
-  if(extra && extra.length) ns = [...new Set(ns.concat(extra))].sort((a,b)=>a-b);
   const f = tempFactor(temp);
   const mult = getPowerMultiplier(trait, temp, isLit);
   const out = [];
-  for(const n of ns){
-    const v = Math.ceil(n * f);
-    const w = (mult === 1) ? v : Math.ceil(v * mult);
-    if(out.indexOf(w) < 0) out.push(w);
+  for(let k=0;k<7;k++){                        // 候補は常に7通り
+    const v = Math.ceil(ns[k] * f);
+    out.push((mult === 1) ? v : Math.ceil(v * mult));
   }
-  return out.sort((a,b)=>a-b);
+  return out;
 }
 
 // 超過リスクのあるマスは「今は触らない」のが正解。
@@ -2506,13 +2492,6 @@ function pickValue(idx, val, wasCrit){
   if(!Number.isFinite(val)) return;      // 想定外の値では状態を壊さない
   const ob = G.obs && G.obs[idx];
   if(ob && ob.rolls) updatePost(idx, ob.before, ob.rolls, ob.cr, val, wasCrit);
-  // 会心でない打撃なら、増加量がそのまま実測のロール値になる。
-  // 推定していた範囲の外に出た場合は、この観測を覚えて次から正しく出す。
-  if(ob && ob.key && wasCrit === false){
-    const d = val - ob.before;
-    if(ob.mult) learnRoll(ob.key, ob.temp, d / ob.mult);
-    else learnRoll(ob.key, ob.temp, d);
-  }
   markFx(idx, G.masses[idx].current, val);
   G.masses[idx].current = val;
   if(G.obs) G.obs[idx] = null;
@@ -2611,14 +2590,6 @@ function commit(){
   v = Math.max(0, v);
   if(padTarget==='mass'){
     // 一覧に無い値を手入力した場合も、通常ロールとして説明が付くなら覚える
-    const ob2 = G.obs && G.obs[padIdx];
-    if(ob2 && ob2.key && ob2.rolls){
-      const d = v - ob2.before;
-      const base = ob2.mult ? d / ob2.mult : d;
-      // 会心(2倍)や理想値での停止と区別できる範囲でのみ学習する
-      if(base > 0 && base <= ob2.rolls[rolls.length-1] * 1.6 && base >= ob2.rolls[0] * 0.6)
-        learnRoll(ob2.key, ob2.temp, base);
-    }
     markFx(padIdx, G.masses[padIdx].current, v);
     G.masses[padIdx].current = v;
     G.pending = G.pending.filter(i => i !== padIdx);
@@ -2748,8 +2719,7 @@ function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
     level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax,
-    pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs,
-    rollObs:G.rollObs
+    pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
   })); }catch(e){}
 }
 function load(){
