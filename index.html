@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！</title>
+<title>超素材を作ろう！</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -725,8 +725,46 @@ const POWER_TABLE = {
   reppu:   [[68,45],[66,44],[63,42],[61,41],[59,39],[57,38],[54,36],[52,35],[50,33],[48,32],[45,30],[43,29],[41,27],[39,26],[36,24],[34,23],[32,21],[30,20],[27,18],[null,null],[null,null]],
 };
 
+/* 威力は温度の一次式で決まり、表示値はそれを丸めたもの。
+   実測テーブルは100℃刻みしか無いが、実際の温度は50℃刻みで動く
+   (打撃-50 / 熱風-150 / 冷やし-300 / 火力+300)。
+   従来はテーブル間を線形補間して小数のまま7個の候補を作っていたため、
+   1450℃のような温度で候補の一部が1ずれていた。
+   テーブルから一次式を復元し、丸めた整数を返す。 */
+const POWER_FIT = (()=>{
+  const fit = {};
+  for(const key of Object.keys(POWER_TABLE)){
+    const out = [];
+    for(const j of [0,1]){
+      let n=0,sx=0,sy=0,sxx=0,sxy=0;
+      TEMP_POINTS.forEach((t,i)=>{
+        const v = POWER_TABLE[key][i][j];
+        if(v == null) return;
+        n++; sx+=t; sy+=v; sxx+=t*t; sxy+=t*v;
+      });
+      const a = (n*sxy - sx*sy) / (n*sxx - sx*sx);
+      out.push([a, (sy - a*sx)/n]);
+    }
+    fit[key] = { max: out[0], min: out[1] };
+  }
+  return fit;
+})();
+
 function interpolate(key, temp){
   if(!key) return null;
+  {
+    const f = POWER_FIT[key];
+    if(f){
+      const t = Math.max(50, Math.min(2000, temp));
+      const mx = Math.round(f.max[0]*t + f.max[1]);
+      const mn = Math.round(f.min[0]*t + f.min[1]);
+      // テーブルに実測値がある温度は、式より実測を優先する
+      const i = TEMP_POINTS.indexOf(t);
+      if(i >= 0 && POWER_TABLE[key][i][0] != null)
+        return { max: POWER_TABLE[key][i][0], min: POWER_TABLE[key][i][1] };
+      return { max: mx, min: Math.min(mn, mx) };
+    }
+  }
   // 2000℃超は威力が頭打ちで、2000℃と同じロールになる。
   // 2500℃で撃っても2000℃と同じ値しか出ない。
   const t = Math.max(50, Math.min(2000, temp));
@@ -2361,10 +2399,14 @@ function applyExecuted(k){
     const sk = SKILLS.find(k => k.name === st.name);
     st.tg.forEach(i => {
       if(firstOf[i] === undefined && sk && sk.key){
+        // その手の時点の特性状態を再現してから求める
+        const saved = simFirstMove;
+        simFirstMove = (st.traitOn === undefined) ? saved : !st.traitOn;
         firstOf[i] = { before: G.masses[i].current,
                        rolls: getRollCandidates(sk, st.temp, G.trait, false),
                        cr: computeCritRate(sk, G.level, G.hammerId, G.star, G.trait, st.temp),
                        name: st.name };
+        simFirstMove = saved;
       }
     });
   });
@@ -2440,8 +2482,11 @@ function buildPlan(ms0, cfg){
     if(t<=0) break;
     const mv = stratB(sim,f,t,PARAMS,cfg);
     if(!mv || f<mv.c) break;
+    // 地金特性が乗るかは「その手が1手目かどうか」で決まる。
+    // 候補を作るのは実行を反映する時点なので、ここで手ごとに控えておかないと
+    // グローバル状態から誤って判定してしまう。
     G.plan.push({name:mv.sk.name, tg:mv.tg.slice(), temp:t,
-      cost:mv.c, tempAfter:mv.nt,
+      cost:mv.c, tempAfter:mv.nt, traitOn: !isStartState(),
       mk: traitMark(t)});
     const r = mv.sk.key ? getRollCandidates(mv.sk,t,G.trait,false) : null;
     if(r){
