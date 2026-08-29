@@ -747,6 +747,12 @@ const BASE_N = {};   // 1000℃時の7通り
     for(let n = 12; n <= 18; n++) v.push(Math.ceil(n * m));
     BASE_N[key] = v;
   }
+  // 上下系(上下打ち・4連打ち・ななめ打ち・左右打ち・上下ねらい打ち)の4番目を実測で補正。
+  // 式では 15×1.2 = 18.0 ちょうどとなり切り上げても18だが、実機は19。
+  // 根拠となった観測(いずれも1000℃時の基準19が必要):
+  //   2050℃ 4連打ち → 29 / 1800℃ 上下ねらい打ち → 27
+  // 最小15・最大22は変わらないため、実測テーブルとの照合には影響しない。
+  BASE_N.joge = [15, 16, 17, 19, 20, 21, 22];
 })();
 // 係数 (0.5 + 0.0005x) は (1000 + x) / 2000 と同じ。
 // 小数で計算すると 0.0005*1400 が 0.7000000000000001 になり、
@@ -789,7 +795,7 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24 };
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24, x2turn:10 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -1512,6 +1518,28 @@ function stratB(ms,f,t,P,cfg){
       }
     }
     turnEff += turnVal * P.turn;
+
+    // ---- 威力2倍ターンへ運ぶ(たたき変化) ----
+    // 実測では威力2倍ターンの前進効率が13.03、通常ターンが3.43で3.8倍の差がある。
+    // それなのに2倍ターンで撃てている打撃は4.03回/game しかない。
+    // isBoostTurn/isHalfTurn は集中力変化専用なので、上の turn 評価は
+    // たたき変化では一度も働いていなかった。ここで別に評価する。
+    if(P.x2turn > 0 && cfg.trait === 'tataki'){
+      let v = 0;
+      if(isPowerUpTurn(x.nt)) v = 1;
+      else {
+        // 次の一手で威力2倍に届くなら、その手前として評価する
+        for(const s2 of SKILLS){
+          if(s2.lv > cfg.level || s2.id === 'midare') continue;
+          const n2 = Math.max(0, x.nt + s2.tempDelta);
+          if(n2 > 0 && n2 % 400 === 0){ v = 0.4; break; }
+        }
+      }
+      // まだ遠いマスが多いほど、前進の主戦場を2倍ターンへ寄せる価値が高い
+      let far = 0;
+      for(const m of ms) if(m.current < m.zoneLow) far += m.zoneLow - m.current;
+      turnEff += v * P.x2turn * Math.min(1, far / 400);
+    }
 
     // ---- たたき変化への対応 ----
     // この特性では威力そのものが変わる(400の倍数で2倍、その中間で半減)。
