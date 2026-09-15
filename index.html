@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>鍛冶アドバイザー</title>
+<title>超素材をつくろう！</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -794,8 +794,14 @@ const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 //   rush : 会心の見込みが無いマスをゾーンへ押し込む手の抑制
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
+/* 評価パラメータ。素材ごとの効き方は検証済み(0にした時に結果が変わる対局の割合)。
+   両方       cap adv land heat ov pr tmax te center far mpm slack effK slackMax
+              rush wideAim pairSnipe
+   樹液のみ    save(39.7%) turn(8.4%) boostPlan(3.6%) saveCap boostAim boostRes
+   いとのみ    opening(51.0%) center(16.4%) tatakiFit(5.1%) x2turn aimNow aimRes
+   ※ 樹液=超かがやきの樹液(集中力変化) / いと=超あまつゆのいと(たたき変化) */
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24, x2turn:10 };
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24, x2turn:10, aimNow:1, aimRes:2.2 };
 
 function idxToRC(i){ return { r: Math.floor(i/GRID_COLS), c: i%GRID_COLS }; }
 function rcToIdx(r,c){
@@ -1100,10 +1106,27 @@ function tatakiOpening(ms, f, t, cfg){
   if(t < 2000 && t >= 1600 && ms[2].current > 50 && ms[3].current > 50
      && ms[4].current > 0 && ms[5].current > 0){
     const B = 1, F = 5;
-    // Bがまだ手つかずなら1回たたく(熱風の下地を作る)
-    if(ms[B].current === 0){
-      const mv = mk(TK, [B]);
-      if(mv) return mv;
+    // --- 位相補正 ---
+    // ここから熱風(-150)だけで400の倍数(=威力2倍ターン)に着けるかを確認し、
+    // 着けないなら先に打撃(-50)を挟んで温度格子を合わせる。
+    // 従来は「Bが0ならたたく」という条件が偶然この補正を兼ねていた。
+    // そのためBが先に進んでいる盤面では補正が飛び、以降の温度が50℃ずれた
+    // 格子(1650/1500/1350…)に乗って威力2倍ターンを外していた。
+    // 実測: 開幕でマス2を1回叩くだけで倍加ターン -0.53回/game、手数 +2.7手、
+    // 熱風 +3.55回・火力上げ +1回で31集中力を余分に消費していた。
+    // 検証: 位相が崩れた盤面で大成功 +6.02/+4.93pt、失敗 4.50%→2.32% / 4.80%→2.48%。
+    // 本線(マス2が0のまま)では従来と同じ手を選ぶため 50.11%→50.13% / 49.66%→49.68% と無変化。
+    let onGrid = false;
+    for(let k = 0; k <= 2; k++){
+      const n = t - 150 * k;
+      if(n >= 1600 && n % 400 === 0){ onGrid = true; break; }
+    }
+    if(!onGrid){
+      for(const i of [B, F, 0, 2, 3, 4]){
+        if(ms[i].current >= ms[i].zoneLow) continue;
+        const mv = mk(TK, [i]);
+        if(mv) return mv;
+      }
     }
     // BとFのうち低い方へ熱風。目標(zoneHigh-60)に届くまで
     const rr = getRollCandidates(R, t, cfg.trait, false);
@@ -1134,6 +1157,26 @@ function tatakiOpening(ms, f, t, cfg){
   // --- 倍加ターンの1手前: 4連打ちで軽く詰める ---
   // 超4連をここで撃つと次の倍加ターンで突き抜けて撃てなくなる。
   if(isPowerUpTurn(t - 50)){
+    // まずは ななめ打ち[マス4,5] を試す。
+    // 上下・左右のペアは必ず幅11と幅7が1つずつの混成だが、ななめ[4,5]だけは
+    // 幅11を2マス叩ける。ここで4連打ちを使うとマス3(幅7)が先に進み、
+    // 2000℃の超4連の直後に残距離35 ---「1600℃倍加のねらい打ち(最大48)では超過、
+    // 1500℃通常(距離帯23〜30)では届かない」という技の窓の谷間 --- に落ちる。
+    // ななめ[4,5]ならマス3の残距離は62に収まり、集中力も5安い。
+    // 検証: 3シード系列で大成功 +3.20〜+3.50pt (t=4.85〜5.26)。
+    // 位相合わせの他候補(上下[2,4] / 左右[5,6] / たたく[2] / 2倍[2] / 3倍[2] / 上下[4,6])は
+    // いずれも劣るか非有意。特にマス2を先に進める案は失敗率が2.4%→4.3%に悪化する。
+    if(NN){
+      const r = getRollCandidates(NN, t, cfg.trait, false);
+      const tg = [3, 4];
+      if(r && tg.every(i => ms[i].current < ms[i].zoneLow && ms[i].current + r[r.length-1] <= ms[i].zoneHigh)){
+        const rc = getRollCandidates(C4, t - 50, cfg.trait, false);
+        if(!(rc && tg.some(i => ms[i].current + r[r.length-1] + rc[rc.length-1] > ms[i].zoneHigh))){
+          const mv = mk(NN, tg);
+          if(mv) return mv;
+        }
+      }
+    }
     for(const sk of [Y4, NN, SKILLS.find(s=>s.id==='sayuu'), TK]){
       if(!sk || sk.lv > cfg.level) continue;
       const r = getRollCandidates(sk, t, cfg.trait, false);
@@ -1194,6 +1237,41 @@ function stratB(ms,f,t,P,cfg){
       if(f - x.c < rest * (P.boostRes === undefined ? 24 : P.boostRes)) continue;
       const cr = computeCritRate(x.sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, t);
       const v = sum * cr / x.c;
+      if(v > bV){ bV = v; bA = x; }
+    }
+    if(bA) return bA;
+  }
+
+  // ---- 成立している狙い打ちを拾う(会心ターンの無い素材向け) ----
+  // たたき変化には会心率が上がるターンが無いため、上の boostAim が一度も働かない。
+  // 実測では狙い打ちが成立する局面が8.82手/gameあり、そのうち5.17手を別の手に
+  // 使っていた。集中力不足は0.15手、温度計画上やむを得ない局面は0手だったので、
+  // 制約ではなく評価で負けているだけと判断した。
+  if(P.aimNow > 0 && cfg.trait !== 'shuchu'){
+    const cand = moves(ms, f, t, cfg);
+    let bA = null, bV = -1;
+    for(const x of cand){
+      if(!x.sk.crit || !x.sk.key || f < x.c) continue;
+      const tg = x.tg.filter(i => ms[i].current < ms[i].zoneLow);
+      if(!tg.length) continue;
+      const r = getRollCandidates(x.sk, t, cfg.trait, false);
+      if(!r) continue;
+      // 本会心が成立する距離にあるか(最大ロールで届き、2倍で越えられる)
+      const lo = r[r.length-1], hi = 2*r[0];
+      if(!tg.every(i => { const d = ms[i].zoneHigh - ms[i].current; return d >= lo && d <= hi; })) continue;
+      // 残るマスを仕上げる集中力を確保できる時だけ撃つ
+      let restAdv = 0, restN = 0;
+      for(let i=0;i<ms.length;i++){
+        if(x.tg.indexOf(i) >= 0) continue;
+        const d = ms[i].zoneLow - ms[i].current;
+        if(d > 0){ restAdv += d; restN++; }
+      }
+      const need = Math.max(restN * (P.mpm === undefined ? 16 : P.mpm),
+                            restAdv / (P.effK === undefined ? 4 : P.effK))
+                 * (P.aimRes === undefined ? 1 : P.aimRes);
+      if(f - x.c < need) continue;
+      const cr = computeCritRate(x.sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, t);
+      const v = tg.length * cr / x.c;
       if(v > bV){ bV = v; bA = x; }
     }
     if(bA) return bA;
