@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！</title>
+<title>超素材をつくろう！V1.2</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -412,6 +412,18 @@ table.sk .cst{text-align:right; font-weight:700;}
   text-align:center; font-variant-numeric:tabular-nums;}
 .zrow .zs{color:var(--dim); font-size:12px;}
 @media (min-width:760px){ .zrow .zl{font-size:13px; width:52px; flex:0 0 52px;} }
+/* --- 手動設定パネル --- */
+.zpanel{border:1px solid var(--acc); border-radius:8px; padding:10px; margin-top:10px;}
+.zpanel .zhead{font-size:12.5px; font-weight:600; color:var(--acc); margin-bottom:2px;}
+.zpanel .zstep{font-size:11.5px; color:var(--dim); line-height:1.6; margin-bottom:8px;}
+.zrow .zchk{flex:0 0 auto; margin:0 2px 0 0; width:16px; height:16px;}
+.zrow.zoff .zl, .zrow.zoff .zs{opacity:.35;}
+.zrow.zoff input{opacity:.35; pointer-events:none;}
+.hint-cust{background:var(--acc); color:#fff; font-size:11px; border-radius:4px;
+  padding:1px 6px; margin-left:6px;}
+.cell.off{opacity:.3;}
+.cell.off .cur, .cell.off .zn{visibility:hidden;}
+.cell.off .idx::after{content:' 未使用'; font-size:10px;}
 
 </style>
 </head>
@@ -424,6 +436,7 @@ table.sk .cst{text-align:right; font-weight:700;}
       <option value="amatsuyu">超あまつゆのいと</option>
       <option value="custom">手動設定</option>
     </select>
+    <span class="hint-cust" id="v-cust" style="display:none">要設定</span>
     <button class="hdr-reset" onclick="confirmReset()">やり直す</button>
     <span class="gear" id="v-gear">—</span>
   </div>
@@ -495,11 +508,18 @@ table.sk .cst{text-align:right; font-weight:700;}
       <input type="number" id="s-barmax" min="10" max="9999" placeholder="自動"
              oninput="onBarMaxChange()"></div>
     <div id="zoneEdit" style="display:none">
-      <div style="font-size:11.5px;color:var(--dim);margin:10px 0 6px">
-        各マスの成功ゾーン(下限・上限)
+      <div class="zpanel">
+        <div class="zhead">手動設定</div>
+        <div class="zstep">
+          ① 上の「地金特性」を選ぶ<br>
+          ② 使うマスだけチェックを残す(外したマスは盤面から消えます)<br>
+          ③ 各マスの成功ゾーンを 下限〜上限 で入れる<br>
+          ④「ゾーンを反映」を押す
+        </div>
+        <div id="zoneRows"></div>
+        <div id="zoneWarn" style="font-size:11.5px;color:#e5534b;margin-top:6px;display:none"></div>
+        <button class="calc" style="margin-top:8px" onclick="applyZones()">ゾーンを反映</button>
       </div>
-      <div id="zoneRows"></div>
-      <button class="calc" style="margin-top:8px" onclick="applyZones()">ゾーンを反映</button>
     </div>
 
   </div>
@@ -810,11 +830,18 @@ function rcToIdx(r,c){
 }
 
 // 技ごとの対象マスの組み合わせを、盤面の隣接関係に沿って列挙する
+// 使用しないマスを含む形も、残ったマスだけを対象にして打てる(実ゲームの挙動)。
+// 例: マス5・6が無い盤で上下打ち[3,5]は、マス3のみを叩く手になる。
+let ACTIVE = null;                       // null = 全マス有効
+function setActiveMask(list){
+  ACTIVE = (Array.isArray(list) && list.some(v => !v)) ? list.slice() : null;
+}
+function isActive(i){ return !ACTIVE || ACTIVE[i]; }
 function enumerateTargetSets(skill){
   const sets = [];
   if(skill.masses===0) return [[]];
   if(skill.masses===1){
-    for(let i=0;i<GRID_ROWS*GRID_COLS;i++) sets.push([i]);
+    for(let i=0;i<GRID_ROWS*GRID_COLS;i++) if(isActive(i)) sets.push([i]);
     return sets;
   }
   for(let r=0;r<GRID_ROWS;r++){
@@ -836,7 +863,18 @@ function enumerateTargetSets(skill){
       }
     }
   }
-  return sets;
+  if(!ACTIVE) return sets;
+  // 使わないマスを対象から落とす。空になった形は消し、
+  // 縮んだ結果が他の形と同じになった場合は重複を除く。
+  const seen = new Set(), out = [];
+  for(const g of sets){
+    const t = g.filter(i => ACTIVE[i]);
+    if(!t.length) continue;
+    const key = t.join(',');
+    if(seen.has(key)) continue;
+    seen.add(key); out.push(t);
+  }
+  return out;
 }
 
 // 地金特性「集中力変化」による消費の増減
@@ -1068,7 +1106,10 @@ function tatakiOpening(ms, f, t, cfg){
   const NN = SKILLS.find(s => s.id === 'naname'     && s.lv <= cfg.level);
   const TK = SKILLS.find(s => s.id === 'tataku'     && s.lv <= cfg.level);
   if(!K || !R || !C4 || !Y4 || !NN || !TK) return null;
-  const mk = (sk, tg) => {
+  const mk = (sk, tg0) => {
+    // 定跡はマス番号を直接指定するので、使わないマスをここで落とす
+    const tg = ACTIVE ? tg0.filter(i => ACTIVE[i]) : tg0;
+    if(sk.masses > 0 && !tg.length) return null;
     const c = actualCostOf(sk, t, cfg.trait);
     if(c > f) return null;
     const r = sk.masses > 0 ? getRollCandidates(sk, t, cfg.trait, false) : null;
@@ -2204,19 +2245,21 @@ function renderBoard(){
       const m = G.masses[i];
       const mk = markersFor(m, skill);
       const flip = (col===0);
-      const st = m.current > m.zoneHigh ? 'over'
+      const st = m.off ? ''
+               : m.current > m.zoneHigh ? 'over'
                : m.current >= m.zoneLow ? 'done' : '';
-      const cls = (hiTg.includes(i)?' hi':'') + (st?' '+st:'')
-                + (G.pending.includes(i)?' need':'');
+      const cls = (m.off ? ' off' : '')
+                + (!m.off && hiTg.includes(i)?' hi':'') + (st?' '+st:'')
+                + (!m.off && G.pending.includes(i)?' need':'');
       const zoneTxt = flip ? `${m.zoneHigh} 〜 ${m.zoneLow}` : `${m.zoneLow} 〜 ${m.zoneHigh}`;
-      const barBlock =
+      const barBlock = m.off ? `<div class="bar-wrap ${flip?'left':'right'}"></div>` :
         `<div class="bar-wrap ${flip?'left':'right'}">
            <div class="zone-lbl">${zoneTxt}</div>
            ${buildBar(mk, flip)}
            <div class="pw-lbl">${scaleLabel(mk, flip)}</div>
          </div>`;
       const cell =
-        `<div class="cell${cls}${G.fx && G.fx.i===i ? ' fx-'+G.fx.k : ''}" onclick="openPad('mass',${i})">
+        `<div class="cell${cls}${G.fx && G.fx.i===i ? ' fx-'+G.fx.k : ''}"${m.off?'':` onclick="openPad('mass',${i})"`}>
            <div class="idx">マス${i+1}</div>
            <div class="cur">${Math.round(m.current)}</div>
            <div class="zn"><span>${m.zoneLow}</span><span>${m.zoneHigh}</span></div>
@@ -2249,10 +2292,24 @@ function buildBar(mk, flip){
   return `<div class="bar${flip?' flip':''}">${s}</div>`;
 }
 
+const TRAIT_LABEL = {shuchu:'集中力変化', none:'特性なし', tataki:'たたき変化',
+                     modori:'メーター減少', kaishin:'威力会心率上昇'};
+function traitLabel(t){ return TRAIT_LABEL[t] || t; }
+
 function renderHeader(){
   // 複数商材を扱うので、今どれを打っているかを最上段に常時出す
   const sel = document.getElementById('s-preset');
   if(sel && sel.value !== G.preset) sel.value = G.preset;
+  // 手動設定のときだけ、使用中のマス数と地金特性をヘッダに出す
+  const chip = document.getElementById('v-cust');
+  if(chip){
+    if(G.preset === 'custom'){
+      const on = G.masses.filter(m=>!m.off).length;
+      const set = G.masses.some(m=>!m.off && m.zoneHigh > 0);
+      chip.textContent = set ? (on + 'マス/' + traitLabel(G.trait)) : '要設定';
+      chip.style.display = '';
+    }else chip.style.display = 'none';
+  }
   const hm = HAMMERS[G.hammerId];
   document.getElementById('v-gear').textContent =
     (hm ? hm.name : G.hammerId) + '★' + G.star + ' / Lv' + G.level;
@@ -2776,29 +2833,73 @@ function onPresetChange(){
 function renderZoneRows(){
   const el = document.getElementById('zoneRows');
   if(!el) return;
-  el.innerHTML = G.masses.map((m,i)=>
-    `<div class="zrow">
+  el.innerHTML = G.masses.map((m,i)=>{
+    const on = !m.off;
+    // 無効化したマスはゾーンを0にしているので、入力欄には控えを表示する
+    const lo = on ? m.zoneLow  : (m.oLo || '');
+    const hi = on ? m.zoneHigh : (m.oHi || '');
+    return `<div class="zrow${on?'':' zoff'}" id="z-row-${i}">
+       <input type="checkbox" class="zchk" id="z-on-${i}" ${on?'checked':''}
+              onchange="onZoneToggle(${i})">
        <span class="zl">マス${i+1}</span>
-       <input type="number" id="z-lo-${i}" value="${m.zoneLow}" min="1" max="999">
+       <input type="number" id="z-lo-${i}" value="${lo}" min="1" max="999">
        <span class="zs">〜</span>
-       <input type="number" id="z-hi-${i}" value="${m.zoneHigh}" min="1" max="999">
-     </div>`).join('');
+       <input type="number" id="z-hi-${i}" value="${hi}" min="1" max="999">
+     </div>`;}).join('');
+}
+
+// チェックの入切で行の見た目だけ切り替える(反映はボタンで行う)
+function onZoneToggle(i){
+  const row = document.getElementById('z-row-'+i);
+  const on  = document.getElementById('z-on-'+i).checked;
+  if(row) row.classList.toggle('zoff', !on);
 }
 
 // 入力されたゾーンを盤面に反映する
 function applyZones(){
+  const warn = document.getElementById('zoneWarn');
+  const next = [];
   for(let i=0;i<G.masses.length;i++){
+    const on = document.getElementById('z-on-'+i).checked;
     const lo = Number(document.getElementById('z-lo-'+i).value);
     const hi = Number(document.getElementById('z-hi-'+i).value);
-    if(!isFinite(lo) || !isFinite(hi)) continue;
-    if(lo < 1 || hi < lo) continue;          // 不正な値は無視する
-    G.masses[i].zoneLow = lo;
-    G.masses[i].zoneHigh = hi;
-    if(G.masses[i].current > hi + 50) G.masses[i].current = 0;
+    if(!on){ next.push({i, on:false, lo, hi}); continue; }
+    if(!isFinite(lo) || !isFinite(hi) || lo < 1 || hi < lo){
+      if(warn){ warn.textContent = 'マス'+(i+1)+': 下限は1以上、上限は下限以上で入れてください。';
+                warn.style.display = 'block'; }
+      return;                                 // 1つでも不正なら何も反映しない
+    }
+    next.push({i, on:true, lo, hi});
   }
+  if(!next.some(x=>x.on)){
+    if(warn){ warn.textContent = '少なくとも1マスは使う設定にしてください。';
+              warn.style.display = 'block'; }
+    return;
+  }
+  if(warn) warn.style.display = 'none';
+  for(const x of next){
+    const m = G.masses[x.i];
+    m.oLo = isFinite(x.lo) && x.lo > 0 ? x.lo : m.oLo;   // 控え(再有効化時の初期値)
+    m.oHi = isFinite(x.hi) && x.hi > 0 ? x.hi : m.oHi;
+    if(x.on){
+      m.off = false; m.zoneLow = x.lo; m.zoneHigh = x.hi;
+      if(m.current > x.hi + 50) m.current = 0;
+    }else{
+      // 使わないマスは「幅0のゾーンに到達済み」として扱う。
+      // 既存の未到達判定(current < zoneLow)が全て自動で素通りするため、
+      // 評価・終局判定・推奨のいずれにも影響しない。
+      m.off = true; m.zoneLow = 0; m.zoneHigh = 0; m.current = 0;
+    }
+  }
+  syncActiveMask();
   G.preset = 'custom';
   G.rec = null; G.plan = []; G.lastRate = null;
-  renderAll(); save();
+  renderZoneRows(); renderAll(); save();
+}
+
+// G.masses の有効/無効を技の対象計算へ反映する
+function syncActiveMask(){
+  setActiveMask(G.masses.map(m => !m.off));
 }
 
 function confirmReset(){
@@ -2812,10 +2913,14 @@ function resetAll(){
   const pre = document.getElementById('s-preset');
   const kind = pre ? pre.value : 'kagayaki';
   // 手動設定なら現在のゾーンを保持し、数値だけ戻す
-  const zs = (kind === 'custom' && G.masses.length === 6)
-    ? G.masses.map(m=>[m.zoneLow, m.zoneHigh])
-    : (PRESETS[kind] ? PRESETS[kind].zones : PRESETS.kagayaki.zones);
-  G.masses = zs.map(([lo,hi])=>({current:0, zoneLow:lo, zoneHigh:hi}));
+  // 手動設定はやり直しても、入力したゾーンと使用マスの設定を引き継ぐ
+  const keep = (kind === 'custom' && G.masses.length === 6)
+    ? G.masses.map(m=>({lo:m.zoneLow, hi:m.zoneHigh, off:!!m.off, oLo:m.oLo, oHi:m.oHi}))
+    : (PRESETS[kind] ? PRESETS[kind].zones : PRESETS.kagayaki.zones)
+        .map(([lo,hi])=>({lo, hi, off:false}));
+  G.masses = keep.map(k=>({current:0, zoneLow:k.lo, zoneHigh:k.hi, off:k.off,
+                           oLo:k.oLo, oHi:k.oHi}));
+  syncActiveMask();
   G.temp = 1000;
   const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
   G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
@@ -2839,6 +2944,8 @@ function load(){
     const s=JSON.parse(localStorage.getItem(SKEY));
     if(!s||!s.masses||s.masses.length!==6) return false;
     Object.assign(G,s);
+    G.masses.forEach(m => { if(m.off === undefined) m.off = false; });
+    syncActiveMask();
     if(!Array.isArray(G.pending)) G.pending = [];
     if(!Array.isArray(G.hist)) G.hist = [];
     // 廃止した素材が保存データに残っていた場合は既定へ戻す
