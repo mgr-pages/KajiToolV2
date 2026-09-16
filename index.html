@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！V1.2</title>
+<title>超素材をつくろう！V2.1</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -418,7 +418,11 @@ table.sk .cst{text-align:right; font-weight:700;}
 .zpanel .zstep{font-size:11.5px; color:var(--dim); line-height:1.6; margin-bottom:8px;}
 .zrow .zchk{flex:0 0 auto; margin:0 2px 0 0; width:16px; height:16px;}
 .zrow.zoff .zl, .zrow.zoff .zs{opacity:.35;}
-.zrow.zoff input{opacity:.35; pointer-events:none;}
+/* 数値欄だけ無効化する。:not(.zchk) を落とすとチェックボックスまで
+   クリック不能になり、一度外したマスを戻せなくなる。 */
+.zrow.zoff input:not(.zchk){opacity:.35; pointer-events:none;}
+.zrow .zchk{cursor:pointer;}
+.zdirty{font-size:11.5px; color:var(--acc); margin-left:8px;}
 .hint-cust{background:var(--acc); color:#fff; font-size:11px; border-radius:4px;
   padding:1px 6px; margin-left:6px;}
 .cell.off{opacity:.3;}
@@ -507,6 +511,12 @@ table.sk .cst{text-align:right; font-weight:700;}
     <div class="set-row"><label>バー最大値</label>
       <input type="number" id="s-barmax" min="10" max="9999" placeholder="自動"
              oninput="onBarMaxChange()"></div>
+    <div class="zrow" style="margin-top:10px">
+      <input type="checkbox" class="zchk" id="s-mc" checked onchange="onMcToggle()">
+      <span class="zl" style="width:auto;flex:0 0 auto">先読み探索</span>
+      <span class="zs" id="s-mc-note" style="flex:1;min-width:0">
+        大成功率が上がる代わりに、1手ごとに0.1〜0.4秒かかります</span>
+    </div>
     <div id="zoneEdit" style="display:none">
       <div class="zpanel">
         <div class="zhead">手動設定</div>
@@ -518,7 +528,10 @@ table.sk .cst{text-align:right; font-weight:700;}
         </div>
         <div id="zoneRows"></div>
         <div id="zoneWarn" style="font-size:11.5px;color:#e5534b;margin-top:6px;display:none"></div>
-        <button class="calc" style="margin-top:8px" onclick="applyZones()">ゾーンを反映</button>
+        <div style="display:flex;align-items:center;margin-top:8px">
+          <button class="calc" style="flex:0 0 auto" onclick="applyZones()">ゾーンを反映</button>
+          <span class="zdirty" id="zoneDirty" style="display:none">未反映の変更があります</span>
+        </div>
       </div>
     </div>
 
@@ -1802,9 +1815,109 @@ function stratB(ms,f,t,P,cfg){
     }
     const score=cap*capW + (adv/x.c)*advW + landBonus + prio*P.pr + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
+    if(RANK) RANK.push({x, s:score});
     if(score>bs){bs=score;best=x;}
   }
   return best;
+}
+
+/* ====== 先読み探索(モンテカルロ) ======
+   評価関数は代理指標にすぎないので、決定のたびに大成功率そのものを
+   ロールアウトで直接推定する。手順は次の通り。
+     1. 貪欲エンジンの候補スコアを取り出して上位K手に絞る
+     2. 貪欲スコアが独走している局面はMCを省く(実測で44〜66%の手を省ける)
+     3. 各候補を「その手を打った後は貪欲で打ち切る」試行でS回評価
+     4. 全候補に同じ乱数列を使い、貪欲手との対応のある差を検定
+     5. t>MC_TH で有意に上回る候補だけへ乗り換える
+   4と5が無いと、候補の推定値の最大値を取る操作で
+   「たまたま良く出た手」が選ばれる(winner's curse)。
+   実測: S=48では -2.67pt・失敗率0.7%→3.3%と悪化し、S=256で符号が反転した。
+   検証: いと +4.42/+4.69pt (t=2.37/2.39)、樹液 +12.90/+6.88pt (t=3.11/2.02)。
+   いずれも2系列で採否基準(t>=2かつ別シードで再現)を満たす。 */
+const MC_K = 6, MC_S = 160, MC_GATE = 0.05, MC_TH = 1.0;
+let RANK = null;
+function rankedMoves(ms, f, t, P, cfg, K){
+  RANK = [];
+  stratB(ms, f, t, P, cfg);
+  const r = RANK; RANK = null;
+  r.sort((a,b)=>b.s-a.s);
+  const out = [], seen = new Set();
+  out.scores = [];
+  for(const e of r){
+    const k = e.x.sk.id+'|'+(e.x.tg||[]).join(',');
+    if(seen.has(k)) continue;
+    seen.add(k); out.push(e.x); out.scores.push(e.s);
+    if(out.length >= K) break;
+  }
+  return out;
+}
+let MC_RNG = Math.random;
+function mcRand(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// 1回の試行。first を打ったあとは貪欲手順で打ち切り、大成功なら1を返す。
+function mcRollout(ms0, f, t, cfg, first){
+  const ms = ms0.map((m,i)=>({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
+                               ideal: sampleIdeal(i, m) }));
+  let fo = f, to = t, mv = first;
+  const saved = simFirstMove;
+  for(let s = 0; s < 70; s++){
+    if(ms.every(m=>m.current>=m.zoneLow)) break;
+    if(to <= 0) break;
+    if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
+    const r  = mv.sk.key ? getRollCandidates(mv.sk, to, cfg.trait, false) : null;
+    const cr = mv.sk.key ? computeCritRate(mv.sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, to) : 0;
+    if(r) mv.tg.forEach(i=>{
+      const m = ms[i];
+      if(m.current >= m.zoneLow) return;
+      const roll = r[(MC_RNG()*r.length)|0];
+      if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
+      else m.current += roll;
+    });
+    fo -= mv.c; to = mv.nt; simFirstMove = false; mv = null;
+  }
+  simFirstMove = saved;
+  let e = 0, rc = 0;
+  for(const m of ms){
+    const raw = Math.abs(m.current - m.ideal);
+    const inZone = m.current >= m.zoneLow && m.current <= m.zoneHigh;
+    if(m.current >= m.zoneLow) rc++;
+    e += inZone ? Math.min(raw, MAX_ERR) : raw;
+  }
+  return (rc === GRID_ROWS*GRID_COLS && e <= SUCCESS_THRESHOLD) ? 1 : 0;
+}
+let MC_SEED = 1;
+function stratMC(ms, f, t, P, cfg){
+  const pool = rankedMoves(ms, f, t, P, cfg, MC_K);
+  if(pool.length <= 1) return pool[0] || stratB(ms, f, t, P, cfg);
+  const s0 = pool.scores[0], s1 = pool.scores[1];
+  if(s0 - s1 > MC_GATE * Math.max(1, Math.abs(s0))) return pool[0];
+  const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
+  for(let j = 0; j < MC_S; j++){
+    MC_SEED++;
+    const seed = MC_SEED * 7919;
+    MC_RNG = mcRand(seed);
+    const base = mcRollout(ms, f, t, cfg, pool[0]);
+    for(let a = 1; a < n; a++){
+      MC_RNG = mcRand(seed);                 // 共通乱数で候補間の差の分散を下げる
+      const d = mcRollout(ms, f, t, cfg, pool[a]) - base;
+      sd[a] += d; sd2[a] += d*d;
+    }
+  }
+  MC_RNG = Math.random;
+  let bi = 0, bt = 0;
+  for(let a = 1; a < n; a++){
+    const md = sd[a]/MC_S, vr = sd2[a]/MC_S - md*md;
+    const se = Math.sqrt(Math.max(vr, 1e-9)/MC_S);
+    const tt = md/se;
+    if(tt > MC_TH && tt > bt){ bt = tt; bi = a; }   // 有意に上回る時だけ乗り換える
+  }
+  return pool[bi];
 }
 
 
@@ -2564,7 +2677,8 @@ function undoExec(){
 /* ====== 計算 ====== */
 function doCalc(){
   const btn = document.getElementById('calcBtn');
-  btn.disabled = true; btn.textContent = '計算中…';
+  btn.disabled = true;
+  btn.textContent = (G.mc === false) ? '計算中…' : '先読み中…';
   setTimeout(()=>{
     try{
       const cfg = cfgOf();
@@ -2575,7 +2689,8 @@ function doCalc(){
         G.rec=null; G.plan=[]; G.msg='温度切れ';
       } else {
         G.msg=null;
-        G.rec = stratB(ms, G.focus, G.temp, PARAMS, cfg);
+        G.rec = (G.mc === false) ? stratB(ms, G.focus, G.temp, PARAMS, cfg)
+                                  : stratMC(ms, G.focus, G.temp, PARAMS, cfg);
         buildPlan(ms, cfg);
         const o = estimateOutcome(ms, G.focus, G.temp, cfg, 300);
         G.lastRate=o.successRate; G.lastErr=o.avgError; G.lastReach=o.reachRate;
@@ -2793,6 +2908,13 @@ function applySettings(){
   renderAll(); save();
 }
 // バーの最大値を変更した時。空欄なら自動計算に戻す。
+function onMcToggle(){
+  const el = document.getElementById('s-mc');
+  G.mc = el ? el.checked : true;
+  G.rec = null; G.plan = []; G.lastRate = null;
+  renderAll(); save();
+}
+
 function onBarMaxChange(){
   const v = Number(document.getElementById('s-barmax').value);
   G.barMax = (isFinite(v) && v > 0) ? v : null;
@@ -2813,12 +2935,15 @@ function onPresetChange(){
     renderAll(); save();
     return;
   }
-  box.style.display = 'none';
   const started = G.hist.length > 0 || G.masses.some(m=>m.current > 0);
   if(started && !confirm('素材を変えると盤面と履歴が最初に戻ります。よろしいですか?')){
-    document.getElementById('s-preset').value = G.preset;   // 選択を元に戻す
+    // キャンセル時は選択も表示も元に戻す。
+    // 先に display='none' にしてしまうと、手動設定のまま入力欄だけ消える。
+    document.getElementById('s-preset').value = G.preset;
+    if(G.preset === 'custom'){ box.style.display = 'block'; renderZoneRows(); }
     return;
   }
+  box.style.display = 'none';
   G.preset = v;
   // 素材ごとに地金特性が決まっているので、選択と同時に切り替える
   const p = PRESETS[v];
@@ -2833,6 +2958,7 @@ function onPresetChange(){
 function renderZoneRows(){
   const el = document.getElementById('zoneRows');
   if(!el) return;
+  markZoneDirty(false);
   el.innerHTML = G.masses.map((m,i)=>{
     const on = !m.off;
     // 無効化したマスはゾーンを0にしているので、入力欄には控えを表示する
@@ -2842,9 +2968,11 @@ function renderZoneRows(){
        <input type="checkbox" class="zchk" id="z-on-${i}" ${on?'checked':''}
               onchange="onZoneToggle(${i})">
        <span class="zl">マス${i+1}</span>
-       <input type="number" id="z-lo-${i}" value="${lo}" min="1" max="999">
+       <input type="number" id="z-lo-${i}" value="${lo}" min="1" max="999"
+              oninput="markZoneDirty()">
        <span class="zs">〜</span>
-       <input type="number" id="z-hi-${i}" value="${hi}" min="1" max="999">
+       <input type="number" id="z-hi-${i}" value="${hi}" min="1" max="999"
+              oninput="markZoneDirty()">
      </div>`;}).join('');
 }
 
@@ -2853,6 +2981,13 @@ function onZoneToggle(i){
   const row = document.getElementById('z-row-'+i);
   const on  = document.getElementById('z-on-'+i).checked;
   if(row) row.classList.toggle('zoff', !on);
+  markZoneDirty();
+}
+
+// 入力しただけではまだ盤面に入らないので、その旨を出す
+function markZoneDirty(on){
+  const d = document.getElementById('zoneDirty');
+  if(d) d.style.display = (on === false) ? 'none' : '';
 }
 
 // 入力されたゾーンを盤面に反映する
@@ -2864,8 +2999,8 @@ function applyZones(){
     const lo = Number(document.getElementById('z-lo-'+i).value);
     const hi = Number(document.getElementById('z-hi-'+i).value);
     if(!on){ next.push({i, on:false, lo, hi}); continue; }
-    if(!isFinite(lo) || !isFinite(hi) || lo < 1 || hi < lo){
-      if(warn){ warn.textContent = 'マス'+(i+1)+': 下限は1以上、上限は下限以上で入れてください。';
+    if(!isFinite(lo) || !isFinite(hi) || lo < 1 || hi < lo || hi > 999){
+      if(warn){ warn.textContent = 'マス'+(i+1)+': 下限は1以上、上限は下限以上かつ999以下で入れてください。';
                 warn.style.display = 'block'; }
       return;                                 // 1つでも不正なら何も反映しない
     }
@@ -2892,9 +3027,12 @@ function applyZones(){
     }
   }
   syncActiveMask();
+  // 使わなくなったマスに実測値の入力要求が残ると、盤面に無いマスのボタンが出る
+  G.pending = G.pending.filter(i => !G.masses[i].off);
+  if(Array.isArray(G.obs)) G.masses.forEach((m,i)=>{ if(m.off) G.obs[i] = null; });
   G.preset = 'custom';
   G.rec = null; G.plan = []; G.lastRate = null;
-  renderZoneRows(); renderAll(); save();
+  renderZoneRows(); markZoneDirty(false); renderAll(); save();
 }
 
 // G.masses の有効/無効を技の対象計算へ反映する
@@ -2935,7 +3073,7 @@ const SKEY='kajiAdvisorStateV1';
 function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
-    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax,
+    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax, mc:G.mc,
     pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
   })); }catch(e){}
 }
@@ -2944,6 +3082,9 @@ function load(){
     const s=JSON.parse(localStorage.getItem(SKEY));
     if(!s||!s.masses||s.masses.length!==6) return false;
     Object.assign(G,s);
+    if(G.mc === undefined) G.mc = true;
+    const mcEl = document.getElementById('s-mc');
+    if(mcEl) mcEl.checked = (G.mc !== false);
     G.masses.forEach(m => { if(m.off === undefined) m.off = false; });
     syncActiveMask();
     if(!Array.isArray(G.pending)) G.pending = [];
