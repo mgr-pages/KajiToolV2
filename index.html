@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！V2.1</title>
+<title>超素材をつくろう！V2.12</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -422,6 +422,8 @@ table.sk .cst{text-align:right; font-weight:700;}
    クリック不能になり、一度外したマスを戻せなくなる。 */
 .zrow.zoff input:not(.zchk){opacity:.35; pointer-events:none;}
 .zrow .zchk{cursor:pointer;}
+.calcbar{height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:6px;}
+.calcbar > div{height:100%; width:0%; background:var(--acc); transition:width .12s linear;}
 .zdirty{font-size:11.5px; color:var(--acc); margin-left:8px;}
 .hint-cust{background:var(--acc); color:#fff; font-size:11px; border-radius:4px;
   padding:1px 6px; margin-left:6px;}
@@ -473,6 +475,7 @@ table.sk .cst{text-align:right; font-weight:700;}
   <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
   <div id="execPanel"></div>
   <button class="calc" id="calcBtn" onclick="doCalc()">次の一手を計算</button>
+  <div id="calcBar" class="calcbar" style="display:none"><div></div></div>
 </div>
 
 <details class="acc" open>
@@ -511,12 +514,6 @@ table.sk .cst{text-align:right; font-weight:700;}
     <div class="set-row"><label>バー最大値</label>
       <input type="number" id="s-barmax" min="10" max="9999" placeholder="自動"
              oninput="onBarMaxChange()"></div>
-    <div class="zrow" style="margin-top:10px">
-      <input type="checkbox" class="zchk" id="s-mc" checked onchange="onMcToggle()">
-      <span class="zl" style="width:auto;flex:0 0 auto">先読み探索</span>
-      <span class="zs" id="s-mc-note" style="flex:1;min-width:0">
-        大成功率が上がる代わりに、1手ごとに0.1〜0.4秒かかります</span>
-    </div>
     <div id="zoneEdit" style="display:none">
       <div class="zpanel">
         <div class="zhead">手動設定</div>
@@ -1834,7 +1831,16 @@ function stratB(ms,f,t,P,cfg){
    実測: S=48では -2.67pt・失敗率0.7%→3.3%と悪化し、S=256で符号が反転した。
    検証: いと +4.42/+4.69pt (t=2.37/2.39)、樹液 +12.90/+6.88pt (t=3.11/2.02)。
    いずれも2系列で採否基準(t>=2かつ別シードで再現)を満たす。 */
-const MC_K = 6, MC_S = 160, MC_GATE = 0.05, MC_TH = 1.0;
+// 設定値は決定局面80件(いと)/45件(樹液)を固定し、各候補の真の価値を
+// 1000〜1200試行で確定させたうえで、設定ごとの選択ミス(リグレット)を比較して決めた。
+//   先読みなし 2.73pt(いと) / 2.20pt(樹液) ← 取れる余地の全量
+//   旧設定     2.19pt / 1.61pt   (回収率 20% / 27%)
+//   現設定     0.46pt / 0.67pt   (回収率 83% / 70%)
+// 最大の損失源はゲートだった。旧設定 GATE=0.05 はいとで64%の局面を省略しており、
+// そこで1.65pt/局面を捨てていた。S・Kは大きいほど、THは低いほど良い。
+// 実局検証: いと +19.54/+13.64pt (t=2.93/2.24)、樹液 +20.00/+23.91pt (t=2.58/2.72)。
+const MC_K = 8, MC_S = 640, MC_GATE = 0.2, MC_TH = 0.5;
+const MC_CHUNK = 32;                 // この件数ごとに描画へ譲る
 let RANK = null;
 function rankedMoves(ms, f, t, P, cfg, K){
   RANK = [];
@@ -1892,6 +1898,45 @@ function mcRollout(ms0, f, t, cfg, first){
   return (rc === GRID_ROWS*GRID_COLS && e <= SUCCESS_THRESHOLD) ? 1 : 0;
 }
 let MC_SEED = 1;
+function mcYield(){ return new Promise(r => setTimeout(r, 0)); }
+
+// 探索はメインスレッドを占有するので、MC_CHUNK 件ごとに描画へ譲りながら進める。
+// 1手あたり いと約0.5秒 / 樹液約1.6秒 かかるため、固定表示だと止まって見える。
+async function stratMCAsync(ms, f, t, P, cfg, onProgress){
+  const pool = rankedMoves(ms, f, t, P, cfg, MC_K);
+  if(pool.length <= 1) return pool[0] || stratB(ms, f, t, P, cfg);
+  const s0 = pool.scores[0], s1 = pool.scores[1];
+  if(s0 - s1 > MC_GATE * Math.max(1, Math.abs(s0))) return pool[0];
+  const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
+  for(let j0 = 0; j0 < MC_S; j0 += MC_CHUNK){
+    const j1 = Math.min(MC_S, j0 + MC_CHUNK);
+    for(let j = j0; j < j1; j++){
+      MC_SEED++;
+      const seed = MC_SEED * 7919;
+      MC_RNG = mcRand(seed);
+      const base = mcRollout(ms, f, t, cfg, pool[0]);
+      for(let a = 1; a < n; a++){
+        MC_RNG = mcRand(seed);
+        const d = mcRollout(ms, f, t, cfg, pool[a]) - base;
+        sd[a] += d; sd2[a] += d*d;
+      }
+    }
+    MC_RNG = Math.random;
+    if(onProgress) onProgress(j1, MC_S, n);
+    await mcYield();
+  }
+  return mcPick(pool, sd, sd2);
+}
+function mcPick(pool, sd, sd2){
+  let bi = 0, bt = 0;
+  for(let a = 1; a < pool.length; a++){
+    const md = sd[a]/MC_S, vr = sd2[a]/MC_S - md*md;
+    const se = Math.sqrt(Math.max(vr, 1e-9)/MC_S);
+    const tt = md/se;
+    if(tt > MC_TH && tt > bt){ bt = tt; bi = a; }
+  }
+  return pool[bi];
+}
 function stratMC(ms, f, t, P, cfg){
   const pool = rankedMoves(ms, f, t, P, cfg, MC_K);
   if(pool.length <= 1) return pool[0] || stratB(ms, f, t, P, cfg);
@@ -1910,14 +1955,7 @@ function stratMC(ms, f, t, P, cfg){
     }
   }
   MC_RNG = Math.random;
-  let bi = 0, bt = 0;
-  for(let a = 1; a < n; a++){
-    const md = sd[a]/MC_S, vr = sd2[a]/MC_S - md*md;
-    const se = Math.sqrt(Math.max(vr, 1e-9)/MC_S);
-    const tt = md/se;
-    if(tt > MC_TH && tt > bt){ bt = tt; bi = a; }   // 有意に上回る時だけ乗り換える
-  }
-  return pool[bi];
+  return mcPick(pool, sd, sd2);                     // 有意に上回る時だけ乗り換える
 }
 
 
@@ -2442,7 +2480,7 @@ function renderHeader(){
   } else if(gp){
     b.push(`<span class="badge rate">大成功 ${gp}</span>`);
   } else if(G.lastRate!=null){
-    b.push(`<span class="badge rate">大成功 約${(G.lastRate*100).toFixed(0)}%</span>`);
+    b.push(`<span class="badge rate">大成功 約${(G.lastRate*100).toFixed(0)}%以上</span>`);
   }
   document.getElementById('badges').innerHTML = b.join('');
 }
@@ -2490,6 +2528,9 @@ function renderDetail(){
     const gp2 = rateFromPosts(true);
     h += `<div style="margin-bottom:8px">大成功率 ${gp2 ? gp2 : '約'+(G.lastRate*100).toFixed(1)+'%'} ／ `
        + `誤差 約${G.lastErr.toFixed(1)} ／ 到達 約${(G.lastReach*100).toFixed(0)}%</div>`;
+    if(!gp2)
+      h += `<div style="margin:-4px 0 8px; font-size:11.5px; color:var(--dim)">`
+         + `この勝率は先読みを使わずに打ち切った場合の目安です。先読み使用時はこれより上がります。</div>`;
   }
   if(G.hist.length){
     h += '<details class="acc hist-acc"><summary>打った手 ('+G.hist.length+'手)</summary>';
@@ -2675,36 +2716,58 @@ function undoExec(){
 }
 
 /* ====== 計算 ====== */
-function doCalc(){
+let CALC_BUSY = false;
+function setCalcProgress(pct, label){
+  const btn = document.getElementById('calcBtn');
+  const bar = document.getElementById('calcBar');
+  if(btn) btn.textContent = label;
+  if(bar){
+    bar.style.display = (pct === null) ? 'none' : '';
+    if(pct !== null) bar.firstChild.style.width = Math.round(pct*100) + '%';
+  }
+}
+async function doCalc(){
+  if(CALC_BUSY) return;                       // 探索中の二重押しを防ぐ
+  CALC_BUSY = true;
   const btn = document.getElementById('calcBtn');
   btn.disabled = true;
-  btn.textContent = (G.mc === false) ? '計算中…' : '先読み中…';
-  setTimeout(()=>{
-    try{
-      const cfg = cfgOf();
-      const ms = G.masses.map(m=>({current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh}));
-      if(ms.every(m=>m.current>=m.zoneLow)){
-        G.rec=null; G.plan=[]; G.msg='<span style="color:var(--green)">全マス到達 — 仕上げてください</span>';
-      } else if(G.temp<=0){
-        G.rec=null; G.plan=[]; G.msg='温度切れ';
-      } else {
-        G.msg=null;
-        G.rec = (G.mc === false) ? stratB(ms, G.focus, G.temp, PARAMS, cfg)
-                                  : stratMC(ms, G.focus, G.temp, PARAMS, cfg);
-        buildPlan(ms, cfg);
-        const o = estimateOutcome(ms, G.focus, G.temp, cfg, 300);
-        G.lastRate=o.successRate; G.lastErr=o.avgError; G.lastReach=o.reachRate;
-      }
-      renderAll();
-    }catch(e){
-      document.getElementById('rec').innerHTML =
-        '<div class="rec-empty">計算に失敗しました: '+e.message+'</div>';
+  setCalcProgress(0, '先読み中 0%');
+  await new Promise(r=>setTimeout(r, 20));
+  try{
+    const cfg = cfgOf();
+    const ms = G.masses.map(m=>({current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh}));
+    if(ms.every(m=>m.current>=m.zoneLow)){
+      G.rec=null; G.plan=[]; G.msg='<span style="color:var(--green)">全マス到達 — 仕上げてください</span>';
+    } else if(G.temp<=0){
+      G.rec=null; G.plan=[]; G.msg='温度切れ';
+    } else {
+      G.msg=null;
+      G.rec = await stratMCAsync(ms, G.focus, G.temp, PARAMS, cfg, (done, total, n)=>{
+        setCalcProgress(done/total, `先読み中 ${Math.round(done/total*100)}% (候補${n}手)`);
+      });
+      setCalcProgress(1, '手順と勝率を計算中…');
+      await new Promise(r=>setTimeout(r, 0));
+      buildPlan(ms, cfg, G.rec);
+      // estimateOutcome のロールアウトは貪欲エンジンで打ち切る。
+      // 先読みで選んだ手の実力は反映されないので、表示は「下限の目安」。
+      // 300試行だと1回ごとに±3pt前後ブレて44%と52%が交互に出ていたため増やす。
+      // 実測: 300→236ms/±1.6pt、2000→1303ms/±1.2pt、4000→2630ms/±0.6pt。
+      const o = estimateOutcome(ms, G.focus, G.temp, cfg, 2000);
+      G.lastRate=o.successRate; G.lastErr=o.avgError; G.lastReach=o.reachRate;
     }
-    btn.disabled=false; btn.textContent='次の一手を計算';
-  }, 20);
+    renderAll();
+  }catch(e){
+    document.getElementById('rec').innerHTML =
+      '<div class="rec-empty">計算に失敗しました: '+e.message+'</div>';
+  }
+  setCalcProgress(null, '次の一手を計算');
+  btn.disabled=false; CALC_BUSY=false;
 }
 
-function buildPlan(ms0, cfg){
+// first を渡すと1手目をその手に固定する。
+// 先読みが貪欲と違う手を選んだ場合、ここを貪欲で組み直すと
+// 「推奨手」と「手順の1手目」が食い違って表示される。
+function buildPlan(ms0, cfg, first){
   G.plan = [];
   let sim = ms0.map(m=>({...m}));
   let f=G.focus, t=G.temp;
@@ -2713,7 +2776,7 @@ function buildPlan(ms0, cfg){
   for(let s=0;s<24;s++){
     if(sim.every(m=>m.current>=m.zoneLow)) break;
     if(t<=0) break;
-    const mv = stratB(sim,f,t,PARAMS,cfg);
+    const mv = (s === 0 && first) ? first : stratB(sim,f,t,PARAMS,cfg);
     if(!mv || f<mv.c) break;
     // 地金特性が乗るかは「その手が1手目かどうか」で決まる。
     // 候補を作るのは実行を反映する時点なので、ここで手ごとに控えておかないと
@@ -2881,6 +2944,8 @@ function commit(){
   }
   else if(padTarget==='temp') G.temp = v;
   else G.focus = v;
+  // 温度・集中力・マス値を手で直した時点で、前の計算結果は別局面のものになる
+  G.rec = null; G.plan = []; G.lastRate = null;
   closePad(); renderAll(); save();
 }
 
@@ -2894,6 +2959,9 @@ function readSettings(){
 function applySettings(){
   const before = G.level + '/' + G.hammerId;
   readSettings();
+  // レベル・ハンマー・★・地金特性はロールにも会心率にも効く。
+  // 変更後に古い推奨手と勝率を残すと、別条件の計算結果を見せることになる。
+  G.rec = null; G.plan = []; G.lastRate = null;
   const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
   const full = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
   // 打ち始めた後に設定を触っても、進行中の集中力を勝手に満タンへ戻さない。
@@ -2908,13 +2976,6 @@ function applySettings(){
   renderAll(); save();
 }
 // バーの最大値を変更した時。空欄なら自動計算に戻す。
-function onMcToggle(){
-  const el = document.getElementById('s-mc');
-  G.mc = el ? el.checked : true;
-  G.rec = null; G.plan = []; G.lastRate = null;
-  renderAll(); save();
-}
-
 function onBarMaxChange(){
   const v = Number(document.getElementById('s-barmax').value);
   G.barMax = (isFinite(v) && v > 0) ? v : null;
@@ -3073,7 +3134,7 @@ const SKEY='kajiAdvisorStateV1';
 function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
-    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax, mc:G.mc,
+    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax,
     pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
   })); }catch(e){}
 }
@@ -3082,9 +3143,7 @@ function load(){
     const s=JSON.parse(localStorage.getItem(SKEY));
     if(!s||!s.masses||s.masses.length!==6) return false;
     Object.assign(G,s);
-    if(G.mc === undefined) G.mc = true;
-    const mcEl = document.getElementById('s-mc');
-    if(mcEl) mcEl.checked = (G.mc !== false);
+    delete G.mc;                      // 旧版で保存された切り替え設定は使わない
     G.masses.forEach(m => { if(m.off === undefined) m.off = false; });
     syncActiveMask();
     if(!Array.isArray(G.pending)) G.pending = [];
