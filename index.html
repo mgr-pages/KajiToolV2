@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！V2.12</title>
+<title>超素材をつくろう！V2.13</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -2764,39 +2764,70 @@ async function doCalc(){
   btn.disabled=false; CALC_BUSY=false;
 }
 
-// first を渡すと1手目をその手に固定する。
-// 先読みが貪欲と違う手を選んだ場合、ここを貪欲で組み直すと
-// 「推奨手」と「手順の1手目」が食い違って表示される。
+// 手順は先読みのロールアウトそのものから作る。
+// 旧実装(buildPlan)はロールの平均値(小数)で盤面を進めていたため、
+// 実際には存在しない位置が並び、そこで打てる手が無くなって
+// 冷やし込み→火力上げの往復(集中力22を捨てて温度は元通り)が表示されていた。
+// 実測: 手順の50.6%が温度操作を含み、5.3%で相殺の往復が出ていた。
+// ロールアウトは実際に出うる離散値で進み、勝率を出した根拠そのものなので、
+// その最頻経路を手順として見せる。過半を割った時点で打ち切る。
+const PLAN_TRIALS = 200, PLAN_MIN = 0.5, PLAN_MIN_SAMPLE = 8;
+
+function tracedRollout(ms0, f, t, cfg, first, out){
+  const ms = ms0.map((m,i)=>({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
+                               ideal: sampleIdeal(i, m) }));
+  let fo = f, to = t, mv = first;
+  for(let s = 0; s < 24; s++){
+    if(ms.every(m=>m.current>=m.zoneLow)) break;
+    if(to <= 0) break;
+    if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
+    out.push({ key: mv.sk.name + '|' + mv.tg.join(','),
+               name: mv.sk.name, tg: mv.tg.slice(), temp: to,
+               cost: mv.c, tempAfter: mv.nt, traitOn: !simFirstMove, mk: traitMark(to) });
+    const r  = mv.sk.key ? getRollCandidates(mv.sk, to, cfg.trait, false) : null;
+    const cr = mv.sk.key ? computeCritRate(mv.sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, to) : 0;
+    if(r) mv.tg.forEach(i=>{
+      const m = ms[i];
+      if(m.current >= m.zoneLow) return;
+      const roll = r[(Math.random()*r.length)|0];
+      if(Math.random() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
+      else m.current += roll;
+    });
+    fo -= mv.c; to = mv.nt; simFirstMove = false; mv = null;
+  }
+}
+
 function buildPlan(ms0, cfg, first){
   G.plan = [];
-  let sim = ms0.map(m=>({...m}));
-  let f=G.focus, t=G.temp;
+  if(!first) return;
   const saved = simFirstMove;
-  simFirstMove = isStartState();
-  for(let s=0;s<24;s++){
-    if(sim.every(m=>m.current>=m.zoneLow)) break;
-    if(t<=0) break;
-    const mv = (s === 0 && first) ? first : stratB(sim,f,t,PARAMS,cfg);
-    if(!mv || f<mv.c) break;
-    // 地金特性が乗るかは「その手が1手目かどうか」で決まる。
-    // 候補を作るのは実行を反映する時点なので、ここで手ごとに控えておかないと
-    // グローバル状態から誤って判定してしまう。
-    G.plan.push({name:mv.sk.name, tg:mv.tg.slice(), temp:t,
-      cost:mv.c, tempAfter:mv.nt, traitOn: !isStartState(),
-      mk: traitMark(t)});
-    const r = mv.sk.key ? getRollCandidates(mv.sk,t,G.trait,false) : null;
-    if(r){
-      const mean = r.reduce((a,b)=>a+b,0)/r.length;
-      const cr = computeCritRate(mv.sk,cfg.level,cfg.hammerId,cfg.star,cfg.trait,t);
-      mv.tg.forEach(i=>{
-        const m=sim[i]; if(m.current>=m.zoneLow) return;
-        const mid=(m.zoneLow+m.zoneHigh)/2;
-        m.current = cr*Math.min(m.current+2*mean, Math.max(m.current,mid)) + (1-cr)*(m.current+mean);
-      });
-    }
-    f-=mv.c; t=mv.nt; simFirstMove=false;
+  const traces = [];
+  for(let i = 0; i < PLAN_TRIALS; i++){
+    simFirstMove = isStartState();
+    const out = [];
+    tracedRollout(ms0, G.focus, G.temp, cfg, first, out);
+    traces.push(out);
   }
   simFirstMove = saved;
+  let live = traces;
+  for(let s = 0; s < 24; s++){
+    const tally = new Map();
+    for(const tr of live){
+      if(s >= tr.length) continue;
+      const e = tally.get(tr[s].key);
+      if(e) e.n++; else tally.set(tr[s].key, { n:1, st:tr[s] });
+    }
+    if(!tally.size) break;
+    let best = null;
+    for(const v of tally.values()) if(!best || v.n > best.n) best = v;
+    // 1手目は推奨手そのものなので必ず出す。2手目以降は過半を割ったら止める。
+    if(s > 0 && best.n / live.length < PLAN_MIN) break;
+    const st = best.st;
+    G.plan.push({ name:st.name, tg:st.tg.slice(), temp:st.temp, cost:st.cost,
+                  tempAfter:st.tempAfter, traitOn:st.traitOn, mk:st.mk });
+    live = live.filter(tr => s < tr.length && tr[s].key === st.key);
+    if(live.length < PLAN_MIN_SAMPLE) break;   // 標本が薄いと最頻に意味が無い
+  }
 }
 
 /* ====== テンキー ====== */
