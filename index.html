@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！V2.13</title>
+<title>超素材をつくろう！V2.14</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -460,14 +460,6 @@ table.sk .cst{text-align:right; font-weight:700;}
 <div class="main">
 <div class="board">
   <div id="board"></div>
-  <div class="legend">
-    <span><i class="lg-green"></i>成功ゾーン</span>
-    <span class="rg-lg"><i class="lg-blue"></i>たたくの範囲</span>
-    <span class="rg-lg"><i class="lg-red"></i>会心の範囲</span>
-    <span><i class="lg-pink"></i>本会心ゾーン</span>
-    <label class="lg-tg"><input type="checkbox" id="s-range" checked onchange="toggleRange()">
-      増加量の目安(青・赤)を表示する</label>
-  </div>
 </div>
 
 <div class="side">
@@ -1897,7 +1889,18 @@ function mcRollout(ms0, f, t, cfg, first){
   }
   return (rc === GRID_ROWS*GRID_COLS && e <= SUCCESS_THRESHOLD) ? 1 : 0;
 }
-let MC_SEED = 1;
+// 同じ盤面で計算し直すと違う手が出る(実測87.5%)のは助言として不安定なので、
+// 乱数の種を盤面・温度・集中力から決めて、同じ局面には同じ答えを返す。
+function stateSeed(ms, f, t){
+  let h = 2166136261 ^ (f | 0) ^ ((t | 0) << 7);
+  for(const m of ms){
+    h = Math.imul(h ^ (m.current | 0), 16777619);
+    h = Math.imul(h ^ (m.zoneLow | 0), 16777619);
+    h = Math.imul(h ^ (m.zoneHigh | 0), 16777619);
+  }
+  h = Math.imul(h ^ ((G.trait || '').length * 31 + (G.level | 0)), 16777619);
+  return h >>> 0;
+}
 function mcYield(){ return new Promise(r => setTimeout(r, 0)); }
 
 // 探索はメインスレッドを占有するので、MC_CHUNK 件ごとに描画へ譲りながら進める。
@@ -1907,12 +1910,12 @@ async function stratMCAsync(ms, f, t, P, cfg, onProgress){
   if(pool.length <= 1) return pool[0] || stratB(ms, f, t, P, cfg);
   const s0 = pool.scores[0], s1 = pool.scores[1];
   if(s0 - s1 > MC_GATE * Math.max(1, Math.abs(s0))) return pool[0];
+  const seedBase = stateSeed(ms, f, t);
   const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
   for(let j0 = 0; j0 < MC_S; j0 += MC_CHUNK){
     const j1 = Math.min(MC_S, j0 + MC_CHUNK);
     for(let j = j0; j < j1; j++){
-      MC_SEED++;
-      const seed = MC_SEED * 7919;
+      const seed = (seedBase + Math.imul(j, 2654435761)) | 0;
       MC_RNG = mcRand(seed);
       const base = mcRollout(ms, f, t, cfg, pool[0]);
       for(let a = 1; a < n; a++){
@@ -1942,10 +1945,10 @@ function stratMC(ms, f, t, P, cfg){
   if(pool.length <= 1) return pool[0] || stratB(ms, f, t, P, cfg);
   const s0 = pool.scores[0], s1 = pool.scores[1];
   if(s0 - s1 > MC_GATE * Math.max(1, Math.abs(s0))) return pool[0];
+  const seedBase = stateSeed(ms, f, t);
   const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
   for(let j = 0; j < MC_S; j++){
-    MC_SEED++;
-    const seed = MC_SEED * 7919;
+    const seed = (seedBase + Math.imul(j, 2654435761)) | 0;
     MC_RNG = mcRand(seed);
     const base = mcRollout(ms, f, t, cfg, pool[0]);
     for(let a = 1; a < n; a++){
@@ -1969,8 +1972,11 @@ function stratMC(ms, f, t, P, cfg){
 function sampleIdeal(i, m){
   const p = (G.posts && G.posts[i] && G.posts[i].length === m.zoneHigh - m.zoneLow + 1)
           ? G.posts[i] : null;
-  if(!p) return m.zoneLow + Math.floor(Math.random()*(m.zoneHigh - m.zoneLow + 1));
-  let r = Math.random(), acc = 0;
+  // MC_RNG は探索・手順生成の中だけ盤面から決めた種で固定されている。
+  // 外では Math.random のままなので、ここを MC_RNG にするだけで
+  // 「同じ盤面なら同じ答え」が理想値の抽選まで含めて成立する。
+  if(!p) return m.zoneLow + Math.floor(MC_RNG()*(m.zoneHigh - m.zoneLow + 1));
+  let r = MC_RNG(), acc = 0;
   for(let k=0;k<p.length;k++){ acc += p[k]; if(r <= acc) return m.zoneLow + k; }
   return m.zoneHigh;
 }
@@ -2059,6 +2065,13 @@ function unknownCount(){
 }
 
 function estimateOutcome(masses, focus, temp, cfg, trials){
+  // 表示のブレを無くすため、ここも盤面から決めた種で回す
+  const __sv = MC_RNG;
+  MC_RNG = mcRand(stateSeed(masses, focus, temp) ^ 0x1a7b93c5);
+  try{ return estimateOutcomeInner(masses, focus, temp, cfg, trials); }
+  finally{ MC_RNG = __sv; }
+}
+function estimateOutcomeInner(masses, focus, temp, cfg, trials){
   const savedSim = simFirstMove;
   const startsFresh = isStartState();
   let win=0, errSum=0, reach=0;
@@ -2083,8 +2096,8 @@ function estimateOutcome(masses, focus, temp, cfg, trials){
       if(rolls) mv.tg.forEach(i=>{
         const m=ms[i];
         if(m.current>=m.zoneLow) return;
-        const roll = rolls[Math.floor(Math.random()*rolls.length)];
-        if(Math.random()<cr){ if(m.current<m.ideal) m.current=Math.min(m.current+2*roll, m.ideal); }
+        const roll = rolls[Math.floor(MC_RNG()*rolls.length)];
+        if(MC_RNG()<cr){ if(m.current<m.ideal) m.current=Math.min(m.current+2*roll, m.ideal); }
         else m.current += roll;
       });
       f-=mv.c; t=mv.nt;
@@ -2471,17 +2484,9 @@ function renderHeader(){
   if(tm) b.push(`<span class="badge ${tm.k}">${tm.l}</span>`);
   else b.push('<span class="badge off">通常</span>');
   if(isStartState()) b.push('<span class="badge off">開始直後(特性なし)</span>');
-  const done = G.masses.filter(m=>m.current>=m.zoneLow).length;
-  b.push(`<span class="badge ${done===6?'rate':'off'}">到達 ${done}/6</span>`);
-  const gp = rateFromPosts();
-  if(G.pending.length){
-    // 盤面の数値が未入力の間は計算できない。黙って消さず、理由を出す
-    b.push(`<span class="badge wait">大成功 — 数値の入力待ち</span>`);
-  } else if(gp){
-    b.push(`<span class="badge rate">大成功 ${gp}</span>`);
-  } else if(G.lastRate!=null){
-    b.push(`<span class="badge rate">大成功 約${(G.lastRate*100).toFixed(0)}%以上</span>`);
-  }
+  // 到達数・誤差・大成功率は見ても打ち方が変わらないので出さない。
+  // 残すのはターン表示(威力2倍/半減)だけ ― 今どの手を打っているかの確認に使う。
+  if(G.pending.length) b.push(`<span class="badge wait">数値の入力待ち</span>`);
   document.getElementById('badges').innerHTML = b.join('');
 }
 
@@ -2524,22 +2529,7 @@ function renderDetail(){
   const el = document.getElementById('detail');
   if(!G.rec && !G.hist.length){ el.textContent='まだ計算していません'; return; }
   let h = '';
-  if(G.lastRate!=null){
-    const gp2 = rateFromPosts(true);
-    h += `<div style="margin-bottom:8px">大成功率 ${gp2 ? gp2 : '約'+(G.lastRate*100).toFixed(1)+'%'} ／ `
-       + `誤差 約${G.lastErr.toFixed(1)} ／ 到達 約${(G.lastReach*100).toFixed(0)}%</div>`;
-    if(!gp2)
-      h += `<div style="margin:-4px 0 8px; font-size:11.5px; color:var(--dim)">`
-         + `この勝率は先読みを使わずに打ち切った場合の目安です。先読み使用時はこれより上がります。</div>`;
-  }
-  if(G.hist.length){
-    h += '<details class="acc hist-acc"><summary>打った手 ('+G.hist.length+'手)</summary>';
-    h += '<div class="hist-body">' + G.hist.map((st,i)=>
-        `<div class="hstep"><span class="n">${i+1}</span>`
-        + `<span class="hn">${st.name}</span>`
-        + `<span class="ht">${st.tg.length?st.tg.map(x=>'マス'+(x+1)).join('・'):'温度操作'}`
-        + ` / ${st.tempAfter}℃</span></div>`).join('') + '</div></details>';
-  }
+  // 打った手の履歴は出さない。取り消しは「直前の反映を取り消す」で足りる。
   if(G.plan.length){
     h += '<div style="color:var(--dim);font-size:11px;margin-bottom:6px">'
        + 'この先の想定手順 — 実際に打ったところのボタンを押すと温度と集中力に反映されます</div>';
@@ -2581,7 +2571,7 @@ function renderDetail(){
       const mark = st.mk ? ` <b class="mk-${st.mk.k}">${st.mk.l}</b>` : '';
       const cls  = (st.mk ? ' on-'+st.mk.k : '') + (i===0?' first':'');
       const tg   = st.tg.length ? st.tg.map(x=>'マス'+(x+1)).join('・') : '温度操作';
-      const note = info[i].safe ? '' : `<span class="s warn">大成功率が出せません</span>`;
+      const note = '';
       const btn  = f < 0 ? ''
         : `<button class="pexec" onclick="applyExecuted(${i+1})">
              <span class="t">ここまで実行</span>
@@ -2599,7 +2589,7 @@ function renderDetail(){
         </div>`;
     }).join('') + '</div>';
     h += '<div class="plist-note">数値を入力しなくても手順は進められます。'
-       + '入力しない場合、大成功率が計算できません(推奨手の精度には影響しません)。</div>';
+       + '入力すると次の推奨手の精度が上がります。</div>';
     h += traitNote();
   }
   el.innerHTML = h || '—';
@@ -2745,15 +2735,13 @@ async function doCalc(){
       G.rec = await stratMCAsync(ms, G.focus, G.temp, PARAMS, cfg, (done, total, n)=>{
         setCalcProgress(done/total, `先読み中 ${Math.round(done/total*100)}% (候補${n}手)`);
       });
-      setCalcProgress(1, '手順と勝率を計算中…');
+      setCalcProgress(1, '手順を組み立て中…');
       await new Promise(r=>setTimeout(r, 0));
       buildPlan(ms, cfg, G.rec);
+      // 大成功率は表示しなくなったので推定そのものを止める。1手あたり約0.5秒の削減。
       // estimateOutcome のロールアウトは貪欲エンジンで打ち切る。
       // 先読みで選んだ手の実力は反映されないので、表示は「下限の目安」。
       // 300試行だと1回ごとに±3pt前後ブレて44%と52%が交互に出ていたため増やす。
-      // 実測: 300→236ms/±1.6pt、2000→1303ms/±1.2pt、4000→2630ms/±0.6pt。
-      const o = estimateOutcome(ms, G.focus, G.temp, cfg, 2000);
-      G.lastRate=o.successRate; G.lastErr=o.avgError; G.lastReach=o.reachRate;
     }
     renderAll();
   }catch(e){
@@ -2771,9 +2759,14 @@ async function doCalc(){
 // 実測: 手順の50.6%が温度操作を含み、5.3%で相殺の往復が出ていた。
 // ロールアウトは実際に出うる離散値で進み、勝率を出した根拠そのものなので、
 // その最頻経路を手順として見せる。過半を割った時点で打ち切る。
-const PLAN_TRIALS = 200, PLAN_MIN = 0.5, PLAN_MIN_SAMPLE = 8;
+// 手順に出すのは「ロールがある手(マスを叩く手)」を2手まで。
+// 温度操作は結果が確定していて新しい情報が出ないため、その手を挟んでも
+// 次の推奨手は変わらない。確度は落ちないので、何手続いても表示する。
+// 実測の確度: 叩く手は1手目100% / 2手目79% / 3手目60% / 4手目47%。
+const PLAN_TRIALS = 200, PLAN_MIN = 0.5, PLAN_MIN_SAMPLE = 8, PLAN_RANDOM = 2;
 
 function tracedRollout(ms0, f, t, cfg, first, out){
+  // 乱数は呼び出し側(buildPlan)が盤面から決めた種で固定している
   const ms = ms0.map((m,i)=>({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
                                ideal: sampleIdeal(i, m) }));
   let fo = f, to = t, mv = first;
@@ -2789,8 +2782,8 @@ function tracedRollout(ms0, f, t, cfg, first, out){
     if(r) mv.tg.forEach(i=>{
       const m = ms[i];
       if(m.current >= m.zoneLow) return;
-      const roll = r[(Math.random()*r.length)|0];
-      if(Math.random() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
+      const roll = r[(MC_RNG()*r.length)|0];
+      if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
       else m.current += roll;
     });
     fo -= mv.c; to = mv.nt; simFirstMove = false; mv = null;
@@ -2801,15 +2794,18 @@ function buildPlan(ms0, cfg, first){
   G.plan = [];
   if(!first) return;
   const saved = simFirstMove;
+  const seedBase = stateSeed(ms0, G.focus, G.temp) ^ 0x5bf03635;
   const traces = [];
   for(let i = 0; i < PLAN_TRIALS; i++){
     simFirstMove = isStartState();
+    MC_RNG = mcRand((seedBase + Math.imul(i, 2654435761)) | 0);
     const out = [];
     tracedRollout(ms0, G.focus, G.temp, cfg, first, out);
     traces.push(out);
   }
+  MC_RNG = Math.random;
   simFirstMove = saved;
-  let live = traces;
+  let live = traces, rnd = 0;
   for(let s = 0; s < 24; s++){
     const tally = new Map();
     for(const tr of live){
@@ -2820,11 +2816,16 @@ function buildPlan(ms0, cfg, first){
     if(!tally.size) break;
     let best = null;
     for(const v of tally.values()) if(!best || v.n > best.n) best = v;
-    // 1手目は推奨手そのものなので必ず出す。2手目以降は過半を割ったら止める。
-    if(s > 0 && best.n / live.length < PLAN_MIN) break;
     const st = best.st;
+    const rolls = st.tg.length > 0;                 // マスを叩く手＝ロールがある
+    // 1手目は推奨手そのものなので必ず出す。
+    if(s > 0){
+      if(rolls && rnd >= PLAN_RANDOM) break;        // 叩く手は2手まで
+      if(best.n / live.length < PLAN_MIN) break;    // 最頻手が過半を割ったら止める
+    }
     G.plan.push({ name:st.name, tg:st.tg.slice(), temp:st.temp, cost:st.cost,
                   tempAfter:st.tempAfter, traitOn:st.traitOn, mk:st.mk });
+    if(rolls) rnd++;
     live = live.filter(tr => s < tr.length && tr[s].key === st.key);
     if(live.length < PLAN_MIN_SAMPLE) break;   // 標本が薄いと最頻に意味が無い
   }
