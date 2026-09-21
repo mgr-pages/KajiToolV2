@@ -778,11 +778,22 @@ function needLitPick(){
   if(litMassIndex !== null) return false;
   return G.masses.some(m => !m.off && m.current < m.zoneLow);
 }
+// 点灯マスを選べる状態か。未選択のときだけでなく、選んだ後も計算するまでは
+// 別のマスをタップして選び直せるようにする(押し間違えの取り返しがつくように)。
+function litPickMode(){
+  if(G.trait !== 'kaishin') return false;
+  if(isStartState()) return false;
+  if(G.temp <= 0 || G.temp % 200 !== 0) return false;
+  if(G.pending && G.pending.length) return false;
+  if(G.rec) return false;                     // 計算した後は通常の盤面操作に戻す
+  return G.masses.some(m => !m.off && m.current < m.zoneLow);
+}
 function pickLit(i){
   const m = G.masses[i];
   if(!m || m.off || m.current >= m.zoneLow) return;
   litMassIndex = i;
   G.rec = null; G.plan = [];                  // 点灯が決まると推奨手が変わる
+  G.msg = null;                               // 「タップしてください」の案内を消す
   renderAll(); save();
 }
 function clearLit(){ litMassIndex = null; }
@@ -2542,7 +2553,7 @@ function renderBoard(){
       const st = m.off ? ''
                : m.current > m.zoneHigh ? 'over'
                : m.current >= m.zoneLow ? 'done' : '';
-      const pick = needLitPick();
+      const pick = litPickMode();
       const pickable = pick && !m.off && m.current < m.zoneLow;
       const cls = (m.off ? ' off' : '')
                 + (!m.off && hiTg.includes(i)?' hi':'') + (st?' '+st:'')
@@ -2625,7 +2636,8 @@ function renderHeader(){
   // 残すのはターン表示(威力2倍/半減)だけ ― 今どの手を打っているかの確認に使う。
   if(G.pending.length) b.push(`<span class="badge wait">数値の入力待ち</span>`);
   else if(needLitPick()) b.push(`<span class="badge wait">光ったマスをタップしてください</span>`);
-  else if(litMassIndex !== null) b.push(`<span class="badge rate">マス${litMassIndex+1}が点灯中</span>`);
+  else if(litMassIndex !== null)
+    b.push(`<span class="badge rate">マス${litMassIndex+1}が点灯中${litPickMode()?'(別のマスをタップで選び直し)':''}</span>`);
   document.getElementById('badges').innerHTML = b.join('');
 }
 
@@ -2891,8 +2903,8 @@ async function doCalc(){
   if(CALC_BUSY) return;                       // 探索中の二重押しを防ぐ
   // 点灯マスが未指定のまま計算すると、威力2倍も会心率+500%も乗らない別物の手が出る
   if(needLitPick()){
-    document.getElementById('rec').innerHTML =
-      '<div class="rec-empty">光ったマスをタップしてから計算してください</div>';
+    G.msg = '光ったマスをタップしてから計算してください';
+    renderAll();
     return;
   }
   CALC_BUSY = true;
@@ -3063,6 +3075,9 @@ function pickValue(idx, val, wasCrit){
   closePad();
   if(G.pending.length){ renderAll(); save(); return; }   // 残りは盤面から選んでもらう
   G.msg = null;
+  // 先に盤面へ反映する。計算が点灯待ちで止まる場合、ここで描かないと
+  // 最後に入れた値が盤面に出ないまま点灯選択の案内だけが出てしまう。
+  renderAll();
   doCalc();                       // 入力が揃った時点で次の一手は確定できる
   save();
 }
