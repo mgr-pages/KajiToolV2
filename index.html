@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！V3.00</title>
+<title>超素材をつくろう！V3.01</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -1177,7 +1177,9 @@ function pairSnipe(ms, f, t, cfg){
     if(tg.some(i => ms[i].current >= ms[i].zoneLow)) continue;
     const ok = tg.every(i => {
       const m = ms[i];
-      return m.current + r[r.length-1] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh;
+      // 点灯マスはロール2倍なので、本会心の成立帯がマスごとに違う
+      const rI = rollsForMass(jn, t, cfg.trait, i) || r;
+      return m.current + rI[rI.length-1] <= m.zoneHigh && m.current + 2*rI[0] >= m.zoneHigh;
     });
     if(ok) return { sk: jn, tg, c, nt: Math.max(0, t + jn.tempDelta), overP: 0 };
   }
@@ -1543,7 +1545,7 @@ function stratB(ms,f,t,P,cfg){
       continue;
     }
     const r=getRollCandidates(x.sk,t,cfg.trait,false);
-    const cr=computeCritRate(x.sk,cfg.level,cfg.hammerId,cfg.star,cfg.trait,t);
+    // 会心率はマスごとに critForMass で引く(技単位の値を使うと点灯マスを見誤る)
     let adv=0,cap=0,prio=0;
     for(const i of x.tg){
       const m=ms[i];
@@ -1563,7 +1565,11 @@ function stratB(ms,f,t,P,cfg){
       for(const rr of rI){const reach=m.current+2*rr;let n=0;
         for(let id=m.zoneLow;id<=m.zoneHigh;id++)if(id>m.current&&id<=reach)n++;
         c2+=(n/zn)/rI.length;}
-      cap+=cr*c2;
+      // 会心率もマス単位で掛ける。点灯マスは +500% で技単位の値の6倍になる。
+      // (ロールだけマス単位にして会心率を技単位のままにしていたため、
+      //  点灯マスの最大の価値=高確率で理想値ちょうどに止まることが評価に出ず、
+      //  エンジンが点灯マスを避けているように見えていた)
+      cap+=critForMass(x.sk,cfg,t,i)*c2;
     }
     // 次が特殊温度になるかを評価に入れる
     const landBonus=(isHalfTurn(x.nt)||isBoostTurn(x.nt))?P.land:0;
@@ -1628,15 +1634,17 @@ function stratB(ms,f,t,P,cfg){
     // 本会心ゾーンのマスは狙い打ち系で仕留めることを強く優先する。
     let turnEff = 0;
     if(x.sk.masses>0 && x.sk.key){
-      const critRate = computeCritRate(x.sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, t);
       let pinkVal = 0;
       for(const i of x.tg){
         const m = ms[i];
         if(m.current >= m.zoneLow) continue;
+        // 点灯マスはロール2倍・会心率+500%なので、本会心の成立帯も価値もマスごとに違う。
+        const rP = rollsForMass(x.sk, t, cfg.trait, i) || r;
+        const critRate = critForMass(x.sk, cfg, t, i);
         // 今まさに使おうとしている技で、この位置から本会心が成立するか。
         // 判定は技ごとに行う(倍率が違えば成立範囲も違うため)。
-        if(m.current + r[r.length-1] > m.zoneHigh) continue;      // 条件1:はみ出す
-        if(m.current + 2*r[0] < m.zoneHigh) continue;    // 条件2:会心でも届かない
+        if(m.current + rP[rP.length-1] > m.zoneHigh) continue;      // 条件1:はみ出す
+        if(m.current + 2*rP[0] < m.zoneHigh) continue;    // 条件2:会心でも届かない
 
         // 成立していても、位置によって価値は大きく違う。
         // 外した時にゾーン手前で止まれば撃ち直せるが、
@@ -1645,7 +1653,7 @@ function stratB(ms,f,t,P,cfg){
         // 二値で数えず、期待誤差の小ささを価値として使う。
         let e = 0, n = 0;
         for(let id = m.zoneLow; id <= m.zoneHigh; id++){
-          for(const rv of r){
+          for(const rv of rP){
             const land = m.current + rv;
             const inZ = land >= m.zoneLow && land <= m.zoneHigh;
             const eN = inZ ? Math.min(Math.abs(land - id), MAX_ERR) : Math.abs(land - id);
@@ -1654,7 +1662,9 @@ function stratB(ms,f,t,P,cfg){
           }
         }
         const expErr = e / n;
-        pinkVal += Math.max(0, MAX_ERR - expErr) / MAX_ERR;   // 誤差が小さいほど高評価
+        // 会心率をマスごとに掛けてから足す。全マス同じ会心率なら従来の
+        // 「会心率 × 合計」と同じ値になるので、既存2商材の評価は変わらない。
+        pinkVal += critRate * Math.max(0, MAX_ERR - expErr) / MAX_ERR;   // 誤差が小さいほど高評価
       }
       // ゾーン幅によって狙い打ちの価値が変わる。
       // 幅11のマスは中央に入れても誤差4が出るため、本会心で誤差0にする価値が高い。
@@ -1677,7 +1687,7 @@ function stratB(ms,f,t,P,cfg){
       // 実測では本会心圏での射撃が A/E は38%、他マスは50%前後だった。
       // 単発のねらい打ちで拾えるよう、これらへの狙いを後押しする。
       // 幅11マスへの単発優遇(lone)は検証で効果なしと判明したため撤去した。
-      turnEff = (critRate * pinkVal) / x.c * P.te * widthW;
+      turnEff = pinkVal / x.c * P.te * widthW;
 
     }
 
@@ -1707,8 +1717,9 @@ function stratB(ms,f,t,P,cfg){
           if(m.current >= rlo) continue;      // 既に圏内なら関係ない
           // この手でゾーンに飛び込んでしまう確率(=会心チャンスを失う)
           let jump = 0;
-          for(const rv of r){ if(m.current + rv >= m.zoneLow) jump++; }
-          rushPenalty += jump / r.length;
+          const rJ = rollsForMass(x.sk, t, cfg.trait, i) || r;   // 点灯マスは2倍で飛び込みやすい
+          for(const rv of rJ){ if(m.current + rv >= m.zoneLow) jump++; }
+          rushPenalty += jump / rJ.length;
         }
       }
     }
@@ -1804,15 +1815,16 @@ function stratB(ms,f,t,P,cfg){
         // 本会心が成立する位置なら、会心で誤差0を狙う方が優先。
         // 着弾位置の最適化は「会心では捉えられない」場合の次善策なので、
         // 本会心を狙える局面では評価しない(競合して会心狙いを潰すため)。
-        if(m.current + r[r.length-1] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh) continue;
+        const rC = rollsForMass(x.sk, t, cfg.trait, i) || r;     // 点灯マスは2倍
+        if(m.current + rC[rC.length-1] <= m.zoneHigh && m.current + 2*rC[0] >= m.zoneHigh) continue;
         // さらに「この一手でゾーンに入る」場合だけに限定する。
         // 遠い位置から中央を狙おうとすると、多マス技で一度に進める効率を捨てて
         // 集中力が足りなくなる(実測で確認)。
         // ゾーンに入る最後の一手なら、他マスへの影響なく位置を選べる。
-        if(m.current + r[0] < m.zoneLow) continue;
+        if(m.current + rC[0] < m.zoneLow) continue;
         // この技のロールごとに、着弾位置の期待誤差を平均する
         let sum = 0, cnt = 0;
-        for(const rv of r){
+        for(const rv of rC){
           const land = m.current + rv;
           if(land < m.zoneLow || land > m.zoneHigh) continue;   // ゾーン外は別評価
           let e = 0, n = 0;
