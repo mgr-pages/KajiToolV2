@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>超素材をつくろう！V3.01</title>
+<title>超素材をつくろう！V3.02</title>
 <style>
 :root{
   /* 冒険の書調。生成りの紙地に焦茶の文字。
@@ -448,6 +448,7 @@ table.sk .cst{text-align:right; font-weight:700;}
       <option value="kagayaki" selected>超かがやきの樹液</option>
       <option value="amatsuyu">超あまつゆのいと</option>
       <option value="hidane">超ようせいのひだね</option>
+      <option value="bloom">ブルームシールド</option>
       <option value="custom">手動設定</option>
     </select>
     <span class="hint-cust" id="v-cust" style="display:none">要設定</span>
@@ -578,7 +579,19 @@ const PRESETS = {
   kagayaki: {
     name: '超かがやきの樹液',
     trait: 'shuchu',
+    threshold: 7,
     zones: [[155,161],[220,230],[155,161],[220,230],[140,150],[140,150]]
+  },
+  // ブルームシールド(防具鍛冶・盾、地金特性:集中力変化)
+  //   盤面は2×2の4マス。縦3×横2の盤面の上2段を使い、下段(マス5・6)は使わない。
+  //   ゾーンは公開の数値まとめより。許容誤差は盾の値3(公式ガイドブック準拠の表)。
+  //   地金表記「集中力変化(会心半減)」は「会心アップ・集中力半減」の略で、樹液と同じ特性。
+  bloom: {
+    name: 'ブルームシールド',
+    trait: 'shuchu',
+    threshold: 3,
+    off: [4, 5],
+    zones: [[207,213],[255,267],[255,267],[207,213],[0,0],[0,0]]
   },
   // 超あまつゆのいと(地金特性:たたき変化)
   //   400℃の倍数で威力2倍、その±200℃で威力半減。
@@ -587,6 +600,7 @@ const PRESETS = {
   amatsuyu: {
     name: '超あまつゆのいと',
     trait: 'tataki',
+    threshold: 7,
     zones: [[180,190],[245,251],[150,156],[180,190],[180,190],[245,251]]
   },
   // 超ようせいのひだね(地金特性:威力会心率上昇)
@@ -596,6 +610,7 @@ const PRESETS = {
   hidane: {
     name: '超ようせいのひだね',
     trait: 'kaishin',
+    threshold: 7,
     zones: [[180,190],[250,258],[210,216],[250,258],[210,216],[145,155]]
   }
   // 超ようせいのひだね は盤面データ未確認のため未実装
@@ -866,8 +881,26 @@ function interpolate(key, temp){
 }
 
 const GRID_ROWS = 3, GRID_COLS = 2; // 縦3×横2(超かがやきの樹液)
-const SUCCESS_THRESHOLD = 7;        // 6マス商材の大成功ライン(誤差合計)
+// 大成功の許容誤差(誤差合計)。商材の盤面の形で決まるため、素材を切り替えるたびに設定し直す。
+// 出典: 公式ガイドブックを元にした種別ごとの表(6マスの練金ツボ・家具=7、盾・アタマ=3 など)。
+let SUCCESS_THRESHOLD = 7;
+function applyThreshold(){
+  const p = PRESETS[G.preset];
+  SUCCESS_THRESHOLD = (p && typeof p.threshold === 'number') ? p.threshold : 7;
+}
 const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
+// ゾーンを超えたマスの誤差の下限。公開情報「成功ゾーン内は差が5以上でも4扱い、
+// 逆に成功ゾーン外は必ず誤差9以上扱い」に基づく。許容7の6マス商材では、
+// 1マスでも超過すれば大成功にならない。
+const OVER_ERR_MIN = 9;
+// 1マスの誤差。成功判定・期待誤差の計算はすべてこの関数を通す。
+// (以前は箇所ごとに書き方が違い、超過マスを実差のまま数える箇所が残っていた)
+function massError(current, ideal, zoneLow, zoneHigh){
+  const raw = Math.abs(current - ideal);
+  if(current >= zoneLow && current <= zoneHigh) return Math.min(raw, MAX_ERR);
+  if(current > zoneHigh) return Math.max(raw, OVER_ERR_MIN);
+  return raw;                        // 未到達。成功判定では別途「失敗」として扱う
+}
 
 // 推奨手の重み。実測で最も大成功率が高くなった値。
 // 推奨手の重み。いずれも実測(各数千〜1.5万回のシミュレーション)で決めた値。
@@ -1656,7 +1689,7 @@ function stratB(ms,f,t,P,cfg){
           for(const rv of rP){
             const land = m.current + rv;
             const inZ = land >= m.zoneLow && land <= m.zoneHigh;
-            const eN = inZ ? Math.min(Math.abs(land - id), MAX_ERR) : Math.abs(land - id);
+            const eN = massError(land, id, m.zoneLow, m.zoneHigh);
             e += (1 - critRate) * eN;   // 会心なら誤差0なので加算しない
             n++;
           }
@@ -2014,10 +2047,8 @@ function mcRollout(ms0, f, t, cfg, first){
   simFirstMove = saved; litMassIndex = savedLit;
   let e = 0, rc = 0;
   for(const m of ms){
-    const raw = Math.abs(m.current - m.ideal);
-    const inZone = m.current >= m.zoneLow && m.current <= m.zoneHigh;
     if(m.current >= m.zoneLow) rc++;
-    e += inZone ? Math.min(raw, MAX_ERR) : raw;
+    e += massError(m.current, m.ideal, m.zoneLow, m.zoneHigh);
   }
   return (rc === GRID_ROWS*GRID_COLS && e <= SUCCESS_THRESHOLD) ? 1 : 0;
 }
@@ -2250,12 +2281,11 @@ function estimateOutcomeInner(masses, focus, temp, cfg, trials){
     }
     let e=0, r=0;
     ms.forEach(m=>{
-      const raw=Math.abs(m.current-m.ideal);
-      const inZone = m.current>=m.zoneLow && m.current<=m.zoneHigh;
       if(m.current>=m.zoneLow) r++;
-      e += inZone ? Math.min(raw,MAX_ERR) : raw;
+      e += massError(m.current, m.ideal, m.zoneLow, m.zoneHigh);
     });
-    if(e<=SUCCESS_THRESHOLD) win++;
+    // 全マス到達が大成功の前提(以前は誤差だけで数えており、未到達でも勝ちになりえた)
+    if(r===GRID_ROWS*GRID_COLS && e<=SUCCESS_THRESHOLD) win++;
     if(r===6) reach++;
     errSum+=e; errs.push(e);
   }
@@ -3370,10 +3400,12 @@ function resetAll(){
   const keep = (kind === 'custom' && G.masses.length === 6)
     ? G.masses.map(m=>({lo:m.zoneLow, hi:m.zoneHigh, off:!!m.off, oLo:m.oLo, oHi:m.oHi}))
     : (PRESETS[kind] ? PRESETS[kind].zones : PRESETS.kagayaki.zones)
-        .map(([lo,hi])=>({lo, hi, off:false}));
-  G.masses = keep.map(k=>({current:0, zoneLow:k.lo, zoneHigh:k.hi, off:k.off,
+        .map(([lo,hi],i)=>({lo, hi, off: !!(PRESETS[kind] && PRESETS[kind].off && PRESETS[kind].off.includes(i))}));
+  // 使わないマスは「幅0のゾーンに到達済み」として保持する(手動設定のマス非表示と同じ扱い)
+  G.masses = keep.map(k=>({current:0, zoneLow:k.off?0:k.lo, zoneHigh:k.off?0:k.hi, off:k.off,
                            oLo:k.oLo, oHi:k.oHi}));
   syncActiveMask();
+  applyThreshold();
   G.temp = 1000; clearLit();
   const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
   G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
@@ -3406,6 +3438,7 @@ function load(){
     delete G.lit;
     G.masses.forEach(m => { if(m.off === undefined) m.off = false; });
     syncActiveMask();
+    applyThreshold();                 // 許容誤差は素材で決まる
     if(!Array.isArray(G.pending)) G.pending = [];
     if(!Array.isArray(G.hist)) G.hist = [];
     // 廃止した素材が保存データに残っていた場合は既定へ戻す
