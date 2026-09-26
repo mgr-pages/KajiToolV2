@@ -41,6 +41,18 @@ const PRESETS = {
     params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0 },
     zones: [[207,213],[255,267],[255,267],[207,213],[0,0],[0,0]]
   },
+  // 虹色のオーブ(道具鍛冶、地金特性:戻り)
+  //   盤面は縦3×横2で A:左上 B:右上 / C:左中 D:右中 / E:左下 F:右下。
+  //   ゾーンは公開の攻略情報(複数で一致)より。大成功はずれ合計7以下(6マスの商材と同じ)。
+  //   戻る量は範囲が決まっていて、その中から乱数(利用者の情報)。範囲の値は未確認のため、
+  //   以前からのメモにある目安 12〜16 を仮に置く。確認できたら modori を直すこと。
+  orb: {
+    name: '虹色のオーブ',
+    trait: 'modori',
+    threshold: 7,
+    modori: { min: 12, max: 16 },
+    zones: [[85,95],[140,148],[115,121],[140,148],[115,121],[85,95]]
+  },
   // 超あまつゆのいと(地金特性:たたき変化)
   //   400℃の倍数で威力2倍、その±200℃で威力半減。
   //   ゾーンは 左上・左下・右中が180〜190(幅11)、右上・右下が245〜251(幅7)、
@@ -168,7 +180,69 @@ function computeCritRate(skill, level, hammerId, star, trait, temp, isLit){
 // ・集中力変化(shuchu):温度が400の倍数→集中力消費0.5倍。200の倍数かつ400の倍数でない→集中力消費1.5倍+会心率+400%(5倍)。威力の数値そのものへの影響はなし。
 // ・たたき変化(tataki):温度が400の倍数→威力2倍。200の倍数かつ400の倍数でない→威力0.5倍(端数切り上げ)。会心が乗る場合は「たたき変化補正→切り上げ→会心の2倍」の順。
 // ・威力会心率上昇(kaishin):温度が200の倍数になるたびに、ゾーン未到達のマスがランダムに1つ点灯(再抽選)。点灯マスは威力2倍+会心率大幅上昇。非点灯マスは特性なしと同じ。
-// ・メーター減少・戻り(modori):温度が200の倍数に到達した瞬間、プレイヤーの操作と無関係に、ゾーン未到達かつ最も進行度が高いマスの数値が固定量(目安12〜16)減少する。
+// ・メーター減少・戻り(modori):温度が200の倍数になった時(始まりの1000℃は除く)、1マスの値が減る。
+//   対象は、ゾーンを超えたマスがあれば上限から最も離れたマス、無ければ未到達のうちゾーンに最も近いマス。
+//   減る量は素材ごとに決まった範囲の中から乱数(PRESETS の modori)。超過したマスもこれで取り戻せる。
+/* ---- 戻り(modori) ---- */
+const MODORI_DEFAULT = { min: 12, max: 16 };      // 素材に指定が無い時の仮の範囲
+function modoriRange(){
+  const p = PRESETS[G.preset];
+  return (p && p.modori) || MODORI_DEFAULT;
+}
+// 戻りの対象マス。ゾーンを超えたマスがあれば上限から最も離れたマス、無ければ未到達のうち
+// ゾーンに最も近いマス。距離が同じなら番号の小さいマス(ゲームでの扱いは未確認)。
+// 使わないマス(ゾーン 0〜0)は対象にしない。
+function modoriTarget(ms){
+  let oi = -1, od = 0;
+  for(let i = 0; i < ms.length; i++){
+    const m = ms[i]; if(m.zoneHigh <= 0) continue;
+    const d = m.current - m.zoneHigh;
+    if(d > od){ od = d; oi = i; }
+  }
+  if(oi >= 0) return oi;
+  let ci = -1, cd = Infinity;
+  for(let i = 0; i < ms.length; i++){
+    const m = ms[i]; if(m.zoneHigh <= 0) continue;
+    const d = m.zoneLow - m.current;
+    if(d > 0 && d < cd){ cd = d; ci = i; }
+  }
+  return ci >= 0 ? ci : null;
+}
+// 手を打った後に呼ぶ。温度が200の倍数になっていれば戻りを起こし、{マス, 量} を返す。
+// 始まりの1000℃では起きないが、この関数は打った後にしか呼ばないので自然にそうなる。
+function applyModori(ms, temp, trait, rnd){
+  if(trait !== 'modori' || temp <= 0 || temp % 200 !== 0) return null;
+  const i = modoriTarget(ms);
+  if(i === null) return null;
+  const r = modoriRange();
+  const amt = r.min + Math.floor(rnd() * (r.max - r.min + 1));
+  ms[i].current = Math.max(0, ms[i].current - amt);
+  return { i, amt };
+}
+// 盤面が仕上がったか。戻りの地金では超過も取り戻せるので、超過が残る間は仕上がりとしない。
+function boardDone(ms, trait){
+  if(!ms.every(m => m.current >= m.zoneLow)) return false;
+  return trait !== 'modori' || ms.every(m => m.current <= m.zoneHigh);
+}
+// 戻りの地金で、全マスがゾーンに届いたのに超過が残っている時の手。
+// 戻りを起こすには温度を200の倍数に合わせる必要があり、打てるマスが無いので温度操作だけで合わせる。
+// 火力上げ・冷やし込みを最大2手組み合わせ、200の倍数に着く最安の1手目を返す。着けなければ null。
+function modoriRecover(ms, f, t, cfg){
+  const ops = SKILLS.filter(s => s.masses === 0 && s.lv <= cfg.level);
+  let best = null, bc = Infinity;
+  for(const a of ops){
+    const ca = actualCostOf(a, t, cfg.trait), ta = t + a.tempDelta;
+    if(ca > f || ta <= 0) continue;
+    if(ta % 200 === 0){ if(ca < bc){ bc = ca; best = { sk: a, tg: [], c: ca, nt: ta, overP: 0 }; } continue; }
+    for(const b of ops){
+      const cb = actualCostOf(b, ta, cfg.trait), tb = ta + b.tempDelta;
+      if(ca + cb > f || tb <= 0 || tb % 200 !== 0) continue;
+      if(ca + cb < bc){ bc = ca + cb; best = { sk: a, tg: [], c: ca, nt: ta, overP: 0 }; }
+    }
+  }
+  return best;
+}
+
 function traitTempState(temp){
   const mod400 = temp % 400 === 0;
   const mod200 = temp % 200 === 0 && !mod400;
@@ -705,6 +779,9 @@ function tatakiOpening(ms, f, t, cfg){
 }
 
 function stratB(ms,f,t,P,cfg){
+  // ---- 戻りで超過を取り戻す(全マスがゾーンに届いた後) ----
+  if(cfg.trait === 'modori' && ms.every(m => m.current >= m.zoneLow) && ms.some(m => m.current > m.zoneHigh))
+    return modoriRecover(ms, f, t, cfg);
   // ---- 2マス同時の本会心を最優先 ----
   if(P.pairSnipe > 0){
     const ps = pairSnipe(ms, f, t, cfg);
@@ -1368,7 +1445,7 @@ function mcRollout(ms0, f, t, cfg, first){
   let fo = f, to = t, mv = first;
   const saved = simFirstMove, savedLit = litMassIndex;
   for(let s = 0; s < 70; s++){
-    if(ms.every(m=>m.current>=m.zoneLow)) break;
+    if(boardDone(ms, cfg.trait)) break;
     if(to <= 0) break;
     if(s > 0) rollLit(ms, to, cfg.trait, MC_RNG);   // 現在の手番の点灯は既知なので触らない
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
@@ -1383,7 +1460,9 @@ function mcRollout(ms0, f, t, cfg, first){
       if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
       else m.current += roll;
     });
-    fo -= mv.c; to = mv.nt; simFirstMove = false; mv = null;
+    fo -= mv.c; to = mv.nt; simFirstMove = false;
+    applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
+    mv = null;
   }
   simFirstMove = saved; litMassIndex = savedLit;
   let e = 0, rc = 0;
@@ -1721,7 +1800,7 @@ function tracedRollout(ms0, f, t, cfg, first, out){
                                ideal: sampleIdeal(i, m) }));
   let fo = f, to = t, mv = first;
   for(let s = 0; s < 24; s++){
-    if(ms.every(m=>m.current>=m.zoneLow)) break;
+    if(boardDone(ms, cfg.trait)) break;
     if(to <= 0) break;
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
     out.push({ key: mv.sk.name + '|' + mv.tg.join(','),
@@ -1738,7 +1817,9 @@ function tracedRollout(ms0, f, t, cfg, first, out){
       if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
       else m.current += roll;
     });
-    fo -= mv.c; to = mv.nt; simFirstMove = false; mv = null;
+    fo -= mv.c; to = mv.nt; simFirstMove = false;
+    applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
+    mv = null;
   }
 }
 

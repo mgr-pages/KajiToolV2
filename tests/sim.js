@@ -19,6 +19,7 @@
      ・理想値はゾーン内の一様乱数。ロールは7通りから等確率。
      ・会心は会心率で発生し、理想値を通り越す場合は理想値で止まる。
      ・威力会心率上昇の点灯は、200℃の倍数ごとに未到達マスから無作為に1つ。
+     ・戻りは、200℃の倍数になるたびに engine.js の applyModori の通り。
    プレイヤーのモデル:
      ・毎手、候補ボタンで結果を入力する(会心の有無も伝わる)。
      ・装備は 職人Lv80 / 光のハンマー★3(アプリの初期値)。
@@ -38,8 +39,8 @@ const { fork } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const BASELINE = path.join(__dirname, 'baseline.json');
 // 基準の条件。変えると基準と比べられなくなるので、変えたら --update する。
-const DEFAULT = { games: 300, mc: 2, presets: ['kagayaki', 'amatsuyu', 'hidane', 'bloom'], seed: 20260926 };
-const NAMES = { kagayaki: '超かがやきの樹液', amatsuyu: '超あまつゆのいと', hidane: '超ようせいのひだね', bloom: 'ブルームシールド' };
+const DEFAULT = { games: 300, mc: 2, presets: ['kagayaki', 'amatsuyu', 'hidane', 'bloom', 'orb'], seed: 20260926 };
+const NAMES = { kagayaki: '超かがやきの樹液', amatsuyu: '超あまつゆのいと', hidane: '超ようせいのひだね', bloom: 'ブルームシールド', orb: '虹色のオーブ' };
 
 // 32bit FNV-1a。全対局の手順から作る指紋。エンジンの挙動が1手でも変われば値が変わる。
 function fnv(s, h){
@@ -111,7 +112,7 @@ async function playGame(E, preset, rng, useMC){
   const ideal = G.masses.map(m => m.zoneLow + Math.floor(rng() * (m.zoneHigh - m.zoneLow + 1)));
   const trace = [];
   for(let step = 0; step < 70; step++){
-    if(G.masses.every(m => m.current >= m.zoneLow) || G.temp <= 0) break;
+    if(E('boardDone')(G.masses, G.trait) || G.temp <= 0) break;
     // 点灯: 200℃の倍数で未到達マスから1つ(開始直後は特性が乗らない)
     let lit = null;
     if(G.trait === 'kaishin' && !isStartState() && G.temp % 200 === 0){
@@ -137,6 +138,7 @@ async function playGame(E, preset, rng, useMC){
       updatePost(i, before, rolls, cr, m.current, crit);   // 候補ボタンで入力した場合と同じ
     }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id);
+    E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り(温度が200の倍数になった時)
   }
   E('litMassIndex = null;');
   const reached = G.masses.every(m => m.current >= m.zoneLow);

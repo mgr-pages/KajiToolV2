@@ -61,9 +61,10 @@ async function playGame(E, o, g){
   const cfg = E('cfgOf')(), P = E('PARAMS');
   const ideal = G.masses.map(m => m.zoneLow + Math.floor(rng() * (m.zoneHigh - m.zoneLow + 1)));
   const fin = [];                     // 各マスの最後の一打の分類
+  const modori = [];                  // 起きた戻り
   let moves = 0;
   for(let s = 0; s < 70; s++){
-    if(G.masses.every(m => m.current >= m.zoneLow) || G.temp <= 0) break;
+    if(E('boardDone')(G.masses, G.trait) || G.temp <= 0) break;
     // 点灯(威力会心率上昇): 200℃の倍数で未到達マスから1つ(開始直後は特性が乗らない)
     let lit = null;
     if(G.trait === 'kaishin' && !E('isStartState')() && G.temp % 200 === 0){
@@ -89,6 +90,8 @@ async function playGame(E, o, g){
       E('updatePost')(i, before, rolls, cr, m.current, crit);
     }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id); moves++;
+    const md = E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り
+    if(md) modori.push(md);
   }
   E('litMassIndex = null;');
   const errs = G.masses.map((m,i) => m.off ? null : E('massError')(m.current, ideal[i], m.zoneLow, m.zoneHigh));
@@ -96,7 +99,7 @@ async function playGame(E, o, g){
   const over = G.masses.some(m => m.current > m.zoneHigh);
   const err = errs.reduce((a,e) => a + (e || 0), 0);
   return { g, great: reached && err <= E('SUCCESS_THRESHOLD'), reached, over, err, errs,
-           overBy: G.masses.map(m => m.current > m.zoneHigh), focusLeft: G.focus, moves, fin };
+           overBy: G.masses.map(m => m.current > m.zoneHigh), focusLeft: G.focus, moves, fin, modori };
 }
 
 function summarize(rows, label){
@@ -119,8 +122,11 @@ function summarize(rows, label){
     console.log(`  マス${i+1}: 平均誤差 ${(e.reduce((a,b)=>a+b,0)/n).toFixed(2)} / 誤差0 ${pct(e.filter(x=>x===0).length)} / 超過 ${pct(rows.filter(r=>r.overBy[i]).length)}`);
   }
   console.log(`  平均残り集中力 ${(rows.reduce((a,r)=>a+r.focusLeft,0)/n).toFixed(1)} / 平均手数 ${(rows.reduce((a,r)=>a+r.moves,0)/n).toFixed(1)}`);
+  const md = rows.reduce((a,r)=>a+((r.modori||[]).length),0);
+  if(md) console.log(`  戻り ${(md/n).toFixed(2)}回/局`);
   const cls = {};
-  rows.forEach(r => r.fin.forEach(f => {
+  // 戻りで未到達に戻ったマスは打ち直すので、マスごとに最後の記録だけを数える
+  rows.forEach(r => r.fin.filter((f, k) => !r.fin.slice(k + 1).some(g => g.i === f.i)).forEach(f => {
     const k = (f.aim ? '狙い打ち系' : '通常技') + (f.boost ? '・会心ターン/点灯' : '・他') + (f.pink ? '・本会心圏' : '・圏外');
     const c = cls[k] = cls[k] || { n:0, ex:0 }; c.n++; if(f.exact) c.ex++;
   }));

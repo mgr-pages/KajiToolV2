@@ -38,7 +38,7 @@ if(process.argv[2] === '--worker'){
       const cfg = E('cfgOf')(), P = E('PARAMS');
       const ideal = G.masses.map(m => m.zoneLow + Math.floor(rng() * (m.zoneHigh - m.zoneLow + 1)));
       for(let s = 0; s < 70; s++){
-        if(G.masses.every(m => m.current >= m.zoneLow) || G.temp <= 0) break;
+        if(E('boardDone')(G.masses, G.trait) || G.temp <= 0) break;
         let lit = null;
         if(G.trait === 'kaishin' && !E('isStartState')() && G.temp % 200 === 0){
           const c = G.masses.map((m,i)=>i).filter(i => !G.masses[i].off && G.masses[i].current < G.masses[i].zoneLow);
@@ -57,6 +57,7 @@ if(process.argv[2] === '--worker'){
           E('updatePost')(i, before, rolls, cr, m.current, crit);
         }
         G.focus -= mv.c; G.temp = mv.nt; G.hist.push(1);
+        E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り
       }
       E('litMassIndex = null;');
       const reached = G.masses.every(m => m.current >= m.zoneLow);
