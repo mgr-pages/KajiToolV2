@@ -476,14 +476,18 @@ table.sk .cst{text-align:right; font-weight:700;}
   --shadow:0 1px 0 rgba(122,92,40,.18), 0 3px 8px rgba(74,52,24,.10);
   --raise:0 2px 0 rgba(122,92,40,.35);
 }
-html{background:var(--bg);}
-body{
+/* 柄はページ全体の地(html)に敷く。body に敷いて background-attachment:fixed にすると、
+   iPhone の Safari などで柄が出ないことがあるため、固定もしない(ページと一緒に流れる)。 */
+:root{--css-ver:"5589b981";}
+.ver{margin-top:12px; font-size:10.5px; color:var(--dim); text-align:right;}
+.ver b{color:var(--red);}   /* 表示中の見た目のファイルの版(tools/stamp.py が付け直す) */
+html{
   background:
-    url("bg-motif.svg") 0 0 / 900px 900px repeat,
+    url("bg-motif.svg?v=5589b981") 0 0 / 900px 900px repeat,
     radial-gradient(120% 80% at 50% 0%, #f6ead0 0%, rgba(240,226,194,0) 60%),
     var(--bg);
-  background-attachment:fixed;
 }
+body{background:transparent;}
 
 /* ヘッダー: 表紙の帯のように下端を二重線で締める */
 .hdr{background:linear-gradient(180deg,#f8eed9,#f2e4c6); border-bottom:3px double var(--ink);
