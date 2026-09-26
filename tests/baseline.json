@@ -1,0 +1,107 @@
+{
+  "config": {
+    "games": 300,
+    "mc": 2,
+    "presets": [
+      "kagayaki",
+      "amatsuyu",
+      "hidane",
+      "bloom"
+    ],
+    "seed": 20260926
+  },
+  "powerTable": {
+    "points": 248,
+    "mismatches": []
+  },
+  "results": {
+    "kagayaki": {
+      "mc": {
+        "games": 2,
+        "great": 50,
+        "unreached": 0,
+        "over": 0,
+        "avgErr": 6,
+        "avgMoves": 21,
+        "avgFocusLeft": 3,
+        "fingerprint": "f0aea00d"
+      },
+      "greedy": {
+        "games": 300,
+        "great": 58.3,
+        "unreached": 0.3,
+        "over": 6.3,
+        "avgErr": 8.07,
+        "avgMoves": 19.8,
+        "avgFocusLeft": 22.1,
+        "fingerprint": "5de0a918"
+      }
+    },
+    "amatsuyu": {
+      "mc": {
+        "games": 2,
+        "great": 50,
+        "unreached": 0,
+        "over": 50,
+        "avgErr": 21,
+        "avgMoves": 24,
+        "avgFocusLeft": 1,
+        "fingerprint": "71675183"
+      },
+      "greedy": {
+        "games": 300,
+        "great": 55,
+        "unreached": 1.3,
+        "over": 7,
+        "avgErr": 7.97,
+        "avgMoves": 21.4,
+        "avgFocusLeft": 18.6,
+        "fingerprint": "106d9e35"
+      }
+    },
+    "hidane": {
+      "mc": {
+        "games": 2,
+        "great": 50,
+        "unreached": 0,
+        "over": 0,
+        "avgErr": 5.5,
+        "avgMoves": 23.5,
+        "avgFocusLeft": 25.5,
+        "fingerprint": "95906132"
+      },
+      "greedy": {
+        "games": 300,
+        "great": 45.7,
+        "unreached": 3,
+        "over": 18.3,
+        "avgErr": 11.51,
+        "avgMoves": 22.3,
+        "avgFocusLeft": 16.3,
+        "fingerprint": "0474e2f2"
+      }
+    },
+    "bloom": {
+      "mc": {
+        "games": 2,
+        "great": 0,
+        "unreached": 0,
+        "over": 0,
+        "avgErr": 7,
+        "avgMoves": 16.5,
+        "avgFocusLeft": 40.5,
+        "fingerprint": "32e587f1"
+      },
+      "greedy": {
+        "games": 300,
+        "great": 28,
+        "unreached": 0,
+        "over": 5,
+        "avgErr": 6.39,
+        "avgMoves": 14.8,
+        "avgFocusLeft": 47.6,
+        "fingerprint": "9049c3dd"
+      }
+    }
+  }
+}
