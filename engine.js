@@ -547,9 +547,11 @@ function moves(ms,f,t,cfg){
   if(strict.some(m=>m.sk.masses>0)) return strict;
   // 安全に打てる打撃手が無い = 未到達マスがすべて超過圏にある状態。
   // ここまで来て初めて冷やし込みに価値が出る(他マスへの巻き添えがないため)。
+  // たたき変化では火力上げも同じ役に立つ。半減ターン(200の倍数)に上げればロールが縮む
+  // (例: 700℃で残り1のマスは、火力上げで1000℃にすればてかげん打ち3〜5で収まる)。
   const cool=[];
   for(const sk of SKILLS){
-    if(sk.lv>cfg.level||sk.masses!==0||sk.tempDelta>=0)continue;
+    if(sk.lv>cfg.level||sk.masses!==0||sk.tempDelta===0)continue;
     const c=actualCostOf(sk,t,cfg.trait);
     if(c>f)continue;
     const nt=Math.max(0,t+sk.tempDelta);
@@ -623,6 +625,8 @@ function moves(ms,f,t,cfg){
       // 対象なしで出すと、その前進量が計算から消えたまま推奨されることになり、
       // プレイヤーが実行した瞬間に盤面と予測がずれる。
       // 安全な対象が無い場合は、超過が最も小さい対象を選び、その超過リスクを明示する。
+      // ただし必ず超過する手は救いにならない(超過は大成功を失う)ので出さない。
+      // 出すと、超過の確率がもっと低い手(下の loose)が候補から消えてしまう。
       if(!added){
         let bestTg = null, bestOv = Infinity;
         for(const tg of enumerateTargetSets(sk)){
@@ -637,7 +641,7 @@ function moves(ms,f,t,cfg){
           }
           if(ov < bestOv){ bestOv = ov; bestTg = tg; }
         }
-        if(bestTg) rescue.push({sk,tg:bestTg,c,nt,overP:bestOv,cooling:true});
+        if(bestTg && bestOv < 1) rescue.push({sk,tg:bestTg,c,nt,overP:bestOv,cooling:true});
       }
     }
   }
