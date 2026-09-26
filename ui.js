@@ -39,6 +39,12 @@ function pickLit(i){
 /* ====== 戻り(メーター減少)の予告 ====== */
 // この温度に着いた後で戻りが起きるか(始まりの1000℃は打った後ではないので対象外)
 function modoriAfter(nt){ return G.trait === 'modori' && nt > 0 && nt % 200 === 0; }
+// steps の k 手目の後に戻りが起きうるか。値のあるマスが1つも無い間は減らせないので起きない
+// (始まりの火力上げ2回で1600℃に着いた時など)。打つ手が挟まれば値が出るので、起きうるとみなす。
+function modoriCanAt(steps, k){
+  if(!modoriAfter(steps[k].tempAfter)) return false;
+  return G.masses.some(m => m.current > 0) || steps.slice(0, k + 1).some(st => st.tg.length > 0);
+}
 // 推奨手を打った後に戻りの対象になりうるマス。打つマスの取りうる値を全て組み合わせて求める。
 // 描画のたびに呼ばれるので、同じ推奨手・同じ盤面の間は結果を使い回す。
 let _mdrCache = { key: null, val: null };
@@ -54,7 +60,8 @@ function modoriHint(){
     const o = hitOutcomes(m.current, rr, m.zoneLow, m.zoneHigh);
     outcomes[i] = o.normal.concat(o.crit);
   }
-  const val = possibleModoriTargets(G.masses, outcomes);
+  const T = possibleModoriTargets(G.masses, outcomes);
+  const val = T.size ? T : null;             // 減らせるマスが無ければ戻りは起きない
   _mdrCache = { key, val };
   return val;
 }
@@ -148,7 +155,7 @@ function traitNote(){
     return `<div class="mk-note">
       <div><b class="mk-weak">↩ 戻り</b> 温度が200の倍数になると、1マスの値が${r.min}〜${r.max}減る。
            ゾーンを超えたマスがあれば上限から一番離れたマス、無ければゾーンに一番近い未到達のマスが対象。
-           超過しても取り戻せる。</div></div>`;
+           超過しても取り戻せる。対象のマスが0で減らせない時(全マス0のまま火力上げなど)は起きない。</div></div>`;
   }
   if(G.trait === 'kaishin') return `<div class="mk-note">
       <div><b class="mk-boost">✦ 点灯</b> 温度が200の倍数。未到達のマスから1つが光る。
@@ -365,7 +372,7 @@ function renderDetail(){
     h += '<div class="plist-body">' + G.plan.map((st,i)=>{
       f -= st.cost;
       const mark = (st.mk ? ` <b class="mk-${st.mk.k}">${st.mk.l}</b>` : '')
-                 + (modoriAfter(st.tempAfter) ? ' <b class="mk-weak">↩ このあと戻り</b>' : '');
+                 + ((i === 0 ? !!modoriHint() : modoriCanAt(G.plan, i)) ? ' <b class="mk-weak">↩ このあと戻り</b>' : '');
       const cls  = (st.mk ? ' on-'+st.mk.k : '') + (i===0?' first':'');
       const tg   = st.tg.length ? st.tg.map(x=>'マス'+(x+1)).join('・') : '温度操作';
       const note = '';
@@ -521,10 +528,10 @@ function applyExecuted(k){
   // 200℃の倍数に着いた手の後は、ゲームが自動で1マスを減らす。利用者には戻りの後の値を
   // 1回だけ入れてもらい、どのマスがいくつ減ったかはこちらで判断する。
   let msgAfter = null;
-  const mdSteps = steps.filter(st => modoriAfter(st.tempAfter));
+  const mdSteps = steps.filter((st, k) => modoriCanAt(steps, k));
   if(mdSteps.length){
     const multi = [...hit].some(i => !G.obs[i]);
-    if(mdSteps.length === 1 && modoriAfter(steps[steps.length-1].tempAfter) && !multi){
+    if(mdSteps.length === 1 && mdSteps[0] === steps[steps.length-1] && !multi){
       const outcomes = {};
       for(const i of hit){
         const ob = G.obs[i], m = G.masses[i];
@@ -532,7 +539,8 @@ function applyExecuted(k){
         outcomes[i] = o.normal.concat(o.crit);
       }
       const T = possibleModoriTargets(G.masses, outcomes);
-      const sure = T.size === 1, range = modoriRange();
+      // 対象が1マスに決まり、かつ戻りが起きない場合(全マスがゾーンに入る・0で減らせない)が無い時だけ確定
+      const sure = T.size === 1 && !T.none, range = modoriRange();
       for(const t of T){
         if(hit.has(t)){
           G.obs[t].modori = sure ? 'yes' : 'maybe'; G.obs[t].range = range;
