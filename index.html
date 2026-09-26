@@ -21,14 +21,15 @@
     </select>
     <span class="hint-cust" id="v-cust" style="display:none">要設定</span>
     <button class="hdr-reset" onclick="confirmReset()">やり直す</button>
-    <span class="gear" id="v-gear">—</span>
   </div>
   <div class="hdr-row">
     <div class="stat tap" onclick="openPad('temp')">
       <span class="lbl">温度</span><span class="val" id="v-temp">1000</span><span class="lbl">℃</span>
+      <span class="edit" aria-hidden="true">✎</span>
     </div>
     <div class="stat tap" onclick="openPad('focus')">
       <span class="lbl">集中力</span><span class="val" id="v-focus">253</span>
+      <span class="edit" aria-hidden="true">✎</span>
     </div>
   </div>
   <div class="badges" id="badges"></div>
@@ -37,18 +38,28 @@
 <div class="main">
 <div class="board">
   <div id="board"></div>
+  <!-- ゲージの見方。色の意味が画面のどこにも無かったため常に出す -->
+  <div class="legend" id="legend">
+    <span><i class="lg-green"></i>成功ゾーン</span>
+    <span><i class="lg-pink"></i>本会心を狙える位置</span>
+    <span><i class="lg-blue"></i>通常の伸び</span>
+    <span><i class="lg-red"></i>会心の伸び</span>
+    <span><i class="lg-cur"></i>現在値</span>
+    <span class="lg-num">ゲージ下の数値は伸びた後の値(<b class="c-blue">青</b>=通常・<b class="c-red">赤</b>=会心)</span>
+  </div>
 </div>
 
 <div class="side">
 <div class="foot" id="footPanel">
   <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
   <div id="execPanel"></div>
-  <button class="calc" id="calcBtn" onclick="doCalc()">次の一手を計算</button>
+  <!-- 状況に応じて「計算する/打った/結果を入力」を切り替える、画面で唯一の主ボタン -->
+  <button class="calc" id="calcBtn" onclick="onPrimary()">次の一手を計算</button>
   <div id="calcBar" class="calcbar" style="display:none"><div></div></div>
 </div>
 
 <details class="acc" open>
-  <summary>推奨手の詳細</summary>
+  <summary>この先の手順</summary>
   <div class="body" id="detail">まだ計算していません</div>
 </details>
 
@@ -58,7 +69,7 @@
 </details>
 
 <details class="acc" id="setAcc">
-  <summary>設定</summary>
+  <summary>設定<span class="gear" id="v-gear">—</span></summary>
   <div class="body">
     <div class="set-row"><label>職人レベル</label>
       <input type="number" id="s-level" min="1" max="80" value="80"></div>

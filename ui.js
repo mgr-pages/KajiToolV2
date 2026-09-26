@@ -253,8 +253,9 @@ function renderSkills(){
 
 function renderRec(){
   const el = document.getElementById('rec');
+  if(G.pending.length){ el.innerHTML = ''; return; }
   if(!G.rec){
-    el.innerHTML = '<div class="rec-empty">'+(G.msg||'「次の一手を計算」を押してください')+'</div>';
+    el.innerHTML = '<div class="rec-empty">'+(G.msg||'盤面・温度・集中力を合わせて「次の一手を計算」')+'</div>';
     return;
   }
   const r = G.rec;
@@ -278,18 +279,17 @@ function renderRec(){
       <div class="rec-sub">${tgt} / 消費${r.c}${critTxt}</div>
       <div class="rec-sub">実行後 → <b${warn}>集中力 ${leftF}</b> / ${r.nt}℃</div>
     </div>`;
-  // 下部は画面に固定されているため、ここにボタンや候補を足すと盤面を覆う。
-  // 手を進めるのは手順リストの「ここまで実行」、数値の入力はモーダル側で行う。
+  // 1手ずつ進める時は下の主ボタン(打った)、まとめて打った時は手順の「ここまで実行」を使う。
 }
 
 function renderDetail(){
   const el = document.getElementById('detail');
-  if(!G.rec && !G.hist.length){ el.textContent='まだ計算していません'; return; }
+  if(!G.rec && !G.hist.length){ el.textContent='計算すると、推奨手に続く手順がここに出ます'; return; }
   let h = '';
   // 打った手の履歴は出さない。取り消しは「直前の反映を取り消す」で足りる。
   if(G.plan.length){
     h += '<div style="color:var(--dim);font-size:11px;margin-bottom:6px">'
-       + 'この先の想定手順 — 実際に打ったところのボタンを押すと温度と集中力に反映されます</div>';
+       + '何手かまとめて打った時は、打ったところの「ここまで実行」を押してください</div>';
     let f = G.focus;
     // 理想値が絞れるのは「会心が理想値ちょうどで止まりうる位置」で叩いた時だけ。
     // 会心で最大まで伸ばしても成功ゾーンに届かない位置なら、結果は理想値と無関係に
@@ -351,7 +351,7 @@ function renderDetail(){
        + '入力すると次の推奨手の精度が上がります。</div>';
     h += traitNote();
   }
-  el.innerHTML = h || '—';
+  el.innerHTML = h || '<span style="color:var(--dim)">入力した結果から、次の一手を計算してください</span>';
 }
 
 function renderAll(){ renderHeader(); renderBoard(); renderSkills(); renderRec();
@@ -363,9 +363,35 @@ function renderAll(){ renderHeader(); renderBoard(); renderSkills(); renderRec()
 function syncCalcButton(){
   const btn = document.getElementById('calcBtn');
   if(!btn || CALC_BUSY) return;
-  if(G.pending.length){ btn.disabled = true;  btn.textContent = '数値を入力してください'; }
-  else if(needLitPick()){ btn.disabled = true;  btn.textContent = '光ったマスをタップしてください'; }
-  else                  { btn.disabled = false; btn.textContent = '次の一手を計算'; }
+  const a = primaryAction();
+  btn.disabled = !a.run;
+  btn.textContent = a.label;
+  btn.classList.toggle('done-step', a.kind === 'exec');
+}
+// 画面下の主ボタンが今すべきこと。利用者が迷わないよう、次の操作をいつも1つだけ示す。
+//   入力待ち   → 結果の入力を開く(計算はさせない。打つ前の値で計算してしまうため)
+//   点灯待ち   → 押せない(盤面の光ったマスをタップしてもらう)
+//   推奨手あり → 「打った」= 手順の1手目を実行済みとして反映する
+//   それ以外   → 次の一手を計算
+function primaryAction(){
+  if(G.pending.length){
+    const n = G.pending.length;
+    return { kind:'input', label:`マス${G.pending[0]+1}の結果を入力` + (n > 1 ? `(残り${n}マス)` : ''),
+             run: () => openPad('mass', G.pending[0]) };
+  }
+  if(needLitPick()) return { kind:'lit', label:'光ったマスをタップしてください' };
+  if(G.rec && G.plan.length){
+    return { kind:'exec', label: G.rec.tg.length ? '打った → 結果を入力' : '使った → 次の一手へ',
+             run: () => applyExecuted(1) };
+  }
+  const active = G.masses.filter(m => !m.off);
+  if(active.length && active.every(m => m.current >= m.zoneLow)) return { kind:'end', label:'全マス到達' };
+  return { kind:'calc', label:'次の一手を計算', run: doCalc };
+}
+function onPrimary(){
+  if(CALC_BUSY) return;
+  const a = primaryAction();
+  if(a.run) a.run();
 }
 
 /* ====== 実行済みの反映 ======
@@ -377,14 +403,11 @@ function renderExec(){
 
   if(G.pending.length){
     const names = G.pending.map(i=>'マス'+(i+1));
+    // 入力は主ボタンから順に進む。別の順で入れたい時は盤面のマスをタップすればよい
     el.innerHTML =
       `<div class="exec"><div class="need-box">
-         <div class="t">${names.join('・')} の数値を入力してください</div>
-         <div class="d">温度と集中力は反映済みです。ゲーム画面の数値を入れると計算できます。</div>
-         <div class="need-row">`
-      + G.pending.map(i=>`<button class="need-btn" onclick="openPad('mass',${i})">マス${i+1}</button>`).join('')
-      + `</div>`
-      + (G.undoSnap ? `<button class="undo-btn" onclick="undoExec()">この反映を取り消す</button>` : '')
+         <div class="d">${names.join('・')} が入力待ち。温度と集中力は反映済みです。盤面のマスをタップすると好きな順で入力できます。</div>`
+      + (G.undoSnap ? `<button class="undo-link" onclick="undoExec()">打っていなかった(反映を取り消す)</button>` : '')
       + `</div></div>`;
     return;                                   // 計算ボタンの状態は syncCalcButton が決める
   }
@@ -458,8 +481,10 @@ function applyExecuted(k){
   G.rec = null; G.plan = []; clearLit();
   // 入力するものが無い手(温度操作だけ)なら、そのまま次の一手まで出す
   if(!G.pending.length){ G.msg = null; renderAll(); doCalc(); save(); return; }
-  G.msg = '実行分を反映しました';
+  G.msg = null;
   renderAll(); save();
+  // 叩いたマスの結果入力をそのまま開く(ゲームで結果を見たらすぐ選べるように)
+  openPad('mass', G.pending[0]);
 }
 
 function undoExec(){
@@ -575,7 +600,8 @@ function pickValue(idx, val, wasCrit){
   if(G.obs) G.obs[idx] = null;
   G.pending = G.pending.filter(i => i !== idx);
   closePad();
-  if(G.pending.length){ renderAll(); save(); return; }   // 残りは盤面から選んでもらう
+  // 残りがあれば続けて次のマスの入力を開く(1マスごとに盤面へ戻らなくて済むように)
+  if(G.pending.length){ renderAll(); save(); openPad('mass', G.pending[0]); return; }
   G.msg = null;
   // 先に盤面へ反映する。計算が点灯待ちで止まる場合、ここで描かないと
   // 最後に入れた値が盤面に出ないまま点灯選択の案内だけが出てしまう。
@@ -588,7 +614,10 @@ function openPad(kind, idx){
   let title='';
   if(kind==='mass'){
     const m=G.masses[idx];
-    title = `マス${idx+1}(ゾーン ${m.zoneLow}〜${m.zoneHigh})`;
+    const ob = G.obs && G.obs[idx];
+    // 何の結果を入れているのかが分かるよう、使った技と残りのマス数も出す
+    const left = G.pending.includes(idx) && G.pending.length > 1 ? ` ・ 残り${G.pending.length}マス` : '';
+    title = `マス${idx+1}` + (ob && ob.name ? ` ・ ${ob.name}` : '') + ` ・ ゾーン ${m.zoneLow}〜${m.zoneHigh}` + left;
   } else if(kind==='temp'){
     title='温度(℃)';
   } else {
@@ -670,6 +699,7 @@ function commit(){
   else v = padBuf==='' ? cur : n;    // 何も入力していなければ現状維持
   v = Math.max(0, v);
   let lastInput = false;                     // この入力で入力待ちが全て埋まったか
+  let wasPendingMass = false;                // 入力待ちのマスを入れたか(続けて次を開くため)
   if(padTarget==='mass'){
     markFx(padIdx, G.masses[padIdx].current, v);
     G.masses[padIdx].current = v;
@@ -679,6 +709,7 @@ function commit(){
     // 再びこのマスを開いた時には古い値を元にした候補が並んでしまう。
     if(G.obs) G.obs[padIdx] = null;
     const wasPending = G.pending.includes(padIdx);
+    wasPendingMass = wasPending;
     G.pending = G.pending.filter(i => i !== padIdx);
     if(!G.pending.length) G.msg = null;
     lastInput = wasPending && !G.pending.length;
@@ -691,7 +722,10 @@ function commit(){
   G.rec = null; G.plan = [];
   if(padTarget === 'temp') clearLit();
   closePad(); renderAll(); save();
-  // 候補ボタンから選んだ時(pickValue)と同じく、入力が揃ったら次の一手まで出す
+  // 候補ボタンから選んだ時(pickValue)と同じく、残りがあれば続けて開き、揃ったら次の一手まで出す
+  if(wasPendingMass && G.pending.length){
+    openPad('mass', G.pending[0]);
+  }
   if(lastInput) doCalc();
 }
 
@@ -959,4 +993,15 @@ function load(){
 
 if(!load()) resetAll();
 renderAll();
+
+// スマホでは下部の操作パネルが画面に固定されている。パネルの高さは状況で変わるので、
+// その分だけページ下に余白を取り、設定などの最後の項目がパネルの裏に隠れないようにする。
+(function(){
+  const foot = document.getElementById('footPanel');
+  const mq = window.matchMedia('(max-width: 759px)');
+  const sync = () => { document.body.style.paddingBottom = mq.matches ? (foot.offsetHeight + 12) + 'px' : ''; };
+  if(typeof ResizeObserver !== 'undefined') new ResizeObserver(sync).observe(foot);
+  window.addEventListener('resize', sync);
+  sync();
+})();
 
