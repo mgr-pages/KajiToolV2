@@ -513,16 +513,13 @@ async function doCalc(){
       G.rec=null; G.plan=[]; G.msg='温度切れ';
     } else {
       G.msg=null;
-      G.rec = await stratMCAsync(ms, G.focus, G.temp, PARAMS, cfg, (done, total, n)=>{
+      // 先読みは Worker に分担させる(使えない環境では画面側で計算する。どちらも同じ手になる)
+      G.rec = await MCPool.strat(ms, G.focus, G.temp, PARAMS, cfg, (done, total, n)=>{
         setCalcProgress(done/total, `先読み中 ${Math.round(done/total*100)}% (候補${n}手)`);
       });
       setCalcProgress(1, '手順を組み立て中…');
       await new Promise(r=>setTimeout(r, 0));
-      buildPlan(ms, cfg, G.rec);
-      // 大成功率は表示しなくなったので推定そのものを止める。1手あたり約0.5秒の削減。
-      // estimateOutcome のロールアウトは貪欲エンジンで打ち切る。
-      // 先読みで選んだ手の実力は反映されないので、表示は「下限の目安」。
-      // 300試行だと1回ごとに±3pt前後ブレて44%と52%が交互に出ていたため増やす。
+      await MCPool.plan(ms, cfg, G.rec);
     }
     renderAll();
   }catch(e){
