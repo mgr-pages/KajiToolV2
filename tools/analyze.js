@@ -13,6 +13,7 @@
      --seed N           乱数の種(既定 1)。局 g の種は seed と g から決まる
      --params JSON      評価の重みの上書き(素材の params に重ねる)
      --mcs N --mck N    先読みの試行回数・候補数を変える(実験用)
+     --mc JSON          先読みの設定の上書き(例: '{"K":16,"gate":0}'。素材の mc に重ねる)
      --log FILE         1局ごとの結果を追記する。同じ FILE で再実行すると、記録済みの局は飛ばす
                         (途中で止まっても続きから再開できる)
      --summary FILE     記録済みの FILE を集計して表示するだけ
@@ -21,12 +22,12 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 function args(){
-  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, log:null, summary:null };
+  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, log:null, summary:null };
   const a = process.argv.slice(2);
   for(let i = 0; i < a.length; i++){
     const k = a[i].replace(/^--/, ''), v = a[++i];
     if(!(k in o)){ console.error('不明な引数: ' + a[i-1]); process.exit(2); }
-    o[k] = (k === 'params') ? JSON.parse(v) : (['games','seed','mcs','mck'].includes(k) ? Number(v) : v);
+    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck'].includes(k) ? Number(v) : v);
   }
   return o;
 }
@@ -36,13 +37,13 @@ function seeded(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = M
 function loadEngine(o){
   Math.random = seeded(o.seed ^ 99);
   let src = fs.readFileSync(path.join(__dirname, '..', 'engine.js'), 'utf8');
-  if(o.mcs || o.mck){
-    const re = /const MC_K = \d+, MC_S = \d+/;
-    if(!re.test(src)) throw new Error('engine.js に先読みの設定が見つかりません');
-    src = src.replace(re, `const MC_K = ${o.mck || 8}, MC_S = ${o.mcs || 640}`);
-  }
   vm.runInThisContext(src, { filename: 'engine.js' });
   const E = c => vm.runInThisContext(c);
+  // 先読みの設定は素材の mc に重ねる(mcConf が読む)
+  if(o.mcs || o.mck || o.mc){
+    const pr = E('PRESETS')[o.preset];
+    pr.mc = Object.assign({}, pr.mc || {}, o.mc || {}, o.mck ? { K: o.mck } : {}, o.mcs ? { S: o.mcs } : {});
+  }
   if(o.params) E('PRESETS')[o.preset].params = Object.assign({}, E('PRESETS')[o.preset].params || {}, o.params);
   return E;
 }

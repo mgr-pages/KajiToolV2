@@ -1430,6 +1430,12 @@ function stratB(ms,f,t,P,cfg){
 // そこで1.65pt/局面を捨てていた。S・Kは大きいほど、THは低いほど良い。
 // 実局検証: いと +19.54/+13.64pt (t=2.93/2.24)、樹液 +20.00/+23.91pt (t=2.58/2.72)。
 const MC_K = 8, MC_S = 640, MC_GATE = 0.2, MC_TH = 0.5;
+// 素材ごとの先読みの設定(PRESETS の mc で上書き)。gate を 0 にすると独走局面でも先読みする。
+function mcConf(){
+  const p = PRESETS[G.preset], o = (p && p.mc) || {};
+  return { K: o.K || MC_K, S: o.S || MC_S, gate: o.gate === undefined ? MC_GATE : o.gate,
+           th: o.th === undefined ? MC_TH : o.th };
+}
 const MC_CHUNK = 32;                 // この件数ごとに描画へ譲る
 let RANK = null;
 function rankedMoves(ms, f, t, P, cfg, K){
@@ -1532,13 +1538,14 @@ function mcYield(){ return new Promise(r => setTimeout(r, 0)); }
 // 先読みの準備。先読みが要らない局面(候補が1つ・貪欲が独走)なら {move} を、
 // 要るなら {pool, seedBase} を返す。
 function mcPrepare(ms, f, t, P, cfg){
-  const pool = rankedMoves(ms, f, t, P, cfg, MC_K);
+  const mc = mcConf();
+  const pool = rankedMoves(ms, f, t, P, cfg, mc.K);
   const extra = pool.extra || [];
   // 評価関数が過小評価した点灯マスの手があるなら、貪欲が独走していても先読みで比べる
   if(!extra.length){
     if(pool.length <= 1) return { move: pool[0] || stratB(ms, f, t, P, cfg) };
     const s0 = pool.scores[0], s1 = pool.scores[1];
-    if(s0 - s1 > MC_GATE * Math.max(1, Math.abs(s0))) return { move: pool[0] };
+    if(mc.gate > 0 && s0 - s1 > mc.gate * Math.max(1, Math.abs(s0))) return { move: pool[0] };
   }
   if(!pool.length) return { move: extra[0] || stratB(ms, f, t, P, cfg) };
   for(const x of extra) pool.push(x);
@@ -1568,10 +1575,11 @@ async function stratMCAsync(ms, f, t, P, cfg, onProgress){
   if(prep.move !== undefined) return prep.move;
   const { pool, seedBase } = prep;
   const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
-  for(let j0 = 0; j0 < MC_S; j0 += MC_CHUNK){
-    const j1 = Math.min(MC_S, j0 + MC_CHUNK);
+  const S = mcConf().S;
+  for(let j0 = 0; j0 < S; j0 += MC_CHUNK){
+    const j1 = Math.min(S, j0 + MC_CHUNK);
     mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2);
-    if(onProgress) onProgress(j1, MC_S, n);
+    if(onProgress) onProgress(j1, S, n);
     await mcYield();
   }
   return mcPick(pool, sd, sd2);
@@ -1599,12 +1607,13 @@ function moveFromWire(w){ const sk = SKILLS.find(s => s.id === w.sk);
   if(w.cooling) mv.cooling = true;
   return mv; }
 function mcPick(pool, sd, sd2){
+  const { S, th } = mcConf();
   let bi = 0, bt = 0;
   for(let a = 1; a < pool.length; a++){
-    const md = sd[a]/MC_S, vr = sd2[a]/MC_S - md*md;
-    const se = Math.sqrt(Math.max(vr, 1e-9)/MC_S);
+    const md = sd[a]/S, vr = sd2[a]/S - md*md;
+    const se = Math.sqrt(Math.max(vr, 1e-9)/S);
     const tt = md/se;
-    if(tt > MC_TH && tt > bt){ bt = tt; bi = a; }
+    if(tt > th && tt > bt){ bt = tt; bi = a; }
   }
   return pool[bi];
 }
