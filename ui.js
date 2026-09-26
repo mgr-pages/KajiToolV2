@@ -279,7 +279,7 @@ function renderRec(){
       <div class="rec-sub">${tgt} / 消費${r.c}${critTxt}</div>
       <div class="rec-sub">実行後 → <b${warn}>集中力 ${leftF}</b> / ${r.nt}℃</div>
     </div>`;
-  // 1手ずつ進める時は下の主ボタン(打った)、まとめて打った時は手順の「ここまで実行」を使う。
+  // 1手ずつ進める時は下の主ボタン(打った)、まとめて打った時は手順の「ここまで打った」を使う。
 }
 
 function renderDetail(){
@@ -289,7 +289,7 @@ function renderDetail(){
   // 打った手の履歴は出さない。取り消しは「直前の反映を取り消す」で足りる。
   if(G.plan.length){
     h += '<div style="color:var(--dim);font-size:11px;margin-bottom:6px">'
-       + '何手かまとめて打った時は、打ったところの「ここまで実行」を押してください</div>';
+       + '何手かまとめて打った時は、打ったところの「ここまで打った」を押してください</div>';
     let f = G.focus;
     // 理想値が絞れるのは「会心が理想値ちょうどで止まりうる位置」で叩いた時だけ。
     // 会心で最大まで伸ばしても成功ゾーンに届かない位置なら、結果は理想値と無関係に
@@ -333,7 +333,7 @@ function renderDetail(){
       const note = '';
       const btn  = f < 0 ? ''
         : `<button class="pexec" onclick="applyExecuted(${i+1})">
-             <span class="t">ここまで実行</span>
+             <span class="t">${st.tg.length ? 'ここまで打った' : 'ここまで使った'}</span>
              <span class="s">${st.tempAfter}℃ / 集中${f}</span>
              ${note}
            </button>`;
@@ -365,8 +365,13 @@ function syncCalcButton(){
   if(!btn || CALC_BUSY) return;
   const a = primaryAction();
   btn.disabled = !a.run;
-  btn.textContent = a.label;
+  // 大きく「何をするか」、その下に小さく補足を出す(1行に詰め込むと読みにくかった)
+  // (クラス名は .main だと PC 版の2列レイアウトの .main と衝突するので btn- を付ける)
+  btn.innerHTML = '<span class="btn-main">' + a.label + '</span>' + (a.sub ? '<span class="btn-sub">' + a.sub + '</span>' : '');
   btn.classList.toggle('done-step', a.kind === 'exec');
+  // 取り消しは、直前の「打った」を戻せる時だけ主ボタンの左に出す
+  const ub = document.getElementById('undoBtn');
+  if(ub) ub.style.display = G.undoSnap ? '' : 'none';
 }
 // 画面下の主ボタンが今すべきこと。利用者が迷わないよう、次の操作をいつも1つだけ示す。
 //   入力待ち   → 結果の入力を開く(計算はさせない。打つ前の値で計算してしまうため)
@@ -376,12 +381,13 @@ function syncCalcButton(){
 function primaryAction(){
   if(G.pending.length){
     const n = G.pending.length;
-    return { kind:'input', label:`マス${G.pending[0]+1}の結果を入力` + (n > 1 ? `(残り${n}マス)` : ''),
+    return { kind:'input', label:'結果を入力', sub:`マス${G.pending[0]+1}` + (n > 1 ? `・残り${n}マス` : ''),
              run: () => openPad('mass', G.pending[0]) };
   }
   if(needLitPick()) return { kind:'lit', label:'光ったマスをタップしてください' };
   if(G.rec && G.plan.length){
-    return { kind:'exec', label: G.rec.tg.length ? '打った → 結果を入力' : '使った → 次の一手へ',
+    return { kind:'exec', label: G.rec.tg.length ? '打った' : '使った',
+             sub: G.rec.tg.length ? '結果の入力へ' : '次の一手を計算',
              run: () => applyExecuted(1) };
   }
   const active = G.masses.filter(m => !m.off);
@@ -406,15 +412,11 @@ function renderExec(){
     // 入力は主ボタンから順に進む。別の順で入れたい時は盤面のマスをタップすればよい
     el.innerHTML =
       `<div class="exec"><div class="need-box">
-         <div class="d">${names.join('・')} が入力待ち。温度と集中力は反映済みです。盤面のマスをタップすると好きな順で入力できます。</div>`
-      + (G.undoSnap ? `<button class="undo-link" onclick="undoExec()">打っていなかった(反映を取り消す)</button>` : '')
-      + `</div></div>`;
-    return;                                   // 計算ボタンの状態は syncCalcButton が決める
+         <div class="d">${names.join('・')} の結果待ち(温度・集中力は反映済み)</div>
+       </div></div>`;
+    return;                                   // 主ボタンと取り消しの状態は syncCalcButton が決める
   }
-
-  el.innerHTML = G.undoSnap
-    ? `<div class="exec"><button class="undo-btn" onclick="undoExec()">直前の反映を取り消す</button></div>`
-    : '';
+  el.innerHTML = '';
 }
 
 function applyExecuted(k){

@@ -34,6 +34,11 @@ const PRESETS = {
     trait: 'shuchu',
     threshold: 3,
     off: [4, 5],
+    // 評価の重みの上書き。既定の重みは6マス・許容誤差7の素材で調整したもので、
+    // 許容誤差3のこの盤面では会心で理想値を捉える価値が足りなかった。
+    // tests と同じモデルの貪欲エンジンで座標探索し(3000局・種7)、別の種(5000局・種101)で
+    // 大成功 33.5% → 39.9% を確認した。
+    params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0 },
     zones: [[207,213],[255,267],[255,267],[207,213],[0,0],[0,0]]
   },
   // 超あまつゆのいと(地金特性:たたき変化)
@@ -54,6 +59,10 @@ const PRESETS = {
     name: '超ようせいのひだね',
     trait: 'kaishin',
     threshold: 7,
+    // 評価の重みの上書き。ゾーン超過(16.6%)が多く、会心で理想値を捉える価値も足りていなかった。
+    // tools/tune.js で座標探索し(3000局・種7、3巡目で改善なし)、別の種(5000局・種101)で
+    // 大成功 45.7% → 52.5%、超過 16.6% → 10.8% を確認した(いずれも貪欲エンジン)。
+    params: { cap:24, adv:1.5, heat:1, ov:6, rush:0, center:4.5, pr:2.4, te:7.5 },
     zones: [[180,190],[250,258],[210,216],[250,258],[210,216],[145,155]]
   }
 };
@@ -246,7 +255,15 @@ const GRID_ROWS = 3, GRID_COLS = 2; // 縦3×横2(超かがやきの樹液)
 let SUCCESS_THRESHOLD = 7;
 const DEFAULT_THRESHOLD = 7;
 function isValidThreshold(v){ return Number.isInteger(v) && v >= 0 && v <= 99; }
+// 素材ごとの設定(許容誤差と、評価の重みの上書き)を反映する。素材を切り替えた時に呼ぶ。
 function applyThreshold(){
+  // 評価の重みは既定値に戻してから、素材に上書きがあれば重ねる
+  if(typeof BASE_PARAMS !== 'undefined'){
+    for(const k of Object.keys(PARAMS)) delete PARAMS[k];
+    Object.assign(PARAMS, BASE_PARAMS);
+    const pp = PRESETS[G.preset];
+    if(pp && pp.params) Object.assign(PARAMS, pp.params);
+  }
   if(G.preset === 'custom'){
     SUCCESS_THRESHOLD = isValidThreshold(G.customThreshold) ? G.customThreshold : DEFAULT_THRESHOLD;
     return;
@@ -287,6 +304,8 @@ function massError(current, ideal, zoneLow, zoneHigh){
    ※ 樹液=超かがやきの樹液(集中力変化) / いと=超あまつゆのいと(たたき変化) */
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
                  te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24, x2turn:10, aimNow:1, aimRes:2.2 };
+// 既定の重み。素材ごとの上書き(PRESETS の params)は applyThreshold が重ねる。
+const BASE_PARAMS = Object.freeze(Object.assign({}, PARAMS));
 
 function rcToIdx(r,c){
   if(r<0||r>=GRID_ROWS||c<0||c>=GRID_COLS) return null;

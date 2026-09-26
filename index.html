@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>超素材をつくろう！V3.04</title>
-<link rel="stylesheet" href="style.css?v=31a46ab1">
+<link rel="stylesheet" href="style.css?v=5a6ccc17">
 </head>
 <body>
 
@@ -20,7 +20,7 @@
       <option value="custom">手動設定</option>
     </select>
     <span class="hint-cust" id="v-cust" style="display:none">要設定</span>
-    <button class="hdr-reset" onclick="confirmReset()">やり直す</button>
+    <button class="hdr-reset" onclick="confirmReset()">最初から</button>
   </div>
   <div class="hdr-row">
     <div class="stat tap" onclick="openPad('temp')">
@@ -54,7 +54,11 @@
   <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
   <div id="execPanel"></div>
   <!-- 状況に応じて「計算する/打った/結果を入力」を切り替える、画面で唯一の主ボタン -->
-  <button class="calc" id="calcBtn" onclick="onPrimary()">次の一手を計算</button>
+  <div class="act-row">
+    <!-- 直前の「打った」の反映を戻す。戻せる時だけ出す -->
+    <button class="sub-btn" id="undoBtn" onclick="undoExec()" style="display:none">取り消す</button>
+    <button class="calc" id="calcBtn" onclick="onPrimary()">次の一手を計算</button>
+  </div>
   <div id="calcBar" class="calcbar" style="display:none"><div></div></div>
 </div>
 
@@ -129,6 +133,7 @@
 
 <div class="modal" id="modal" onclick="if(event.target===this)closePad()">
   <div class="pad">
+    <button class="pad-close" onclick="closePad()">閉じる</button>
     <div class="pad-hd" id="padTitle"></div>
     <div id="padCand" style="display:none"></div>
     <div id="padKeys">
@@ -136,21 +141,21 @@
     <div class="pad-res" id="padRes"></div>
     <div class="keys k4">
       <button onclick="key('7')">7</button><button onclick="key('8')">8</button><button onclick="key('9')">9</button>
-      <button onclick="key('del')" class="del">←</button>
+      <button onclick="key('del')" class="del word">1字消す</button>
       <button onclick="key('4')">4</button><button onclick="key('5')">5</button><button onclick="key('6')">6</button>
       <button onclick="key('plus')" class="op" id="kPlus">＋</button>
       <button onclick="key('1')">1</button><button onclick="key('2')">2</button><button onclick="key('3')">3</button>
       <button onclick="key('minus')" class="op" id="kMinus">－</button>
-      <button onclick="key('0')">0</button>
-      <button onclick="closePad()" class="cancel">×</button>
+      <!-- 閉じるは右上にあるので、ここは 0 と 決定 だけにする -->
+      <button onclick="key('0')" style="grid-column:span 2">0</button>
       <button onclick="commit()" class="ok" style="grid-column:span 2">決定</button>
     </div>
     </div>
   </div>
 </div>
 
-<script src="engine.js?v=31a46ab1"></script>
-<script src="mc-pool.js?v=31a46ab1"></script>
-<script src="ui.js?v=31a46ab1"></script>
+<script src="engine.js?v=5a6ccc17"></script>
+<script src="mc-pool.js?v=5a6ccc17"></script>
+<script src="ui.js?v=5a6ccc17"></script>
 </body>
 </html>
