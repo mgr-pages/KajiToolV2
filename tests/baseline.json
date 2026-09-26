@@ -110,20 +110,20 @@
         "great": 50,
         "unreached": 0,
         "over": 0,
-        "avgErr": 7.5,
-        "avgMoves": 15,
-        "avgFocusLeft": 30.5,
-        "fingerprint": "7177443a"
+        "avgErr": 7,
+        "avgMoves": 15.5,
+        "avgFocusLeft": 18,
+        "fingerprint": "16cced02"
       },
       "greedy": {
         "games": 300,
-        "great": 64,
-        "unreached": 3.7,
-        "over": 1,
-        "avgErr": 6.47,
-        "avgMoves": 15.4,
-        "avgFocusLeft": 35.4,
-        "fingerprint": "9508b536"
+        "great": 61,
+        "unreached": 2,
+        "over": 0.3,
+        "avgErr": 6.64,
+        "avgMoves": 15.3,
+        "avgFocusLeft": 37.5,
+        "fingerprint": "91dd4af8"
       }
     }
   }
