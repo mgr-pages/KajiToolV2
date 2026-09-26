@@ -185,18 +185,18 @@ function computeCritRate(skill, level, hammerId, star, trait, temp, isLit){
 // ・威力会心率上昇(kaishin):温度が200の倍数になるたびに、ゾーン未到達のマスがランダムに1つ点灯(再抽選)。点灯マスは威力2倍+会心率大幅上昇。非点灯マスは特性なしと同じ。
 // ・メーター減少・戻り(modori):温度が200の倍数になった時(始まりの1000℃は除く)、1マスの値が減る。
 //   対象は、ゾーンを超えたマスがあれば上限から最も離れたマス、無ければ未到達のうちゾーンに最も近いマス。
+//   値が0のマスは減らせないので対象にならない。値のあるマスが1つも無ければ戻りは起きない
+//   (利用者の情報: 何かしら値が入っているマスが候補になる。全マス0のまま火力上げ2回で1600℃に着いても起きない)。
 //   減る量は素材ごとに決まった範囲の中から乱数(PRESETS の modori)。超過したマスもこれで取り戻せる。
-//   対象のマスの値が0なら減らせないので、戻りは起きない(利用者の情報: 全マス0のまま
-//   火力上げ2回で1600℃に着いても起きない)。
 /* ---- 戻り(modori) ---- */
 const MODORI_DEFAULT = { min: 12, max: 16 };      // 素材に指定が無い時の仮の範囲
 function modoriRange(){
   const p = PRESETS[G.preset];
   return (p && p.modori) || MODORI_DEFAULT;
 }
-// 戻りの対象マス。ゾーンを超えたマスがあれば上限から最も離れたマス、無ければ未到達のうち
-// ゾーンに最も近いマス。距離が同じなら番号の小さいマス(ゲームでの扱いは未確認)。
-// 使わないマス(ゾーン 0〜0)は対象にしない。
+// 戻りの対象マス。ゾーンを超えたマスがあれば上限から最も離れたマス、無ければ未到達で値のある(0でない)
+// マスのうちゾーンに最も近いマス。距離が同じなら番号の小さいマス(ゲームでの扱いは未確認)。
+// 使わないマス(ゾーン 0〜0)は対象にしない。対象が無ければ null(戻りは起きない)。
 function modoriTarget(ms){
   let oi = -1, od = 0;
   for(let i = 0; i < ms.length; i++){
@@ -208,22 +208,21 @@ function modoriTarget(ms){
   let ci = -1, cd = Infinity;
   for(let i = 0; i < ms.length; i++){
     const m = ms[i]; if(m.zoneHigh <= 0) continue;
+    if(m.current <= 0) continue;               // 0のマスは減らせないので候補にならない
     const d = m.zoneLow - m.current;
     if(d > 0 && d < cd){ cd = d; ci = i; }
   }
   return ci >= 0 ? ci : null;
 }
 // 手を打った後に呼ぶ。温度が200の倍数になっていれば戻りを起こし、{マス, 量} を返す。
-// 対象のマスが0で減らせない時は起きないので null。
+// 対象になるマスが無い時(超過が無く、値のある未到達のマスも無い。全マス0の時など)は起きないので null。
 // 始まりの1000℃では起きないが、この関数は打った後にしか呼ばないので自然にそうなる。
 function applyModori(ms, temp, trait, rnd){
   if(trait !== 'modori' || temp <= 0 || temp % 200 !== 0) return null;
   const i = modoriTarget(ms);
   if(i === null) return null;
   const r = modoriRange();
-  // 量の乱数は、起きない時も先に引く(試行の乱数の並びを変えず、以前と同じ打ち方を再現するため)
   const amt = r.min + Math.floor(rnd() * (r.max - r.min + 1));
-  if(ms[i].current <= 0) return null;
   ms[i].current = Math.max(0, ms[i].current - amt);
   return { i, amt };
 }
@@ -243,7 +242,7 @@ function hitOutcomes(before, rolls, zoneLow, zoneHigh){
 //   asTarget[i]: そのマスが対象になる時の、打った直後の値
 //   asOther[i] : そのマスが対象にならない時の、打った直後の値
 // を持たせる(入力の候補を、実際に起こりうるものだけに絞るため)。
-// none は「戻りが起きない組み合わせがある」(全マスがゾーンに入った・対象が0で減らせない)。
+// none は「戻りが起きない組み合わせがある」(全マスがゾーンに入った・値のあるマスが無い)。
 function possibleModoriTargets(ms, outcomes){
   const idx = Object.keys(outcomes).map(Number);
   const vals = idx.map(i => [...new Set(outcomes[i])]);
@@ -255,8 +254,7 @@ function possibleModoriTargets(ms, outcomes){
   (function rec(k){
     if(budget-- <= 0){ none = true; return; }      // 数え切れない時は「起きないかも」として扱う
     if(k === idx.length){
-      let t = modoriTarget(cur);
-      if(t !== null && cur[t].current <= 0) t = null;   // 減らせないので起きない
+      const t = modoriTarget(cur);
       if(t !== null) found.add(t); else none = true;
       for(const i of idx) (i === t ? asTarget : asOther)[i].add(cur[i].current);
       return;
