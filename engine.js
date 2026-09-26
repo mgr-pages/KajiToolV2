@@ -1390,37 +1390,75 @@ function mcYield(){ return new Promise(r => setTimeout(r, 0)); }
 
 // 探索はメインスレッドを占有するので、MC_CHUNK 件ごとに描画へ譲りながら進める。
 // 1手あたり いと約0.5秒 / 樹液約1.6秒 かかるため、固定表示だと止まって見える。
-async function stratMCAsync(ms, f, t, P, cfg, onProgress){
+// 先読みの準備。先読みが要らない局面(候補が1つ・貪欲が独走)なら {move} を、
+// 要るなら {pool, seedBase} を返す。
+function mcPrepare(ms, f, t, P, cfg){
   const pool = rankedMoves(ms, f, t, P, cfg, MC_K);
   const extra = pool.extra || [];
   // 評価関数が過小評価した点灯マスの手があるなら、貪欲が独走していても先読みで比べる
   if(!extra.length){
-    if(pool.length <= 1) return pool[0] || stratB(ms, f, t, P, cfg);
+    if(pool.length <= 1) return { move: pool[0] || stratB(ms, f, t, P, cfg) };
     const s0 = pool.scores[0], s1 = pool.scores[1];
-    if(s0 - s1 > MC_GATE * Math.max(1, Math.abs(s0))) return pool[0];
+    if(s0 - s1 > MC_GATE * Math.max(1, Math.abs(s0))) return { move: pool[0] };
   }
-  if(!pool.length) return extra[0] || stratB(ms, f, t, P, cfg);
+  if(!pool.length) return { move: extra[0] || stratB(ms, f, t, P, cfg) };
   for(const x of extra) pool.push(x);
-  const seedBase = stateSeed(ms, f, t);
+  return { pool, seedBase: stateSeed(ms, f, t) };
+}
+// 試行 j0〜j1-1 を回し、候補ごとの「基準手との差」を sd・sd2 に足し込む。
+// 試行 j の乱数は seedBase と j だけで決まり、差は -1/0/1 の整数なので、
+// 試行をどう分割して(複数の Worker で)足しても合計は完全に一致する。
+function mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2){
+  const n = pool.length;
+  for(let j = j0; j < j1; j++){
+    const seed = (seedBase + Math.imul(j, 2654435761)) | 0;
+    MC_RNG = mcRand(seed);
+    const base = mcRollout(ms, f, t, cfg, pool[0]);
+    for(let a = 1; a < n; a++){
+      MC_RNG = mcRand(seed);                 // 共通乱数で候補間の差の分散を下げる
+      const d = mcRollout(ms, f, t, cfg, pool[a]) - base;
+      sd[a] += d; sd2[a] += d*d;
+    }
+  }
+  MC_RNG = Math.random;
+}
+// 画面と同じスレッドで先読みする版。Worker が使えない時(ファイルを直接開いた時など)と
+// 成績テスト(tests/sim.js)はこちらを使う。
+async function stratMCAsync(ms, f, t, P, cfg, onProgress){
+  const prep = mcPrepare(ms, f, t, P, cfg);
+  if(prep.move !== undefined) return prep.move;
+  const { pool, seedBase } = prep;
   const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
   for(let j0 = 0; j0 < MC_S; j0 += MC_CHUNK){
     const j1 = Math.min(MC_S, j0 + MC_CHUNK);
-    for(let j = j0; j < j1; j++){
-      const seed = (seedBase + Math.imul(j, 2654435761)) | 0;
-      MC_RNG = mcRand(seed);
-      const base = mcRollout(ms, f, t, cfg, pool[0]);
-      for(let a = 1; a < n; a++){
-        MC_RNG = mcRand(seed);
-        const d = mcRollout(ms, f, t, cfg, pool[a]) - base;
-        sd[a] += d; sd2[a] += d*d;
-      }
-    }
-    MC_RNG = Math.random;
+    mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2);
     if(onProgress) onProgress(j1, MC_S, n);
     await mcYield();
   }
   return mcPick(pool, sd, sd2);
 }
+
+/* ---- Worker との受け渡し ----
+   先読みの試行は G の一部と点灯マス・開始直後の判定を読むので、それを丸ごと写す。
+   手(move)は技オブジェクトを含むため、技はIDで送って受け側で引き直す。 */
+function mcSnapshot(){
+  return { G: { trait:G.trait, posts:G.posts, temp:G.temp, focus:G.focus, masses:G.masses, level:G.level,
+                hammerId:G.hammerId, star:G.star, preset:G.preset, customThreshold:G.customThreshold },
+           lit: litMassIndex, simFirstMove };
+}
+function mcRestore(snap){
+  Object.assign(G, snap.G);
+  litMassIndex = snap.lit;
+  simFirstMove = snap.simFirstMove;
+  setActiveMask(G.masses.map(m => !m.off));
+  applyThreshold();
+}
+function moveToWire(mv){ return { sk: mv.sk.id, tg: mv.tg.slice(), c: mv.c, nt: mv.nt,
+                                  overP: mv.overP || 0, cooling: !!mv.cooling }; }
+function moveFromWire(w){ const sk = SKILLS.find(s => s.id === w.sk);
+  const mv = { sk, tg: w.tg, c: w.c, nt: w.nt, overP: w.overP };
+  if(w.cooling) mv.cooling = true;
+  return mv; }
 function mcPick(pool, sd, sd2){
   let bi = 0, bt = 0;
   for(let a = 1; a < pool.length; a++){
@@ -1688,10 +1726,15 @@ function tracedRollout(ms0, f, t, cfg, first, out){
 function buildPlan(ms0, cfg, first){
   G.plan = [];
   if(!first) return;
+  planFromTraces(ms0, planTraces(ms0, cfg, first, 0, PLAN_TRIALS));
+}
+// 手順用の試行 i0〜i1-1。試行 i の乱数は盤面と i だけで決まるので、
+// 範囲を分けて(複数の Worker で)回し、順に繋げば一度に回した場合と同じになる。
+function planTraces(ms0, cfg, first, i0, i1){
   const saved = simFirstMove;
   const seedBase = stateSeed(ms0, G.focus, G.temp) ^ 0x5bf03635;
   const traces = [];
-  for(let i = 0; i < PLAN_TRIALS; i++){
+  for(let i = i0; i < i1; i++){
     simFirstMove = isStartState();
     MC_RNG = mcRand((seedBase + Math.imul(i, 2654435761)) | 0);
     const out = [];
@@ -1700,6 +1743,11 @@ function buildPlan(ms0, cfg, first){
   }
   MC_RNG = Math.random;
   simFirstMove = saved;
+  return traces;
+}
+// 試行の束から最頻の経路を手順(G.plan)にする。束の順番は同点の扱いに効くので変えないこと。
+function planFromTraces(ms0, traces){
+  G.plan = [];
   let live = traces, rnd = 0;
   for(let s = 0; s < 24; s++){
     const tally = new Map();
