@@ -464,3 +464,99 @@ table.sk .cst{text-align:right; font-weight:700;}
 /* 推奨手の表示が無い時(入力待ち)は区切り線を引かない */
 .rec:empty + #execPanel .exec{border-top:0; margin-top:0; padding-top:0;}
 #execPanel .exec{margin-bottom:8px;}
+
+/* =====================================================================
+   見た目の仕上げ(冒険の書調を磨く)
+   配色はそのまま、次の3点で「道具としての格」を上げる。
+   ・紙の地に薄い柄(bg-motif.svg)を敷き、面ごとに浮き・沈みを付ける
+   ・枠線を減らし、影で区切る(線が多すぎて情報の強弱が付いていなかった)
+   ・押せる物は押せる形(立体のボタン・札)に揃える
+   ===================================================================== */
+:root{
+  --shadow:0 1px 0 rgba(122,92,40,.18), 0 3px 8px rgba(74,52,24,.10);
+  --raise:0 2px 0 rgba(122,92,40,.35);
+}
+html{background:var(--bg);}
+body{
+  background:
+    url("bg-motif.svg") 0 0 / 300px 300px repeat,
+    radial-gradient(120% 80% at 50% 0%, #f6ead0 0%, rgba(240,226,194,0) 60%),
+    var(--bg);
+  background-attachment:fixed;
+}
+
+/* ヘッダー: 表紙の帯のように下端を二重線で締める */
+.hdr{background:linear-gradient(180deg,#f8eed9,#f2e4c6); border-bottom:3px double var(--ink);
+  box-shadow:0 2px 6px rgba(74,52,24,.12);}
+.hdr-title .mat-sel{box-shadow:var(--raise);}
+.hdr-title .hdr-reset{box-shadow:0 2px 0 rgba(181,72,15,.35);}
+.stat{border-color:rgba(198,172,116,.8); box-shadow:inset 0 1px 0 #fffaf0, var(--raise); border-radius:8px;}
+.stat .val{letter-spacing:.01em;}
+
+/* マス: 紙の札。浮かせて、数字を主役にする */
+.cell{background:linear-gradient(180deg,#fffaf0 0%, var(--panel) 55%, #f3e6c8 100%);
+  border-radius:10px; border-color:rgba(198,172,116,.9);
+  box-shadow:inset 0 1px 0 #fff, 0 2px 0 rgba(122,92,40,.28), 0 4px 10px rgba(74,52,24,.10);}
+.cell .cur{text-shadow:0 1px 0 #fff;}
+.cell .zn{border-top-style:dashed;}
+.cell.hi{box-shadow:0 0 0 3px rgba(181,72,15,.22), 0 2px 0 rgba(181,72,15,.4), 0 6px 14px rgba(181,72,15,.18);}
+.cell.done{background:linear-gradient(180deg,#f6fbf2, #e9f3e2);}
+.cell.over{background:linear-gradient(180deg,#fdf1ef, #f6dfdb);}
+
+/* ゲージ: 溝に彫ったように沈める */
+.bar{border-radius:5px; border-color:rgba(122,92,40,.45);
+  box-shadow:inset 0 1px 2px rgba(74,52,24,.25);}
+
+/* 凡例は枠を外して盤面に馴染ませる */
+.legend{background:rgba(251,243,224,.7); border:0; border-top:1px dashed var(--line); border-radius:0 0 8px 8px;}
+
+/* 折りたたみ: 線の二重囲みをやめ、1枚のカードにする */
+.acc{background:var(--panel); border:1px solid rgba(198,172,116,.8); border-radius:10px;
+  overflow:hidden; box-shadow:var(--shadow);}
+.acc summary{background:transparent; border:0; border-radius:0;}
+.acc summary::before{content:'◆'; color:var(--gold); font-size:10px; margin-right:7px;}
+.acc summary{justify-content:flex-start;}
+.acc summary::after{margin-left:auto;}
+.acc summary .gear{margin-left:auto;}
+.acc summary .gear + *{margin-left:0;}
+.acc .body{background:rgba(247,236,214,.6); border:0; border-top:1px dashed var(--line); border-radius:0;}
+
+/* 手順の各手 */
+.plist-body{border:0; background:transparent; padding:0;}
+.pstep{background:var(--panel); border:1px solid rgba(198,172,116,.6); border-radius:8px; padding:7px 8px;}
+.pstep.first{box-shadow:0 0 0 2px rgba(181,72,15,.35);}
+.pexec{border-radius:8px; box-shadow:var(--raise);}
+
+/* 主ボタン: 押せる厚みを持たせる */
+.calc{border-radius:12px; letter-spacing:.06em; text-shadow:0 1px 0 rgba(0,0,0,.25);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25), 0 4px 0 #6e2a05, 0 6px 12px rgba(110,42,5,.25);
+  transition:transform .06s, box-shadow .06s;}
+.calc:active{transform:translateY(3px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.2), 0 1px 0 #6e2a05, 0 2px 6px rgba(110,42,5,.2);}
+.calc.done-step{box-shadow:inset 0 1px 0 rgba(255,255,255,.25), 0 4px 0 #0e3f1f, 0 6px 12px rgba(14,63,31,.25);}
+.calc.done-step:active{box-shadow:inset 0 1px 0 rgba(255,255,255,.2), 0 1px 0 #0e3f1f;}
+.calc:disabled{box-shadow:none; text-shadow:none; transform:none;}
+
+/* 推奨手: 技名を見出しらしく */
+.rec-skill{font-size:18px; letter-spacing:.02em;}
+.rec-skill::before{content:'次の一手'; display:block; font-size:10px; color:var(--dim);
+  font-weight:700; letter-spacing:.1em; margin-bottom:1px;}
+
+/* 入力画面(下から出る紙): つまみを付けて引き出しらしく */
+.pad{background:linear-gradient(180deg,#fbf3e0,#f4e8cc); box-shadow:0 -6px 20px rgba(0,0,0,.25);}
+.pad::before{content:''; display:block; width:44px; height:5px; border-radius:3px;
+  background:rgba(122,92,40,.35); margin:-4px auto 10px;}
+.cand{border-radius:10px; box-shadow:var(--raise); background:linear-gradient(180deg,#fffaf0,var(--panel));}
+.cand:active{transform:translateY(2px); box-shadow:none;}
+.keys button{border-radius:10px; box-shadow:var(--raise);}
+
+@media (max-width: 759px){
+  /* 下部の操作パネル: 紙の束の上端のように、影と角丸で盤面から持ち上げる */
+  .foot{background:linear-gradient(180deg,#fbf3e0,#f4e8cc); border-top:0;
+    border-radius:16px 16px 0 0; box-shadow:0 -4px 16px rgba(74,52,24,.18);}
+}
+@media (min-width: 760px){
+  .foot{box-shadow:var(--shadow); border-radius:12px;}
+  .rec-skill{font-size:26px;}
+}
+@media (prefers-reduced-motion: reduce){ .calc,.cand{transition:none;} }
