@@ -107,23 +107,23 @@
     "orb": {
       "mc": {
         "games": 2,
-        "great": 100,
+        "great": 50,
         "unreached": 0,
         "over": 0,
-        "avgErr": 4,
+        "avgErr": 7.5,
         "avgMoves": 15,
-        "avgFocusLeft": 59,
-        "fingerprint": "01b5a624"
+        "avgFocusLeft": 30.5,
+        "fingerprint": "7177443a"
       },
       "greedy": {
         "games": 300,
-        "great": 57.3,
-        "unreached": 0.3,
-        "over": 0.3,
-        "avgErr": 6.97,
-        "avgMoves": 15.1,
-        "avgFocusLeft": 48.4,
-        "fingerprint": "0f38409f"
+        "great": 64,
+        "unreached": 3.7,
+        "over": 1,
+        "avgErr": 6.47,
+        "avgMoves": 15.4,
+        "avgFocusLeft": 35.4,
+        "fingerprint": "9508b536"
       }
     }
   }
