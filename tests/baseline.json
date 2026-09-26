@@ -6,7 +6,8 @@
       "kagayaki",
       "amatsuyu",
       "hidane",
-      "bloom"
+      "bloom",
+      "orb"
     ],
     "seed": 20260926
   },
@@ -101,6 +102,28 @@
         "avgMoves": 16.5,
         "avgFocusLeft": 42.4,
         "fingerprint": "d58f4316"
+      }
+    },
+    "orb": {
+      "mc": {
+        "games": 2,
+        "great": 50,
+        "unreached": 0,
+        "over": 0,
+        "avgErr": 7.5,
+        "avgMoves": 15,
+        "avgFocusLeft": 30.5,
+        "fingerprint": "7177443a"
+      },
+      "greedy": {
+        "games": 300,
+        "great": 64,
+        "unreached": 3.7,
+        "over": 1,
+        "avgErr": 6.47,
+        "avgMoves": 15.4,
+        "avgFocusLeft": 35.4,
+        "fingerprint": "9508b536"
       }
     }
   }

@@ -36,6 +36,29 @@ function pickLit(i){
   renderAll(); save();
 }
 
+/* ====== 戻り(メーター減少)の予告 ====== */
+// この温度に着いた後で戻りが起きるか(始まりの1000℃は打った後ではないので対象外)
+function modoriAfter(nt){ return G.trait === 'modori' && nt > 0 && nt % 200 === 0; }
+// 推奨手を打った後に戻りの対象になりうるマス。打つマスの取りうる値を全て組み合わせて求める。
+// 描画のたびに呼ばれるので、同じ推奨手・同じ盤面の間は結果を使い回す。
+let _mdrCache = { key: null, val: null };
+function modoriHint(){
+  const r = G.rec;
+  if(!r || !modoriAfter(r.nt)) return null;
+  const key = r.sk.id + '|' + r.tg.join(',') + '|' + G.temp + '|' + G.masses.map(m => m.current).join(',');
+  if(_mdrCache.key === key) return _mdrCache.val;
+  const outcomes = {};
+  for(const i of r.tg){
+    const m = G.masses[i]; if(m.current >= m.zoneLow) continue;
+    const rr = rollsForMass(r.sk, G.temp, G.trait, i); if(!rr) continue;
+    const o = hitOutcomes(m.current, rr, m.zoneLow, m.zoneHigh);
+    outcomes[i] = o.normal.concat(o.crit);
+  }
+  const val = possibleModoriTargets(G.masses, outcomes);
+  _mdrCache = { key, val };
+  return val;
+}
+
 /* ====== 描画 ====== */
 // バーの最大値(全マス共通)。設定で手入力された値があればそれを使い、
 // 無ければ全マスのゾーン上限の最大値に少し余裕を足した値を自動で決める。
@@ -120,6 +143,13 @@ function traitNote(){
            前進量が倍になる。超4連打ちなど多マス技を乗せたい。</div>
       <div><b class="mk-weak">▽ 威力1/2</b> 温度が200の倍数(400の倍数を除く)。
            前進量が半分。仕上げの微調整には使えるが、大きく進めたい時は避ける。</div></div>`;
+  if(G.trait === 'modori'){
+    const r = modoriRange();
+    return `<div class="mk-note">
+      <div><b class="mk-weak">↩ 戻り</b> 温度が200の倍数になると、1マスの値が${r.min}〜${r.max}減る。
+           ゾーンを超えたマスがあれば上限から一番離れたマス、無ければゾーンに一番近い未到達のマスが対象。
+           超過しても取り戻せる。</div></div>`;
+  }
   if(G.trait === 'kaishin') return `<div class="mk-note">
       <div><b class="mk-boost">✦ 点灯</b> 温度が200の倍数。未到達のマスから1つが光る。
            光ったマスだけ威力2倍・会心率+500%。盤面でタップして指定する。</div></div>`;
@@ -127,6 +157,7 @@ function traitNote(){
 }
 
 function renderBoard(){
+  const mdr = modoriHint();                  // 推奨手の後に戻りで減りそうなマス
   const el = document.getElementById('board');
   const hiTg = G.rec ? G.rec.tg : [];
   // バーの基準技:推奨手が出ていればその技の伸び幅を表示する。
@@ -151,7 +182,8 @@ function renderBoard(){
                 + (!m.off && G.pending.includes(i)?' need':'')
                 + (pickable ? ' litpick' : '')
                 + (pick && !pickable && !m.off ? ' litdim' : '')
-                + (litMassIndex === i ? ' lit' : '');
+                + (litMassIndex === i ? ' lit' : '')
+                + (!m.off && mdr && mdr.has(i) ? ' mdr' : '');
       const zoneTxt = flip ? `${m.zoneHigh} 〜 ${m.zoneLow}` : `${m.zoneLow} 〜 ${m.zoneHigh}`;
       const barBlock = m.off ? `<div class="bar-wrap ${flip?'left':'right'}"></div>` :
         `<div class="bar-wrap ${flip?'left':'right'}">
@@ -196,7 +228,7 @@ function buildBar(mk, flip){
 }
 
 const TRAIT_LABEL = {shuchu:'集中力変化', none:'特性なし', tataki:'たたき変化',
-                     modori:'メーター減少(未対応)', kaishin:'威力会心率上昇'};
+                     modori:'戻り', kaishin:'威力会心率上昇'};
 function traitLabel(t){ return TRAIT_LABEL[t] || t; }
 
 function renderHeader(){
@@ -223,8 +255,6 @@ function renderHeader(){
   if(tm) b.push(`<span class="badge ${tm.k}">${tm.l}</span>`);
   else b.push('<span class="badge off">通常</span>');
   if(isStartState()) b.push('<span class="badge off">開始直後(特性なし)</span>');
-  // メーター減少は計算に組み込んでいない。選べるが「特性なし」と同じ手が出ることを明示する
-  if(G.trait === 'modori') b.push('<span class="badge weak">メーター減少は未対応(特性なしとして計算)</span>');
   // 到達数・誤差・大成功率は見ても打ち方が変わらないので出さない。
   // 残すのはターン表示(威力2倍/半減)だけ ― 今どの手を打っているかの確認に使う。
   if(G.pending.length) b.push(`<span class="badge wait">数値の入力待ち</span>`);
@@ -251,6 +281,13 @@ function renderSkills(){
   document.getElementById('skTable').innerHTML = rows.join('');
 }
 
+// 推奨手の後に戻りが起きる時の一行。どのマスが減りそうかも出す
+function modoriLine(){
+  const t = modoriHint();
+  if(!t) return '';
+  const names = [...t].sort((a,b)=>a-b).map(i => 'マス' + (i+1));
+  return `<div class="rec-sub mdr-line">↩ このあと戻り: ${names.length ? names.join('か') + 'が減る見込み' : '減るマスなし'}</div>`;
+}
 function renderRec(){
   const el = document.getElementById('rec');
   if(G.pending.length){ el.innerHTML = ''; return; }
@@ -277,7 +314,7 @@ function renderRec(){
   el.innerHTML = `<div class="rec-main">
       <div class="rec-skill">${r.sk.name}</div>
       <div class="rec-sub">${tgt} / 消費${r.c}${critTxt}</div>
-      <div class="rec-sub">実行後 → <b${warn}>集中力 ${leftF}</b> / ${r.nt}℃</div>
+      <div class="rec-sub">実行後 → <b${warn}>集中力 ${leftF}</b> / ${r.nt}℃</div>${modoriLine()}
     </div>`;
   // 1手ずつ進める時は下の主ボタン(打った)、まとめて打った時は手順の「ここまで打った」を使う。
 }
@@ -327,7 +364,8 @@ function renderDetail(){
     });
     h += '<div class="plist-body">' + G.plan.map((st,i)=>{
       f -= st.cost;
-      const mark = st.mk ? ` <b class="mk-${st.mk.k}">${st.mk.l}</b>` : '';
+      const mark = (st.mk ? ` <b class="mk-${st.mk.k}">${st.mk.l}</b>` : '')
+                 + (modoriAfter(st.tempAfter) ? ' <b class="mk-weak">↩ このあと戻り</b>' : '');
       const cls  = (st.mk ? ' on-'+st.mk.k : '') + (i===0?' first':'');
       const tg   = st.tg.length ? st.tg.map(x=>'マス'+(x+1)).join('・') : '温度操作';
       const note = '';
@@ -391,7 +429,8 @@ function primaryAction(){
              run: () => applyExecuted(1) };
   }
   const active = G.masses.filter(m => !m.off);
-  if(active.length && active.every(m => m.current >= m.zoneLow)) return { kind:'end', label:'全マス到達' };
+  // 戻りの地金では超過も取り戻せるので、超過が残る間は続ける(boardDone)
+  if(active.length && boardDone(G.masses, G.trait)) return { kind:'end', label:'全マス到達' };
   return { kind:'calc', label:'次の一手を計算', run: doCalc };
 }
 function onPrimary(){
@@ -478,12 +517,48 @@ function applyExecuted(k){
     else if(!G.obs[i]) G.obs[i] = firstOf[i];
     else G.obs[i] = null;
   }
-  G.pending = [...hit].sort((a,b)=>a-b);
+  // ---- 戻り ----
+  // 200℃の倍数に着いた手の後は、ゲームが自動で1マスを減らす。利用者には戻りの後の値を
+  // 1回だけ入れてもらい、どのマスがいくつ減ったかはこちらで判断する。
+  let msgAfter = null;
+  const mdSteps = steps.filter(st => modoriAfter(st.tempAfter));
+  if(mdSteps.length){
+    const multi = [...hit].some(i => !G.obs[i]);
+    if(mdSteps.length === 1 && modoriAfter(steps[steps.length-1].tempAfter) && !multi){
+      const outcomes = {};
+      for(const i of hit){
+        const ob = G.obs[i], m = G.masses[i];
+        const o = hitOutcomes(ob.before, ob.rolls, m.zoneLow, m.zoneHigh);
+        outcomes[i] = o.normal.concat(o.crit);
+      }
+      const T = possibleModoriTargets(G.masses, outcomes);
+      const sure = T.size === 1, range = modoriRange();
+      for(const t of T){
+        if(hit.has(t)){
+          G.obs[t].modori = sure ? 'yes' : 'maybe'; G.obs[t].range = range;
+          // 実際に起こりうる値だけを候補にする(対象になる時/ならない時の、打った直後の値)
+          G.obs[t].canRed = [...T.asTarget[t]]; G.obs[t].canPlain = [...T.asOther[t]];
+        }
+        else{
+          // 打っていないのに減るマス。入力の対象に加える
+          G.obs[t] = { modoriOnly: true, before: G.masses[t].current, name: '戻り',
+                       modori: sure ? 'yes' : 'maybe', range };
+          hit.add(t);
+        }
+      }
+    } else {
+      // 戻りが2回以上起きた、または同じマスを2打以上まとめた場合は分解できない
+      for(const i of hit) G.obs[i] = null;
+      msgAfter = '戻りで値が変わったマスは、盤面のマスをタップして直してください';
+    }
+  }
+  // 打っていないのに戻るかもしれないマスを先に聞く(候補が少なく、減っていれば他のマスの候補を絞れる)
+  G.pending = [...hit].sort((a,b) => ((G.obs[b] && G.obs[b].modoriOnly) ? 1 : 0) - ((G.obs[a] && G.obs[a].modoriOnly) ? 1 : 0) || a - b);
 
   G.rec = null; G.plan = []; clearLit();
   // 入力するものが無い手(温度操作だけ)なら、そのまま次の一手まで出す
   if(!G.pending.length){ G.msg = null; renderAll(); doCalc(); save(); return; }
-  G.msg = null;
+  G.msg = msgAfter;
   renderAll(); save();
   // 叩いたマスの結果入力をそのまま開く(ゲームで結果を見たらすぐ選べるように)
   openPad('mass', G.pending[0]);
@@ -534,7 +609,7 @@ async function doCalc(){
   try{
     const cfg = cfgOf();
     const ms = G.masses.map(m=>({current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh}));
-    if(ms.every(m=>m.current>=m.zoneLow)){
+    if(boardDone(ms, G.trait)){
       G.rec=null; G.plan=[]; G.msg='<span style="color:var(--green)">全マス到達 — 仕上げてください</span>';
     } else if(G.temp<=0){
       G.rec=null; G.plan=[]; G.msg='温度切れ';
@@ -566,21 +641,36 @@ let padTarget=null, padIdx=null, padOp=null, padBuf='';
 // 打撃後に起こりうる値を全て列挙する。結果は必ずこの中のどれかになる。
 function candidateValues(idx){
   const ob = G.obs && G.obs[idx];
-  if(!ob || !ob.rolls) return null;
-  const m = G.masses[idx], b = ob.before;
-  const normal = [], crit = [];
-  for(const r of ob.rolls){
-    if(normal.indexOf(b + r) < 0) normal.push(b + r);
-    if(crit.indexOf(b + 2*r) < 0) crit.push(b + 2*r);
+  if(!ob) return null;
+  const m = G.masses[idx];
+  // 戻りで減った後の値(減る量は範囲内のどれか)
+  const minus = (arr, red) => { const out = new Set();
+    for(const v of arr) for(let a = red.min; a <= red.max; a++) out.add(Math.max(0, v - a));
+    return [...out].sort((a,b)=>a-b); };
+  const groups = [];
+  if(ob.modoriOnly){
+    // 打っていないが戻りで減るマス
+    if(ob.modori === 'maybe') groups.push({ label:'変わっていない', cls:'n', vals:[ob.before], crit:null, red:false });
+    groups.push({ label:'戻りで減った', cls:'r', vals: minus([ob.before], ob.range), crit:null, red:true });
+    return { groups, name: ob.name, modori: true };
   }
-  // 会心が理想値ちょうどで止まる場合。値はゾーン内の任意の位置になりうる
-  const cap = [];
-  const top = b + 2*ob.rolls[ob.rolls.length-1];
-  for(let v = Math.max(m.zoneLow, b + 1); v <= m.zoneHigh && v <= top; v++){
-    if(crit.indexOf(v) < 0 && cap.indexOf(v) < 0) cap.push(v);
+  if(!ob.rolls) return null;
+  // 会心が理想値ちょうどで止まる場合も「会心が出た」に含める(値はゾーン内の任意の位置になりうる)
+  const o = hitOutcomes(ob.before, ob.rolls, m.zoneLow, m.zoneHigh);
+  // 戻りの対象になる/ならない時に実際に起こりうる値だけに絞る(戻りの規則で決まるため)
+  const only = (arr, allow) => allow ? arr.filter(v => allow.includes(v)) : arr;
+  if(ob.modori !== 'yes'){
+    const plainN = ob.modori ? only(o.normal, ob.canPlain) : o.normal;
+    const plainC = ob.modori ? only(o.crit, ob.canPlain) : o.crit;
+    if(plainN.length) groups.push({ label:'会心が出なかった', cls:'n', vals:plainN, crit:false, red:false });
+    if(plainC.length) groups.push({ label:'会心が出た', cls:'c', vals:plainC, crit:true, red:false });
   }
-  normal.sort((a,c)=>a-c); crit.sort((a,c)=>a-c); cap.sort((a,c)=>a-c);
-  return { normal, crit, cap, name: ob.name };
+  if(ob.modori){
+    const redN = minus(only(o.normal, ob.canRed), ob.range), redC = minus(only(o.crit, ob.canRed), ob.range);
+    if(redN.length) groups.push({ label:'会心なし・戻りで減った', cls:'r', vals: redN, crit:false, red:true });
+    if(redC.length) groups.push({ label:'会心あり・戻りで減った', cls:'rc', vals: redC, crit:true, red:true });
+  }
+  return { groups, name: ob.name, modori: !!ob.modori };
 }
 // 候補を選んだとき。会心の有無まで受け取って理想値の分布を更新する
 // 値の変化に応じた合図を1回だけ仕込む。
@@ -593,14 +683,24 @@ function markFx(idx, before, after){
   G.fx = { i: idx, k };
   setTimeout(()=>{ if(G.fx && G.fx.i === idx) G.fx = null; }, 700);
 }
-function pickValue(idx, val, wasCrit){
+// red: 戻りで減った後の値を選んだ(減る前の値は範囲内のどれか)
+function pickValue(idx, val, wasCrit, red){
   if(!Number.isFinite(val)) return;      // 想定外の値では状態を壊さない
   const ob = G.obs && G.obs[idx];
-  if(ob && ob.rolls) updatePost(idx, ob.before, ob.rolls, ob.cr, val, wasCrit);
+  // 打っていないマスの戻りは理想値と無関係なので、推定は更新しない
+  if(ob && ob.rolls && !ob.modoriOnly) updatePost(idx, ob.before, ob.rolls, ob.cr, val, wasCrit, red ? ob.range : undefined);
   markFx(idx, G.masses[idx].current, val);
   G.masses[idx].current = val;
   if(G.obs) G.obs[idx] = null;
   G.pending = G.pending.filter(i => i !== idx);
+  // 戻りは1回に1マスだけ。減ったマスが分かったら、他のマスは減っていない
+  if(red && G.obs){
+    for(const j of G.pending.slice()){
+      const o = G.obs[j]; if(!o || !o.modori) continue;
+      if(o.modoriOnly){ G.obs[j] = null; G.pending = G.pending.filter(x => x !== j); }   // 値はそのまま
+      else { o.modori = null; }
+    }
+  }
   closePad();
   // 残りがあれば続けて次のマスの入力を開く(1マスごとに盤面へ戻らなくて済むように)
   if(G.pending.length){ renderAll(); save(); openPad('mass', G.pending[0]); return; }
@@ -631,14 +731,12 @@ function openPad(kind, idx){
   const cand = (kind === 'mass') ? candidateValues(idx) : null;
   if(box){
     if(cand){
-      const btn = (v,c) => `<button class="cand${c?' crit':''}" onclick="pickValue(${idx},${v},${c})">${v}</button>`;
-      const critAll = cand.crit.concat(cand.cap).sort((a,b)=>a-b);
+      const btn = (v,g) => `<button class="cand${g.crit ? ' crit' : ''}${g.red ? ' red' : ''}"`
+        + ` onclick="pickValue(${idx},${v},${g.crit},${g.red})">${v}</button>`;
       box.innerHTML =
-        `<div class="cand-q">マス${idx+1}はいくつになりましたか</div>`
-      + `<div class="cand-grp"><span class="cand-h n">会心が出なかった</span>`
-      + `<div class="cand-row">${cand.normal.map(v=>btn(v,false)).join('')}</div></div>`
-      + `<div class="cand-grp"><span class="cand-h c">会心が出た</span>`
-      + `<div class="cand-row">${critAll.map(v=>btn(v,true)).join('')}</div></div>`
+        `<div class="cand-q">マス${idx+1}はいくつになりましたか${cand.modori ? '(戻りの後の値)' : ''}</div>`
+      + cand.groups.map(g => `<div class="cand-grp"><span class="cand-h ${g.cls}">${g.label}</span>`
+          + `<div class="cand-row">${g.vals.map(v => btn(v, g)).join('')}</div></div>`).join('')
       + `<button class="cand-more" onclick="showKeys()">一覧に無い値を自分で入力する</button>`;
       box.style.display = 'block';
       if(keys) keys.style.display = 'none';       // 候補があるならテンキーは畳む
