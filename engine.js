@@ -432,8 +432,10 @@ function rcToIdx(r,c){
 }
 
 // 技ごとの対象マスの組み合わせを、盤面の隣接関係に沿って列挙する
-// 使用しないマスを含む形も、残ったマスだけを対象にして打てる(実ゲームの挙動)。
-// 例: マス5・6が無い盤で上下打ち[3,5]は、マス3のみを叩く手になる。
+// 盤面に存在しないマス(使わないマス)にはみ出す形は打てない(実ゲームの挙動)。
+// 例: 2×2の盾で、超4連打ちを下段2マスだけに当てることはできない。
+// ※以前は「残ったマスだけを対象に打てる」としていたが、実際には打てないとの指摘を受けて戻した
+//   (引き継ぎ資料 v116)。ゾーンに到達済みのマスを含む形は、盤面上に存在するので打てる。
 let ACTIVE = null;                       // null = 全マス有効
 function setActiveMask(list){
   ACTIVE = (Array.isArray(list) && list.some(v => !v)) ? list.slice() : null;
@@ -466,17 +468,8 @@ function enumerateTargetSets(skill){
     }
   }
   if(!ACTIVE) return sets;
-  // 使わないマスを対象から落とす。空になった形は消し、
-  // 縮んだ結果が他の形と同じになった場合は重複を除く。
-  const seen = new Set(), out = [];
-  for(const g of sets){
-    const t = g.filter(i => ACTIVE[i]);
-    if(!t.length) continue;
-    const key = t.join(',');
-    if(seen.has(key)) continue;
-    seen.add(key); out.push(t);
-  }
-  return out;
+  // 存在しないマスを1つでも含む形は、盤面からはみ出すので打てない
+  return sets.filter(g => g.every(i => ACTIVE[i]));
 }
 
 // 地金特性「集中力変化」による消費の増減
@@ -693,10 +686,9 @@ function tatakiOpening(ms, f, t, cfg){
   const NN = SKILLS.find(s => s.id === 'naname'     && s.lv <= cfg.level);
   const TK = SKILLS.find(s => s.id === 'tataku'     && s.lv <= cfg.level);
   if(!K || !R || !C4 || !Y4 || !NN || !TK) return null;
-  const mk = (sk, tg0) => {
-    // 定跡はマス番号を直接指定するので、使わないマスをここで落とす
-    const tg = ACTIVE ? tg0.filter(i => ACTIVE[i]) : tg0;
-    if(sk.masses > 0 && !tg.length) return null;
+  const mk = (sk, tg) => {
+    // 定跡はマス番号を直接指定するので、存在しないマスを含む形はここで弾く
+    if(ACTIVE && tg.some(i => !ACTIVE[i])) return null;
     const c = actualCostOf(sk, t, cfg.trait);
     if(c > f) return null;
     const r = sk.masses > 0 ? getRollCandidates(sk, t, cfg.trait, false) : null;
