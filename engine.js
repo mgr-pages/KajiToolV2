@@ -1431,10 +1431,11 @@ function stratB(ms,f,t,P,cfg){
 // 実局検証: いと +19.54/+13.64pt (t=2.93/2.24)、樹液 +20.00/+23.91pt (t=2.58/2.72)。
 const MC_K = 8, MC_S = 640, MC_GATE = 0.2, MC_TH = 0.5;
 // 素材ごとの先読みの設定(PRESETS の mc で上書き)。gate を 0 にすると独走局面でも先読みする。
+// early を true にすると、貪欲が評価の前に手を決めた局面でも先読みする(火力上げを除く)。
 function mcConf(){
   const p = PRESETS[G.preset], o = (p && p.mc) || {};
   return { K: o.K || MC_K, S: o.S || MC_S, gate: o.gate === undefined ? MC_GATE : o.gate,
-           th: o.th === undefined ? MC_TH : o.th };
+           th: o.th === undefined ? MC_TH : o.th, early: !!o.early };
 }
 const MC_CHUNK = 32;                 // この件数ごとに描画へ譲る
 let RANK = null;
@@ -1543,6 +1544,19 @@ function mcPrepare(ms, f, t, P, cfg){
   const extra = pool.extra || [];
   // 評価関数が過小評価した点灯マスの手があるなら、貪欲が独走していても先読みで比べる
   if(!extra.length){
+    if(pool.length <= 1 && mc.early){
+      // 貪欲が評価の前に手を決めた局面(狙い打ちの優先・会心ターンの計画など)でも先読みで比べる。
+      // 決めた手を基準(先頭)に置き、ほかの候補は決め打ちの処理を止めた評価の順位で並べる。
+      // 温度不足の火力上げは除く(先読みにしても良くならなかった)。
+      const ret = pool[0] || stratB(ms, f, t, P, cfg);
+      if(!ret || ret.sk.id === 'karyoku') return { move: ret };
+      const P2 = Object.assign({}, P, { pairSnipe:0, boostAim:0, aimNow:0, opening:0, boostPlan:0, heat:-1000 });
+      const key = x => x.sk.id + '|' + (x.tg || []).join(',');
+      const rest = rankedMoves(ms, f, t, P2, cfg, mc.K + 1).filter(x => key(x) !== key(ret));
+      const pl = [ret, ...rest].slice(0, mc.K);
+      if(pl.length <= 1) return { move: ret };
+      return { pool: pl, seedBase: stateSeed(ms, f, t) };
+    }
     if(pool.length <= 1) return { move: pool[0] || stratB(ms, f, t, P, cfg) };
     const s0 = pool.scores[0], s1 = pool.scores[1];
     if(mc.gate > 0 && s0 - s1 > mc.gate * Math.max(1, Math.abs(s0))) return { move: pool[0] };
