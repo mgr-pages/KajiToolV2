@@ -186,6 +186,8 @@ function computeCritRate(skill, level, hammerId, star, trait, temp, isLit){
 // ・メーター減少・戻り(modori):温度が200の倍数になった時(始まりの1000℃は除く)、1マスの値が減る。
 //   対象は、ゾーンを超えたマスがあれば上限から最も離れたマス、無ければ未到達のうちゾーンに最も近いマス。
 //   減る量は素材ごとに決まった範囲の中から乱数(PRESETS の modori)。超過したマスもこれで取り戻せる。
+//   対象のマスの値が0なら減らせないので、戻りは起きない(利用者の情報: 全マス0のまま
+//   火力上げ2回で1600℃に着いても起きない)。
 /* ---- 戻り(modori) ---- */
 const MODORI_DEFAULT = { min: 12, max: 16 };      // 素材に指定が無い時の仮の範囲
 function modoriRange(){
@@ -212,13 +214,16 @@ function modoriTarget(ms){
   return ci >= 0 ? ci : null;
 }
 // 手を打った後に呼ぶ。温度が200の倍数になっていれば戻りを起こし、{マス, 量} を返す。
+// 対象のマスが0で減らせない時は起きないので null。
 // 始まりの1000℃では起きないが、この関数は打った後にしか呼ばないので自然にそうなる。
 function applyModori(ms, temp, trait, rnd){
   if(trait !== 'modori' || temp <= 0 || temp % 200 !== 0) return null;
   const i = modoriTarget(ms);
   if(i === null) return null;
   const r = modoriRange();
+  // 量の乱数は、起きない時も先に引く(試行の乱数の並びを変えず、以前と同じ打ち方を再現するため)
   const amt = r.min + Math.floor(rnd() * (r.max - r.min + 1));
+  if(ms[i].current <= 0) return null;
   ms[i].current = Math.max(0, ms[i].current - amt);
   return { i, amt };
 }
@@ -238,24 +243,27 @@ function hitOutcomes(before, rolls, zoneLow, zoneHigh){
 //   asTarget[i]: そのマスが対象になる時の、打った直後の値
 //   asOther[i] : そのマスが対象にならない時の、打った直後の値
 // を持たせる(入力の候補を、実際に起こりうるものだけに絞るため)。
+// none は「戻りが起きない組み合わせがある」(全マスがゾーンに入った・対象が0で減らせない)。
 function possibleModoriTargets(ms, outcomes){
   const idx = Object.keys(outcomes).map(Number);
   const vals = idx.map(i => [...new Set(outcomes[i])]);
   const cur = ms.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh }));
   const found = new Set(), asTarget = {}, asOther = {};
+  let none = false;
   for(const i of idx){ asTarget[i] = new Set(); asOther[i] = new Set(); }
   let budget = 400000;                 // 組み合わせが多すぎる時の打ち切り(4マス×25通りでも収まる)
   (function rec(k){
-    if(budget-- <= 0) return;
+    if(budget-- <= 0){ none = true; return; }      // 数え切れない時は「起きないかも」として扱う
     if(k === idx.length){
-      const t = modoriTarget(cur);
-      if(t !== null) found.add(t);
+      let t = modoriTarget(cur);
+      if(t !== null && cur[t].current <= 0) t = null;   // 減らせないので起きない
+      if(t !== null) found.add(t); else none = true;
       for(const i of idx) (i === t ? asTarget : asOther)[i].add(cur[i].current);
       return;
     }
     for(const v of vals[k]){ cur[idx[k]].current = v; rec(k + 1); }
   })(0);
-  found.asTarget = asTarget; found.asOther = asOther;
+  found.asTarget = asTarget; found.asOther = asOther; found.none = none;
   return found;
 }
 // 盤面が仕上がったか。戻りの地金では超過も取り戻せるので、超過が残る間は仕上がりとしない。
@@ -1925,7 +1933,9 @@ function planFromTraces(ms0, traces){
        && ms0.some(m => m.current < m.zoneLow)) break;
     // 戻りの地金も同じ。200℃の倍数に着いた手の後で戻りが起き、減る量は乱数なので、
     // その先の手順は当てにならない。入力してもらってから計算し直す。
-    if(G.trait === 'modori' && st.tempAfter > 0 && st.tempAfter % 200 === 0) break;
+    // ただし値のあるマスが1つも無い間(始まりの火力上げなど)は減らせないので戻りは起きない。
+    if(G.trait === 'modori' && st.tempAfter > 0 && st.tempAfter % 200 === 0
+       && (ms0.some(m => m.current > 0) || G.plan.some(p => p.tg.length > 0))) break;
   }
 }
 
