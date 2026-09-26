@@ -19,23 +19,23 @@
     "kagayaki": {
       "mc": {
         "games": 2,
-        "great": 50,
+        "great": 0,
         "unreached": 0,
         "over": 0,
-        "avgErr": 6,
-        "avgMoves": 21,
-        "avgFocusLeft": 3,
-        "fingerprint": "f0aea00d"
+        "avgErr": 9.5,
+        "avgMoves": 20,
+        "avgFocusLeft": 5.5,
+        "fingerprint": "dd2690b3"
       },
       "greedy": {
         "games": 300,
-        "great": 58.3,
+        "great": 60.7,
         "unreached": 0.3,
-        "over": 6.3,
-        "avgErr": 8.07,
-        "avgMoves": 19.8,
-        "avgFocusLeft": 22.1,
-        "fingerprint": "5de0a918"
+        "over": 3,
+        "avgErr": 6.89,
+        "avgMoves": 19.9,
+        "avgFocusLeft": 21.2,
+        "fingerprint": "3fa0a29d"
       }
     },
     "amatsuyu": {
@@ -47,17 +47,17 @@
         "avgErr": 21,
         "avgMoves": 24,
         "avgFocusLeft": 1,
-        "fingerprint": "71675183"
+        "fingerprint": "66cae157"
       },
       "greedy": {
         "games": 300,
-        "great": 55,
-        "unreached": 1.3,
-        "over": 7,
-        "avgErr": 7.97,
-        "avgMoves": 21.4,
-        "avgFocusLeft": 18.6,
-        "fingerprint": "106d9e35"
+        "great": 49.7,
+        "unreached": 2.7,
+        "over": 6,
+        "avgErr": 8.5,
+        "avgMoves": 21.5,
+        "avgFocusLeft": 18.3,
+        "fingerprint": "3c54d78b"
       }
     },
     "hidane": {
@@ -66,20 +66,20 @@
         "great": 50,
         "unreached": 0,
         "over": 0,
-        "avgErr": 9,
-        "avgMoves": 26,
-        "avgFocusLeft": 2,
-        "fingerprint": "898107f3"
+        "avgErr": 7.5,
+        "avgMoves": 25,
+        "avgFocusLeft": 17,
+        "fingerprint": "b5aeae36"
       },
       "greedy": {
         "games": 300,
-        "great": 51,
-        "unreached": 8,
-        "over": 13.7,
-        "avgErr": 11.34,
-        "avgMoves": 22.4,
-        "avgFocusLeft": 19.6,
-        "fingerprint": "648f2aca"
+        "great": 54,
+        "unreached": 7.3,
+        "over": 9,
+        "avgErr": 8.55,
+        "avgMoves": 22.2,
+        "avgFocusLeft": 20.3,
+        "fingerprint": "472e4a49"
       }
     },
     "bloom": {
@@ -88,20 +88,20 @@
         "great": 50,
         "unreached": 0,
         "over": 0,
-        "avgErr": 3,
-        "avgMoves": 18,
-        "avgFocusLeft": 26,
-        "fingerprint": "82949fd3"
+        "avgErr": 3.5,
+        "avgMoves": 20,
+        "avgFocusLeft": 23,
+        "fingerprint": "973cb489"
       },
       "greedy": {
         "games": 300,
-        "great": 47,
-        "unreached": 1,
-        "over": 2.3,
-        "avgErr": 4.35,
-        "avgMoves": 16.5,
-        "avgFocusLeft": 42.4,
-        "fingerprint": "d58f4316"
+        "great": 42.3,
+        "unreached": 0,
+        "over": 0.7,
+        "avgErr": 3.93,
+        "avgMoves": 16.6,
+        "avgFocusLeft": 47.7,
+        "fingerprint": "12cfdebc"
       }
     },
     "orb": {
@@ -117,13 +117,13 @@
       },
       "greedy": {
         "games": 300,
-        "great": 61,
-        "unreached": 2,
+        "great": 60,
+        "unreached": 1.7,
         "over": 0.3,
-        "avgErr": 6.64,
-        "avgMoves": 15.3,
-        "avgFocusLeft": 37.5,
-        "fingerprint": "91dd4af8"
+        "avgErr": 6.72,
+        "avgMoves": 15.4,
+        "avgFocusLeft": 37,
+        "fingerprint": "6130160d"
       }
     }
   }
