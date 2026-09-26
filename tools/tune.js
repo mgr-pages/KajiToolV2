@@ -48,16 +48,19 @@ if(process.argv[2] === '--worker'){
         const ms = G.masses.map(m => ({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh }));
         const mv = E('stratB')(ms, G.focus, G.temp, P, cfg);
         if(!mv || mv.c > G.focus) break;
+        const seen = [];
         if(mv.sk.key) for(const i of mv.tg){
           const m = G.masses[i]; if(m.current >= m.zoneLow) continue;
           const rolls = E('rollsForMass')(mv.sk, G.temp, G.trait, i), cr = E('critForMass')(mv.sk, cfg, G.temp, i);
           if(!rolls) continue;
           const roll = rolls[Math.floor(rng()*rolls.length)], crit = rng() < cr, before = m.current;
           m.current = crit ? Math.min(before + 2*roll, ideal[i]) : before + roll;
-          E('updatePost')(i, before, rolls, cr, m.current, crit);
+          seen.push({ i, before, rolls, cr, crit });
         }
         G.focus -= mv.c; G.temp = mv.nt; G.hist.push(1);
-        E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り
+        const md = E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り
+        for(const o of seen) E('updatePost')(o.i, o.before, o.rolls, o.cr, G.masses[o.i].current, o.crit,
+                                             md && md.i === o.i ? E('modoriRange')() : undefined);
       }
       E('litMassIndex = null;');
       const reached = G.masses.every(m => m.current >= m.zoneLow);

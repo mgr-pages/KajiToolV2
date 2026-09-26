@@ -428,6 +428,8 @@ table.sk .cst{text-align:right; font-weight:700;}
 .cell.hi .idx::after{content:'対象'; background:var(--ember);}
 .cell.need .idx::after{content:'入力'; background:var(--ember);}
 @media (min-width:760px){ .cell.hi .idx::after, .cell.need .idx::after{font-size:11px; line-height:17px;} }
+.cell.mdr .idx::after{content:'戻り'; background:var(--gold);}
+.cell.hi.mdr .idx::after{content:'対象・戻り';}
 .cell.lit{outline:2px solid #e0a020; outline-offset:-2px;}
 /* 選び直せる間も、選んだ点灯マスだけは点滅を止めて他のマスと見分けられるようにする */
 .cell.litpick.lit{animation:none;}
@@ -473,14 +475,14 @@ table.sk .cst{text-align:right; font-weight:700;}
 }
 /* 柄はページ全体の地(html)に敷く。body に敷いて background-attachment:fixed にすると、
    iPhone の Safari などで柄が出ないことがあるため、固定もしない(ページと一緒に流れる)。 */
-:root{--css-ver:"a6655260";}
+:root{--css-ver:"80355fa4";}
 .ver{margin-top:12px; font-size:10.5px; color:var(--dim); text-align:right;}
 .ver b{color:var(--red);}   /* 表示中の見た目のファイルの版(tools/stamp.py が付け直す) */
 html{
   /* 地は全面同じ色。上部を明るくするグラデーションは、ページの高さで途切れて
      下の方だけ色が変わって見えたためやめた。 */
   background:
-    url("bg-motif.svg?v=a6655260") 0 0 / 900px 900px repeat,
+    url("bg-motif.svg?v=80355fa4") 0 0 / 900px 900px repeat,
     var(--bg);
 }
 body{background:transparent;}
@@ -598,3 +600,10 @@ body{background:transparent;}
 /* 色ごとの指定(.badge.boost など)と同じ強さにして、後ろに書いたこちらを効かせる */
 .badges .badge{background:none; border:0; padding:0; border-radius:0; font-size:11.5px;}
 @media (min-width:760px){ .badges .badge{font-size:13px;} }
+
+/* 戻り(メーター減少)の予告と候補 */
+.rec-sub.mdr-line{color:var(--gold); font-weight:700;}
+.cand-h.r{color:var(--ember);}
+.cand-h.rc{color:var(--pink);}
+.cand.red{border-style:dashed; border-color:rgba(181,72,15,.7);}
+.cand.red.crit{border-color:rgba(196,26,143,.7);}

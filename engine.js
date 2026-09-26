@@ -219,6 +219,42 @@ function applyModori(ms, temp, trait, rnd){
   ms[i].current = Math.max(0, ms[i].current - amt);
   return { i, amt };
 }
+// 1マスを打った直後に取りうる値(通常・会心)。
+// 会心は理想値を通り越すと理想値で止まるので、ゾーンの上限を超えることは無い。
+// 会心の値は「理想値の手前で止まった 前の値+2×ロール(ゾーン未満)」か「ゾーン内の値」。
+function hitOutcomes(before, rolls, zoneLow, zoneHigh){
+  const normal = new Set(), crit = new Set();
+  for(const r of rolls){ normal.add(before + r); if(before + 2*r < zoneLow) crit.add(before + 2*r); }
+  const top = before + 2*rolls[rolls.length-1];
+  for(let v = Math.max(zoneLow, before + 1); v <= zoneHigh && v <= top; v++) crit.add(v);
+  return { normal: [...normal].sort((a,b)=>a-b), crit: [...crit].sort((a,b)=>a-b) };
+}
+// 打った結果の全ての組み合わせについて戻りの対象を求める。
+// outcomes は {マス番号: 取りうる値の配列}。打っていないマスは今の値のまま。
+// 返り値の Set は対象になりうるマス。付随して、打ったマスごとに
+//   asTarget[i]: そのマスが対象になる時の、打った直後の値
+//   asOther[i] : そのマスが対象にならない時の、打った直後の値
+// を持たせる(入力の候補を、実際に起こりうるものだけに絞るため)。
+function possibleModoriTargets(ms, outcomes){
+  const idx = Object.keys(outcomes).map(Number);
+  const vals = idx.map(i => [...new Set(outcomes[i])]);
+  const cur = ms.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh }));
+  const found = new Set(), asTarget = {}, asOther = {};
+  for(const i of idx){ asTarget[i] = new Set(); asOther[i] = new Set(); }
+  let budget = 400000;                 // 組み合わせが多すぎる時の打ち切り(4マス×25通りでも収まる)
+  (function rec(k){
+    if(budget-- <= 0) return;
+    if(k === idx.length){
+      const t = modoriTarget(cur);
+      if(t !== null) found.add(t);
+      for(const i of idx) (i === t ? asTarget : asOther)[i].add(cur[i].current);
+      return;
+    }
+    for(const v of vals[k]){ cur[idx[k]].current = v; rec(k + 1); }
+  })(0);
+  found.asTarget = asTarget; found.asOther = asOther;
+  return found;
+}
 // 盤面が仕上がったか。戻りの地金では超過も取り戻せるので、超過が残る間は仕上がりとしない。
 function boardDone(ms, trait){
   if(!ms.every(m => m.current >= m.zoneLow)) return false;
@@ -1594,21 +1630,28 @@ function ensurePosts(){
     if(!Array.isArray(G.posts[i]) || G.posts[i].length !== need) G.posts[i] = freshPost(G.masses[i]);
   }
 }
-function updatePost(i, before, rolls, critRate, after, wasCrit){
+// red を渡すと、after は「打った後にさらに戻りで減った値」とみなす。
+// 戻る量は範囲 red.min〜red.max の一様乱数なので、打った直後の値 after+量 の各場合を平均する。
+function updatePost(i, before, rolls, critRate, after, wasCrit, red){
   ensurePosts();
   const m = G.masses[i], lo = m.zoneLow, post = G.posts[i], out = [];
+  const amts = [];
+  if(red) for(let a = red.min; a <= red.max; a++) amts.push(a); else amts.push(0);
   for(let k=0;k<post.length;k++){
     const v = lo + k;
-    let n1 = 0, n2 = 0;
-    for(const r of rolls){
-      if(before + r === after) n1++;
-      if(Math.min(before + 2*r, v) === after) n2++;
+    let L = 0;
+    for(const a of amts){
+      const hitAfter = after + a;           // 打った直後の値
+      let n1 = 0, n2 = 0;
+      for(const r of rolls){
+        if(before + r === hitAfter) n1++;
+        if(Math.min(before + 2*r, v) === hitAfter) n2++;
+      }
+      if(wasCrit === true)       L += n2 / rolls.length;
+      else if(wasCrit === false) L += n1 / rolls.length;
+      else                       L += (1-critRate) * n1 / rolls.length + critRate * n2 / rolls.length;
     }
-    let L;
-    if(wasCrit === true)       L = n2 / rolls.length;
-    else if(wasCrit === false) L = n1 / rolls.length;
-    else                       L = (1-critRate) * n1 / rolls.length + critRate * n2 / rolls.length;
-    out.push(post[k] * L);
+    out.push(post[k] * L / amts.length);
   }
   const sum = out.reduce((a,b)=>a+b, 0);
   if(sum > 0) G.posts[i] = out.map(x => x / sum);
@@ -1877,6 +1920,9 @@ function planFromTraces(ms0, traces){
     // (止めないと、例えば火力上げ4回の先に、点灯を無視した超4連まで並んでしまう)
     if(G.trait === 'kaishin' && st.tempAfter > 0 && st.tempAfter % 200 === 0
        && ms0.some(m => m.current < m.zoneLow)) break;
+    // 戻りの地金も同じ。200℃の倍数に着いた手の後で戻りが起き、減る量は乱数なので、
+    // その先の手順は当てにならない。入力してもらってから計算し直す。
+    if(G.trait === 'modori' && st.tempAfter > 0 && st.tempAfter % 200 === 0) break;
   }
 }
 

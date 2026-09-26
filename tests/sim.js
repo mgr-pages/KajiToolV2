@@ -125,6 +125,7 @@ async function playGame(E, preset, rng, useMC){
                      : stratB(ms, G.focus, G.temp, PARAMS, cfg);
     if(!mv || mv.c > G.focus) break;
     trace.push(mv.sk.id + ':' + mv.tg.join(''));
+    const seen = [];                    // この手で打ったマス(理想値の推定は戻りの後にまとめて更新)
     if(mv.sk.key) for(const i of mv.tg){
       const m = G.masses[i];
       if(m.current >= m.zoneLow) continue;
@@ -135,10 +136,13 @@ async function playGame(E, preset, rng, useMC){
       const crit = rng() < cr;
       const before = m.current;
       m.current = crit ? Math.min(before + 2 * roll, ideal[i]) : before + roll;
-      updatePost(i, before, rolls, cr, m.current, crit);   // 候補ボタンで入力した場合と同じ
+      seen.push({ i, before, rolls, cr, crit });
     }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id);
-    E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り(温度が200の倍数になった時)
+    const md = E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り(温度が200の倍数になった時)
+    // 候補ボタンで入力した場合と同じ。画面では戻りの後の値を入れるので、戻ったマスはそのように扱う
+    for(const o of seen) updatePost(o.i, o.before, o.rolls, o.cr, G.masses[o.i].current, o.crit,
+                                    md && md.i === o.i ? E('modoriRange')() : undefined);
   }
   E('litMassIndex = null;');
   const reached = G.masses.every(m => m.current >= m.zoneLow);

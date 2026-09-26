@@ -76,6 +76,7 @@ async function playGame(E, o, g){
     const mv = o.mode === 'mc' ? await E('stratMCAsync')(ms, G.focus, G.temp, P, cfg, null)
                                : E('stratB')(ms, G.focus, G.temp, P, cfg);
     if(!mv || mv.c > G.focus) break;
+    const seen = [];                    // この手で打ったマス(理想値の推定は戻りの後にまとめて更新)
     if(mv.sk.key) for(const i of mv.tg){
       const m = G.masses[i]; if(m.current >= m.zoneLow) continue;
       const rolls = E('rollsForMass')(mv.sk, G.temp, G.trait, i), cr = E('critForMass')(mv.sk, cfg, G.temp, i);
@@ -87,11 +88,14 @@ async function playGame(E, o, g){
         const pink = before + rolls[rolls.length-1] <= m.zoneHigh && before + 2*rolls[0] >= m.zoneHigh;
         fin.push({ i, aim: !!mv.sk.crit, boost, pink, exact: m.current === ideal[i] });
       }
-      E('updatePost')(i, before, rolls, cr, m.current, crit);
+      seen.push({ i, before, rolls, cr, crit });
     }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id); moves++;
     const md = E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り
     if(md) modori.push(md);
+    // 画面では戻りの後の値を入れるので、戻ったマスはそのように扱う
+    for(const o of seen) E('updatePost')(o.i, o.before, o.rolls, o.cr, G.masses[o.i].current, o.crit,
+                                         md && md.i === o.i ? E('modoriRange')() : undefined);
   }
   E('litMassIndex = null;');
   const errs = G.masses.map((m,i) => m.off ? null : E('massError')(m.current, ideal[i], m.zoneLow, m.zoneHigh));
