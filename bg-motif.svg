@@ -17,7 +17,7 @@
       <circle cx="1112" cy="890" r="35" fill="#7a5c28" fill-opacity=".9" stroke="none"/></g></g>
     <g id="spark"><path d="M0 -10 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z" fill="#b5480f" fill-opacity=".8" stroke="none"/></g>
   </defs>
-  <g fill="none" stroke="#7a5c28" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity=".14">
+  <g fill="none" stroke="#7a5c28" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity=".2">
     <use href="#anvil" transform="translate(310.5 214.9) rotate(-34.1) scale(1.01)" stroke-width="2.18"/>
     <use href="#anvil" transform="translate(321.7 847.0) rotate(3.7) scale(1.17)" stroke-width="1.87"/>
     <use href="#anvil" transform="translate(321.7 -53.0) rotate(3.7) scale(1.17)" stroke-width="1.87"/>

@@ -72,7 +72,7 @@ def main():
     for name, (r0, body) in SYMBOLS.items():
         out.append(f'    <g id="{name}">{body}</g>')
     out.append('  </defs>')
-    out.append(f'  <g fill="none" stroke="#7a5c28" stroke-width="{STROKE}" stroke-linecap="round" stroke-linejoin="round" opacity=".14">')
+    out.append(f'  <g fill="none" stroke="#7a5c28" stroke-width="{STROKE}" stroke-linecap="round" stroke-linejoin="round" opacity=".2">')
     for name, x, y, rot, s in items:
         r = SYMBOLS[name][0] * s
         # 端にかかる絵は反対側にも描く

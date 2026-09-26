@@ -4,7 +4,8 @@
    ・先読み: 候補ごとの差の合計(sd・sd2)を返す。選ぶのは画面側(mc-pool.js)。
    ・手順: 手順用の試行の記録を返す。集計は画面側。
    ===================================================================== */
-importScripts('engine.js');
+// mc-pool.js から渡された版の印を engine.js にも付け、古いファイルが使われないようにする
+importScripts('engine.js' + self.location.search);
 
 self.onmessage = function(e){
   const q = e.data;

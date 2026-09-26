@@ -9,6 +9,9 @@
    engine.js の後、ui.js の前に読み込む。
    ===================================================================== */
 const MCPool = (function(){
+  // 自分の読み込みURLに付いた版の印(?v=...)を Worker にも引き継ぐ。
+  // 付けないと、更新後もブラウザが古い mc-worker.js / engine.js を使い続けることがある。
+  const VER = (document.currentScript && new URL(document.currentScript.src).search) || '';
   let workers = null;        // 作成済みの Worker
   let disabled = false;      // 作れなかった/失敗した。以降は画面側で計算する
   let broken = false;        // 読み込みに失敗した Worker がある(次の計算で切り替える)
@@ -25,7 +28,7 @@ const MCPool = (function(){
     try{
       workers = [];
       for(let k = 0; k < size(); k++){
-        const w = new Worker('mc-worker.js');
+        const w = new Worker('mc-worker.js' + VER);
         // 読み込みの失敗は計算を頼む前に届くことがある。取りこぼすと次の計算が終わらないので控える
         w.onerror = e => { e.preventDefault(); broken = true; };
         workers.push(w);
