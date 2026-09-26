@@ -994,6 +994,19 @@ function load(){
 if(!load()) resetAll();
 renderAll();
 
+// 設定欄の一番下に、届いている版を出す。画面(ui.js)と見た目(style.css)の版が違えば、
+// ブラウザが古いファイルを使っているので、その旨を出す。
+(function(){
+  const el = document.getElementById('v-ver');
+  if(!el) return;
+  const me = document.querySelector('script[src^="ui.js"]');
+  const js = me ? ((me.getAttribute('src').split('?v=')[1]) || '—') : '—';
+  const css = getComputedStyle(document.documentElement).getPropertyValue('--css-ver').trim().replace(/"/g, '') || '—';
+  const title = (document.title.match(/V[\d.]+/) || [''])[0];
+  el.innerHTML = `${title} ・ 画面 ${js} ・ 見た目 ${css}`
+    + (js !== css ? '<br><b>見た目のファイルが古いままです。ブラウザのキャッシュを消してください</b>' : '');
+})();
+
 // スマホでは下部の操作パネルが画面に固定されている。パネルの高さは状況で変わるので、
 // その分だけページ下に余白を取り、設定などの最後の項目がパネルの裏に隠れないようにする。
 (function(){

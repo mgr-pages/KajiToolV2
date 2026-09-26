@@ -68,10 +68,9 @@ def main():
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{SIZE}" height="{SIZE}" viewBox="0 0 {SIZE} {SIZE}">',
            '  <!-- tools/make-bg-motif.py で作成。手で直さず、スクリプトを直して作り直すこと。',
            '       背景に敷く柄: 鍛冶の道具とスライム。数字の読みやすさを損なわないよう、ごく薄くしてある。 -->',
-           '  <defs>']
-    for name, (r0, body) in SYMBOLS.items():
-        out.append(f'    <g id="{name}">{body}</g>')
-    out.append('  </defs>')
+           ]
+    # <defs>/<use> で使い回すと、背景画像として表示した時に描かれないブラウザがあるため、
+    # 絵を1つずつ直接書き出す
     out.append(f'  <g fill="none" stroke="#7a5c28" stroke-width="{STROKE}" stroke-linecap="round" stroke-linejoin="round" opacity=".2">')
     for name, x, y, rot, s in items:
         r = SYMBOLS[name][0] * s
@@ -81,7 +80,7 @@ def main():
         for xx in xs:
             for yy in ys:
                 # 拡大縮小しても線の太さが揃うよう、stroke-width を倍率で割り戻す
-                out.append(f'    <use href="#{name}" transform="translate({xx:.1f} {yy:.1f}) rotate({rot:.1f}) scale({s:.2f})" stroke-width="{STROKE / s:.2f}"/>')
+                out.append(f'    <g transform="translate({xx:.1f} {yy:.1f}) rotate({rot:.1f}) scale({s:.2f})" stroke-width="{STROKE / s:.2f}">{SYMBOLS[name][1]}</g>')
     out.append('  </g>')
     out.append('</svg>')
     print('\n'.join(out))

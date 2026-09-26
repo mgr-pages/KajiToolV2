@@ -19,13 +19,15 @@ def main():
     for name in ASSETS:
         data = (ROOT / name).read_bytes()
         # 印そのものは計算から外す(外さないと印を付けるたびに値が変わってしまう)
-        h.update(re.sub(rb'\?v=[0-9a-z]+', b'', data))
+        h.update(re.sub(rb'--css-ver:"[0-9a-z]+"', b'', re.sub(rb'\?v=[0-9a-z]+', b'', data)))
     ver = h.hexdigest()[:8]
     for name, pat in [('index.html', r'((?:href|src)="(?:%s))\?v=[0-9a-z]+"' % '|'.join(map(re.escape, ASSETS))),
-                      ('style.css', r'(url\("bg-motif\.svg)\?v=[0-9a-z]+"')]:
+                      ('style.css', r'(url\("bg-motif\.svg)\?v=[0-9a-z]+"'),
+                      ('style.css', r'(--css-ver:)"[0-9a-z]+"')]:
         p = ROOT / name
         s = p.read_text(encoding='utf-8')
-        s2, n = re.subn(pat, lambda m: f'{m.group(1)}?v={ver}"', s)
+        fmt = (lambda m: f'{m.group(1)}"{ver}"') if 'css-ver' in pat else (lambda m: f'{m.group(1)}?v={ver}"')
+        s2, n = re.subn(pat, fmt, s)
         if n == 0: raise SystemExit(f'{name} に印を付ける参照が見つかりません')
         p.write_text(s2, encoding='utf-8')
     print('版の印:', ver)
