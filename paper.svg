@@ -9,6 +9,6 @@
     <feTurbulence type="fractalNoise" baseFrequency=".012" numOctaves="4" seed="3" stitchTiles="stitch"/>
     <feColorMatrix values="0 0 0 0 .55  0 0 0 0 .38  0 0 0 0 .16  0 0 0 -1.4 .78"/>
   </filter>
-  <rect width="400" height="400" filter="url(#stain)" opacity=".55"/>
+  <rect width="400" height="400" filter="url(#stain)" opacity=".4"/>
   <rect width="400" height="400" filter="url(#grain)"/>
 </svg>

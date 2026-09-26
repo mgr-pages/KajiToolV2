@@ -562,41 +562,26 @@ body{
 @media (prefers-reduced-motion: reduce){ .calc,.cand{transition:none;} }
 
 /* =====================================================================
-   風化した巻物の雰囲気
-   ・紙の粒と染み(paper.svg)を地に敷き、画面の縁ほど焼けて濃くする
-   ・ヘッダーの下端(スマホは下部パネルの上端も)に巻物の軸を付ける
-   ・札やカードも同じ紙から切り出したように、縁をうっすら焼く
+   風化した巻物の雰囲気(地だけ)
+   紙の粒と染み(paper.svg)・縁の焼けは画面の地にだけ敷く。
+   札やカードにまで重ねると、数字の周りがざらついて読みにくくなったため。
+   ヘッダーの下端(スマホは下部パネルの上端も)には巻物の軸を付ける。
    ===================================================================== */
 body{
   background:
     url("bg-motif.svg") 0 0 / 300px 300px repeat,
     url("paper.svg") 0 0 / 400px 400px repeat,
-    radial-gradient(140% 100% at 50% 40%, rgba(240,226,194,0) 55%, rgba(150,104,44,.30) 100%),
-    linear-gradient(180deg, #f3e5c4, #ecdab4);
+    radial-gradient(150% 110% at 50% 40%, rgba(240,226,194,0) 60%, rgba(150,104,44,.18) 100%),
+    linear-gradient(180deg, #f3e5c4, #eedcb8);
   background-attachment:fixed;
 }
 /* 巻物の軸: 丸みのある木の棒を影付きのグラデーションで描く */
-.hdr{border-bottom:0; padding-bottom:16px;
-  background:
-    url("paper.svg") 0 0 / 400px 400px repeat,
-    linear-gradient(180deg,#f8eed9,#efdfbd);}
+.hdr{border-bottom:0; padding-bottom:16px;}
 .hdr::after{content:''; position:absolute; left:-4px; right:-4px; bottom:-7px; height:14px; border-radius:7px;
   background:linear-gradient(180deg,#d8b77a 0%,#a67c3d 45%,#6f4c1f 85%,#8a6330 100%);
   box-shadow:0 3px 6px rgba(74,52,24,.35), inset 0 1px 0 rgba(255,240,200,.6);}
-/* 札とカードの縁を焼く */
-.cell, .acc, .stat, .pstep, .pad, .foot{
-  background-image:url("paper.svg"), linear-gradient(180deg,#fdf6e6 0%, #f7ebcf 60%, #f0dfbb 100%);
-  background-size:400px 400px, auto;}
-.cell{box-shadow:inset 0 0 10px rgba(150,104,44,.20), inset 0 1px 0 #fff, 0 2px 0 rgba(122,92,40,.28), 0 4px 10px rgba(74,52,24,.10);}
-.cell.hi{box-shadow:inset 0 0 10px rgba(150,104,44,.18), 0 0 0 3px rgba(181,72,15,.22), 0 2px 0 rgba(181,72,15,.4), 0 6px 14px rgba(181,72,15,.18);}
-.cell.done{background-image:url("paper.svg"), linear-gradient(180deg,#f3f7e8, #e3eed6);}
-.cell.over{background-image:url("paper.svg"), linear-gradient(180deg,#fbeee9, #f3d9d2);}
-.acc{box-shadow:inset 0 0 14px rgba(150,104,44,.16), var(--shadow);}
-.acc .body{background:rgba(240,223,187,.35);}
-.legend{background:rgba(251,243,224,.55);}
 @media (max-width: 759px){
-  .foot{border-radius:0; padding-top:16px;
-    box-shadow:inset 0 10px 12px -10px rgba(150,104,44,.3), 0 -4px 16px rgba(74,52,24,.18);}
+  .foot{border-radius:0; padding-top:16px;}
   .foot::before{content:''; position:absolute; left:-4px; right:-4px; top:-7px; height:14px; border-radius:7px;
     background:linear-gradient(180deg,#d8b77a 0%,#a67c3d 45%,#6f4c1f 85%,#8a6330 100%);
     box-shadow:0 -2px 6px rgba(74,52,24,.3), inset 0 1px 0 rgba(255,240,200,.6);}
