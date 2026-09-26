@@ -17,6 +17,7 @@
   --blue:#1c6fc4; --red:#c42a2a; --green:#217a3f; --pink:#c41a8f;
   --ink:#7a5c28;          /* 枠の濃い方 */
   --sunk:#e6d5ae;         /* バーやテンキーの窪んだ面 */
+  --acc:var(--ember);     /* 操作を促す箇所(手動設定・点灯マスの選択・計算中のバー) */
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{margin:0; padding:0; background:var(--bg); color:var(--text);
@@ -428,6 +429,8 @@ table.sk .cst{text-align:right; font-weight:700;}
 @keyframes litblink{0%,100%{outline-color:var(--acc);}50%{outline-color:transparent;}}
 .cell.litdim{opacity:.35;}
 .cell.lit{outline:2px solid #e0a020; outline-offset:-2px;}
+/* 選び直せる間も、選んだ点灯マスだけは点滅を止めて他のマスと見分けられるようにする */
+.cell.litpick.lit{animation:none;}
 .cell.lit .idx::after{content:' 点灯'; font-size:10px; color:#e0a020;}
 .calcbar{height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:6px;}
 .calcbar > div{height:100%; width:0%; background:var(--acc); transition:width .12s linear;}
@@ -510,7 +513,7 @@ table.sk .cst{text-align:right; font-weight:700;}
       <select id="s-trait">
         <option value="shuchu" selected>集中力変化</option>
         <option value="none">なし</option><option value="tataki">たたき変化</option>
-        <option value="modori">メーター減少</option><option value="kaishin">威力会心率上昇</option>
+        <option value="modori">メーター減少(未対応)</option><option value="kaishin">威力会心率上昇</option>
       </select></div>
     <div class="set-row"><label>バー最大値</label>
       <input type="number" id="s-barmax" min="10" max="9999" placeholder="自動"
@@ -613,7 +616,6 @@ const PRESETS = {
     threshold: 7,
     zones: [[180,190],[250,258],[210,216],[250,258],[210,216],[145,155]]
   }
-  // 超ようせいのひだね は盤面データ未確認のため未実装
 };
 
 /* ===================== 演算エンジン ===================== */
@@ -653,7 +655,6 @@ const SKILLS = [
 ];
 
 const SKILLS_BY_ID = Object.fromEntries(SKILLS.map(s=>[s.id, s]));
-let lastUsedSkillId = 'nerai'; // 判定対象は基本ねらい打ち系を使う想定なのでデフォルトはこれ
 
 // ---- 鍛冶職人の集中力上限(Lv1〜75、Lv76〜80はデータなし) ----
 const FOCUS_CAP = {
@@ -745,29 +746,6 @@ function applyPowerMultiplier(r, mult){
   return { min: Math.ceil(r.min*mult), max: Math.ceil(r.max*mult) };
 }
 
-function getTraitStatusText(trait, temp){
-  const st = traitTempState(temp);
-  if(trait === 'shuchu'){
-    if(st.mod400) return `集中力消費0.5倍のテンポ(${temp}℃)。会心率は通常です。`;
-    if(st.mod200) return `集中力消費1.5倍・会心率+400%(5倍)のテンポ(${temp}℃)。会心を狙うならここです。`;
-    return null;
-  }
-  if(trait === 'tataki'){
-    if(st.mod400) return `威力2倍のテンポ(${temp}℃)。会心判定時は自動で補正されます。`;
-    if(st.mod200) return `威力0.5倍(端数切り上げ)のテンポ(${temp}℃)。会心判定時は自動で補正されます。`;
-    return null;
-  }
-  if(trait === 'kaishin'){
-    if(st.mod400 || st.mod200) return `ゾーン未到達のマスのうち1つが点灯中(${temp}℃)。盤面で光ったマスをタップしてください。点灯マスは威力2倍・会心率+500%です。`;
-    return null;
-  }
-  if(trait === 'modori'){
-    if(st.mod400 || st.mod200) return `${temp}℃はメーター減少(戻り)の判定タイミングです。下のボタンから適用してください。`;
-    return null;
-  }
-  return null;
-}
-
 // 点灯しているマスの番号。kaishin 以外では常に null なので、
 // 下の2つの入口は既存2商材では getRollCandidates(...,false) と完全に同じ値を返す。
 let litMassIndex = null;
@@ -821,12 +799,6 @@ function rollsForMass(skill, temp, trait, i){
 function critForMass(skill, cfg, temp, i){
   return computeCritRate(skill, cfg.level, cfg.hammerId, cfg.star, cfg.trait, temp, isLitAt(cfg.trait, i));
 }
-
-// ---- ヘパイトスのほのお(必殺技)管理 ----
-// ・使用すると「次の一手」全マスが会心のてごたえ確定になる(理想値到達は未確定のまま)
-// ・1ターン限り。何か行動(=判定)したら、その行動で対象になった全マス分を判定し終えた時点で自動OFFになる
-let hepaitosActive = false;
-let hepaitosRemaining = null; // このターンで判定すべき残りマス数(未確定の間はnull)
 
 // ---- 温度別 威力候補(最大,最小) 100℃刻み(50℃は別途) 出典:鍛冶職人の温度別数値ダメージ一覧 ----
 const TEMP_POINTS = [2000,1900,1800,1700,1600,1500,1400,1300,1200,1100,1000,900,800,700,600,500,400,300,200,100,50];
@@ -902,18 +874,6 @@ function massError(current, ideal, zoneLow, zoneHigh){
   return raw;                        // 未到達。成功判定では別途「失敗」として扱う
 }
 
-// 推奨手の重み。実測で最も大成功率が高くなった値。
-// 推奨手の重み。いずれも実測(各数千〜1.5万回のシミュレーション)で決めた値。
-//   cap  : 会心が理想値を捉える見込み
-//   adv  : 前進量あたりの効率
-//   land : 特殊温度に着地することの価値
-//   heat : 温度が足りない時に火力上げへ切り替える閾値
-//   ov   : ゾーン超過のリスク(超過は回復不能)
-//   pr   : 遅れているマスを優先する度合い
-//   te   : 本会心ゾーンにいるマスを狙い打つ価値
-//   rush : まだ会心の見込みが無いマスをゾーンへ押し込む手の抑制
-//          (ゾーンに入るマスの56%が遠方からの飛び込みで、
-//           会心のチャンスを得ないまま終わっていたため)
 // 推奨手の重み。すべて実測(各数千〜1.5万回のシミュレーション)で決めた値。
 //   cap  : 会心が理想値を捉える見込み
 //   adv  : 前進量あたりの効率
@@ -1156,35 +1116,6 @@ function moves(ms,f,t,cfg){
 }
 function needTotal(ms){return ms.reduce((a,m)=>a+Math.max(0,m.zoneLow-m.current),0);}
 
-// --- 戦術A: 効率貪欲(温度を意識しない) ---
-function stratA(ms,f,t){
-  const mv=moves(ms,f,t,cfg);
-  if(mv.length===0)return null;
-  let best=null,be=-1;
-  for(const x of mv){
-    if(x.sk.masses===0){
-      if(x.cooling){
-        const sc=1.2+((isHalfTurn(x.nt)||isBoostTurn(x.nt))?P.land:0);
-        if(sc>bs){bs=sc;best=x;}
-        continue;
-      }
-      // 温度が足りない時だけ火力上げ
-      const steps=Math.floor(t/50), need=needTotal(ms);
-      if(x.sk.id==='karyoku'&&need/28>steps-3&&t<2200){ if(be<0){be=0;best=x;} }
-      continue;
-    }
-    let adv=0;
-    for(const i of x.tg){
-      const r=rollsForMass(x.sk,t,cfg.trait,i);
-      if(!r) continue;
-      adv+=Math.min(r[Math.floor(r.length/2)],ms[i].zoneLow-ms[i].current);
-    }
-    const e=adv/x.c;
-    if(e>be){be=e;best=x;}
-  }
-  return best;
-}
-
 // --- 戦術B: リズム戦術 ---
 // 熱風(-150)+通常(-50)=-200 で特殊温度を渡り歩く。
 // 半減ターンは消費が1/3なので狙い打ちを連打、会心ターンは高会心率の一撃。
@@ -1195,7 +1126,6 @@ function stratA(ms,f,t){
 // 現状のエンジンは効率だけで選ぶため、半減ターンで打撃したり
 // 通常ターンで超4連を撃ったりと、倍加の恩恵を取りこぼしていた。
 let P_OPEN_TH = 0.65;
-let REPPUU_STREAK = 0;
 
 // 上下ねらい打ちは2マス同時に本会心を狙える唯一の技。
 // 消費25で2マス分なので、単発のねらい打ち(16×2=32)より安い。
@@ -1503,7 +1433,6 @@ function stratB(ms,f,t,P,cfg){
     }
   }
 
-  P=P||{cap:7,adv:0.75,land:3,heat:4,ov:4,pr:0.8,tmax:2200,te:20};
   const mv=moves(ms,f,t,cfg);
   if(mv.length===0)return null;
   const need=needTotal(ms);
@@ -2109,36 +2038,7 @@ function mcPick(pool, sd, sd2){
   }
   return pool[bi];
 }
-function stratMC(ms, f, t, P, cfg){
-  const pool = rankedMoves(ms, f, t, P, cfg, MC_K);
-  const extra = pool.extra || [];
-  // 評価関数が過小評価した点灯マスの手があるなら、貪欲が独走していても先読みで比べる
-  if(!extra.length){
-    if(pool.length <= 1) return pool[0] || stratB(ms, f, t, P, cfg);
-    const s0 = pool.scores[0], s1 = pool.scores[1];
-    if(s0 - s1 > MC_GATE * Math.max(1, Math.abs(s0))) return pool[0];
-  }
-  if(!pool.length) return extra[0] || stratB(ms, f, t, P, cfg);
-  for(const x of extra) pool.push(x);
-  const seedBase = stateSeed(ms, f, t);
-  const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
-  for(let j = 0; j < MC_S; j++){
-    const seed = (seedBase + Math.imul(j, 2654435761)) | 0;
-    MC_RNG = mcRand(seed);
-    const base = mcRollout(ms, f, t, cfg, pool[0]);
-    for(let a = 1; a < n; a++){
-      MC_RNG = mcRand(seed);                 // 共通乱数で候補間の差の分散を下げる
-      const d = mcRollout(ms, f, t, cfg, pool[a]) - base;
-      sd[a] += d; sd2[a] += d*d;
-    }
-  }
-  MC_RNG = Math.random;
-  return mcPick(pool, sd, sd2);                     // 有意に上回る時だけ乗り換える
-}
 
-
-// 現局面から推奨手順どおりに打ち切った場合の成績を、乱数試行で実測する。
-// 理想値は見えないので試行ごとにサンプリングし、その平均を取る。
 /* ====== 理想値の事後分布 ======
    打撃のたびに「打撃前の値・技のロール候補・会心の有無・打撃後の値」から
    理想値の確率分布を絞り込む。会心が通常ロールと同じ値で止まって理想値に
@@ -2184,122 +2084,6 @@ function updatePost(i, before, rolls, critRate, after, wasCrit){
   const sum = out.reduce((a,b)=>a+b, 0);
   if(sum > 0) G.posts[i] = out.map(x => x / sum);
 }
-// 各マスの誤差分布を畳み込んで、誤差合計7以下の確率を出す
-function greatProbFromPosts(masses, posts){
-  let dist = [1];
-  for(let i=0;i<masses.length;i++){
-    const m = masses[i];
-    if(m.current < m.zoneLow) return null;          // 未到達があれば確定できない
-    const e = [0,0,0,0,0];
-    for(let k=0;k<posts[i].length;k++){
-      e[Math.min(Math.abs(m.current - (m.zoneLow + k)), 4)] += posts[i][k];
-    }
-    const nd = new Array(Math.min(dist.length + 4, 30)).fill(0);
-    for(let a=0;a<dist.length;a++) for(let b=0;b<5;b++) nd[Math.min(a+b,29)] += dist[a] * e[b];
-    dist = nd;
-  }
-  let p = 0;
-  for(let i=0;i<=7 && i<dist.length;i++) p += dist[i];
-  return p;
-}
-// 理想値が絞り込めていない(分布が一様のまま)マス数。
-// 通常ロールの結果は理想値の手がかりにならないので、入力しても一様のまま残る
-// 全マス到達後は、理想値の分布から大成功率を直接出せる。
-// 未入力のマスがある場合は確定できないので、最良・最悪の幅で示す。
-function rateFromPosts(detail){
-  // 超過はゾーンを通り越した状態で、回復手段が無い。大成功はあり得ない
-  if(G.masses.some(m => m.current > m.zoneHigh)) return '0%(超過)';
-  if(!G.masses.every(m => m.current >= m.zoneLow)) return null;
-  ensurePosts();
-  const p = greatProbFromPosts(G.masses, G.posts);
-  if(p == null) return null;
-  const unk = unknownCount();
-  if(unk === 0) return (p*100).toFixed(0) + '%';
-  if(!detail) return (p*100).toFixed(0) + '%';
-  // 未確定マスを誤差0とみなした上限
-  const best = G.posts.map((q,i)=>{
-    const arr = q.slice();
-    if(arr.every(x=>Math.abs(x-arr[0])<1e-9)){
-      const k = G.masses[i].current - G.masses[i].zoneLow;
-      return arr.map((_,j)=> j===k ? 1 : 0);
-    }
-    return arr;
-  });
-  const hi = greatProbFromPosts(G.masses, best);
-  return (p*100).toFixed(0) + '%(理想値が未確定のマスが' + unk
-       + '。すべて誤差0なら' + (hi*100).toFixed(0) + '%)';
-}
-function unknownCount(){
-  ensurePosts();
-  let n = 0;
-  for(let i=0;i<G.masses.length;i++){
-    const p = G.posts[i];
-    if(p.every(x => Math.abs(x - p[0]) < 1e-9)) n++;
-  }
-  return n;
-}
-
-function estimateOutcome(masses, focus, temp, cfg, trials){
-  // 表示のブレを無くすため、ここも盤面から決めた種で回す
-  const __sv = MC_RNG;
-  MC_RNG = mcRand(stateSeed(masses, focus, temp) ^ 0x1a7b93c5);
-  try{ return estimateOutcomeInner(masses, focus, temp, cfg, trials); }
-  finally{ MC_RNG = __sv; }
-}
-function estimateOutcomeInner(masses, focus, temp, cfg, trials){
-  const savedSim = simFirstMove;
-  const startsFresh = isStartState();
-  let win=0, errSum=0, reach=0;
-  const errs=[];
-  for(let n=0;n<trials;n++){
-    simFirstMove = startsFresh;      // この試行の1手目だけ特性を無効にする
-    // 理想値は一様乱数ではなく、これまでの観測から絞り込んだ分布から引く。
-    // 一様のままだと、本会心で誤差0が確定しているマスまで期待誤差2.7として
-    // 扱われ、終盤ほど実態から外れる。
-    const ms = masses.map((m,i)=>({
-      current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
-      ideal: sampleIdeal(i, m)
-    }));
-    let f=focus, t=temp;
-    for(let s=0;s<70;s++){
-      if(ms.every(m=>m.current>=m.zoneLow)) break;
-      if(t<=0) break;
-      const mv = stratB(ms, f, t, PARAMS, cfg);
-      if(!mv || f<mv.c) break;
-      if(mv.sk.key) mv.tg.forEach(i=>{
-        const m=ms[i];
-        if(m.current>=m.zoneLow) return;
-        const rolls = rollsForMass(mv.sk, t, cfg.trait, i);
-        const cr = critForMass(mv.sk, cfg, t, i);
-        if(!rolls) return;
-        const roll = rolls[Math.floor(MC_RNG()*rolls.length)];
-        if(MC_RNG()<cr){ if(m.current<m.ideal) m.current=Math.min(m.current+2*roll, m.ideal); }
-        else m.current += roll;
-      });
-      f-=mv.c; t=mv.nt;
-      simFirstMove = false;   // 1手打ったので以降は特性が有効
-    }
-    let e=0, r=0;
-    ms.forEach(m=>{
-      if(m.current>=m.zoneLow) r++;
-      e += massError(m.current, m.ideal, m.zoneLow, m.zoneHigh);
-    });
-    // 全マス到達が大成功の前提(以前は誤差だけで数えており、未到達でも勝ちになりえた)
-    if(r===GRID_ROWS*GRID_COLS && e<=SUCCESS_THRESHOLD) win++;
-    if(r===6) reach++;
-    errSum+=e; errs.push(e);
-  }
-  simFirstMove = savedSim;
-  errs.sort((a,b)=>a-b);
-  return {
-    successRate: win/trials,
-    avgError: errSum/trials,
-    medError: errs[Math.floor(trials/2)],
-    reachRate: reach/trials
-  };
-}
-
-
 
 /* ===================== UI制御 ===================== */
 /* ====== 描画 ====== */
@@ -2540,12 +2324,6 @@ function scaleLabel(mk, flip){
   return arr.map(x=>`<span style="color:${x.c}">${x.v}</span>`).join('<span style="color:#a89268">〜</span>');
 }
 
-function toggleRange(){
-  G.showRange = document.getElementById('s-range').checked;
-  document.querySelectorAll('.rg-lg').forEach(e=>{ e.style.display = G.showRange ? '' : 'none'; });
-  renderBoard(); save();
-}
-
 /* 表示専用の地金特性マーク。
    エンジン側の isBoostTurn/isHalfTurn は集中力変化の評価にしか使われないため、
    たたき変化では常に false になる。画面表示はこちらで素材ごとに出し分ける。 */
@@ -2647,7 +2425,7 @@ function buildBar(mk, flip){
 }
 
 const TRAIT_LABEL = {shuchu:'集中力変化', none:'特性なし', tataki:'たたき変化',
-                     modori:'メーター減少', kaishin:'威力会心率上昇'};
+                     modori:'メーター減少(未対応)', kaishin:'威力会心率上昇'};
 function traitLabel(t){ return TRAIT_LABEL[t] || t; }
 
 function renderHeader(){
@@ -2674,6 +2452,8 @@ function renderHeader(){
   if(tm) b.push(`<span class="badge ${tm.k}">${tm.l}</span>`);
   else b.push('<span class="badge off">通常</span>');
   if(isStartState()) b.push('<span class="badge off">開始直後(特性なし)</span>');
+  // メーター減少は計算に組み込んでいない。選べるが「特性なし」と同じ手が出ることを明示する
+  if(G.trait === 'modori') b.push('<span class="badge weak">メーター減少は未対応(特性なしとして計算)</span>');
   // 到達数・誤差・大成功率は見ても打ち方が変わらないので出さない。
   // 残すのはターン表示(威力2倍/半減)だけ ― 今どの手を打っているかの確認に使う。
   if(G.pending.length) b.push(`<span class="badge wait">数値の入力待ち</span>`);
@@ -2806,12 +2586,15 @@ function renderDetail(){
 function renderAll(){ renderHeader(); renderBoard(); renderSkills(); renderRec();
   renderExec(); renderDetail(); syncCalcButton(); }
 
-// 点灯待ちの間はボタンを押せなくし、何をすべきかをラベルに出す
+// 数値の入力待ち・点灯待ちの間はボタンを押せなくし、何をすべきかをラベルに出す。
+// ボタンの状態はここだけで決める(複数箇所で書き換えると後から呼ばれた側が勝ち、
+// 入力待ちなのに押せる状態へ戻っていた)。
 function syncCalcButton(){
   const btn = document.getElementById('calcBtn');
   if(!btn || CALC_BUSY) return;
-  if(needLitPick()){ btn.disabled = true;  btn.textContent = '光ったマスをタップしてください'; }
-  else             { btn.disabled = false; btn.textContent = '次の一手を計算'; }
+  if(G.pending.length){ btn.disabled = true;  btn.textContent = '数値を入力してください'; }
+  else if(needLitPick()){ btn.disabled = true;  btn.textContent = '光ったマスをタップしてください'; }
+  else                  { btn.disabled = false; btn.textContent = '次の一手を計算'; }
 }
 
 /* ====== 実行済みの反映 ======
@@ -2820,7 +2603,6 @@ function syncCalcButton(){
    マスの数値だけはゲーム画面を見ないと分からないので、手入力を促す。 */
 function renderExec(){
   const el = document.getElementById('execPanel');
-  const btn = document.getElementById('calcBtn');
 
   if(G.pending.length){
     const names = G.pending.map(i=>'マス'+(i+1));
@@ -2833,13 +2615,8 @@ function renderExec(){
       + `</div>`
       + (G.undoSnap ? `<button class="undo-btn" onclick="undoExec()">この反映を取り消す</button>` : '')
       + `</div></div>`;
-    btn.disabled = true;
-    btn.textContent = '数値を入力してください';
-    return;
+    return;                                   // 計算ボタンの状態は syncCalcButton が決める
   }
-
-  btn.disabled = false;
-  btn.textContent = '次の一手を計算';
 
   el.innerHTML = G.undoSnap
     ? `<div class="exec"><button class="undo-btn" onclick="undoExec()">直前の反映を取り消す</button></div>`
@@ -2907,7 +2684,7 @@ function applyExecuted(k){
   }
   G.pending = [...hit].sort((a,b)=>a-b);
 
-  G.rec = null; G.plan = []; G.lastRate = null; clearLit();
+  G.rec = null; G.plan = []; clearLit();
   // 入力するものが無い手(温度操作だけ)なら、そのまま次の一手まで出す
   if(!G.pending.length){ G.msg = null; renderAll(); doCalc(); save(); return; }
   G.msg = '実行分を反映しました';
@@ -2926,7 +2703,7 @@ function undoExec(){
   if(Array.isArray(u.posts)) G.posts = u.posts.map(p=>p.slice());
   if(Array.isArray(u.obs))   G.obs = u.obs.slice();
   G.undoSnap = null;
-  G.rec = null; G.plan = []; G.lastRate = null; G.msg = null;
+  G.rec = null; G.plan = []; G.msg = null;
   renderAll(); save();
 }
 
@@ -2943,6 +2720,8 @@ function setCalcProgress(pct, label){
 }
 async function doCalc(){
   if(CALC_BUSY) return;                       // 探索中の二重押しを防ぐ
+  // 叩いたマスの数値が未入力のまま計算すると、打つ前の値で次の手を決めてしまう
+  if(G.pending.length){ renderAll(); return; }
   // 点灯マスが未指定のまま計算すると、威力2倍も会心率+500%も乗らない別物の手が出る
   if(needLitPick()){
     G.msg = '光ったマスをタップしてから計算してください';
@@ -2980,7 +2759,7 @@ async function doCalc(){
       '<div class="rec-empty">計算に失敗しました: '+e.message+'</div>';
   }
   setCalcProgress(null, '次の一手を計算');
-  btn.disabled=false; CALC_BUSY=false;
+  CALC_BUSY=false; syncCalcButton();
 }
 
 // 手順は先読みのロールアウトそのものから作る。
@@ -3209,21 +2988,30 @@ function commit(){
   else if(padOp==='minus') v = cur - n;
   else v = padBuf==='' ? cur : n;    // 何も入力していなければ現状維持
   v = Math.max(0, v);
+  let lastInput = false;                     // この入力で入力待ちが全て埋まったか
   if(padTarget==='mass'){
-    // 一覧に無い値を手入力した場合も、通常ロールとして説明が付くなら覚える
     markFx(padIdx, G.masses[padIdx].current, v);
     G.masses[padIdx].current = v;
+    // 手入力は会心の有無が分からないので理想値の絞り込みには使わないが、
+    // 打撃の記録(打つ前の値とロール候補)はここで使い終わったので必ず消す。
+    // 残すと、次にこのマスを叩いた時に候補ボタンが出ず、
+    // 再びこのマスを開いた時には古い値を元にした候補が並んでしまう。
+    if(G.obs) G.obs[padIdx] = null;
+    const wasPending = G.pending.includes(padIdx);
     G.pending = G.pending.filter(i => i !== padIdx);
     if(!G.pending.length) G.msg = null;
+    lastInput = wasPending && !G.pending.length;
   }
   else if(padTarget==='temp') G.temp = v;
   else G.focus = v;
   // 温度・集中力・マス値を手で直した時点で、前の計算結果は別局面のものになる。
   // 点灯マスは温度で決まるので、温度を直した時だけ消す。
   // (マス値や集中力の修正で消すと、同じ手番なのに点灯の選び直しを求めてしまう)
-  G.rec = null; G.plan = []; G.lastRate = null;
+  G.rec = null; G.plan = [];
   if(padTarget === 'temp') clearLit();
   closePad(); renderAll(); save();
+  // 候補ボタンから選んだ時(pickValue)と同じく、入力が揃ったら次の一手まで出す
+  if(lastInput) doCalc();
 }
 
 /* ====== 設定 ====== */
@@ -3242,7 +3030,7 @@ function applySettings(){
   if(G.trait !== traitBefore) clearLit();
   // レベル・ハンマー・★・地金特性はロールにも会心率にも効く。
   // 変更後に古い推奨手と勝率を残すと、別条件の計算結果を見せることになる。
-  G.rec = null; G.plan = []; G.lastRate = null;
+  G.rec = null; G.plan = [];
   const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
   const full = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
   // 打ち始めた後に設定を触っても、進行中の集中力を勝手に満タンへ戻さない。
@@ -3376,7 +3164,7 @@ function applyZones(){
   G.pending = G.pending.filter(i => !G.masses[i].off);
   if(Array.isArray(G.obs)) G.masses.forEach((m,i)=>{ if(m.off) G.obs[i] = null; });
   G.preset = 'custom';
-  G.rec = null; G.plan = []; G.lastRate = null;
+  G.rec = null; G.plan = [];
   renderZoneRows(); markZoneDirty(false); renderAll(); save();
 }
 
@@ -3409,7 +3197,7 @@ function resetAll(){
   G.temp = 1000; clearLit();
   const cap = FOCUS_CAP[G.level] || FOCUS_CAP[80];
   G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
-  G.rec=null; G.plan=[]; G.lastRate=null;
+  G.rec=null; G.plan=[];
   G.pending=[]; G.undoSnap=null; G.msg=null; G.hist=[]; G.posts=null; G.obs=null;
   renderZoneRows();
   renderAll(); save();
@@ -3444,9 +3232,6 @@ function load(){
     // 廃止した素材が保存データに残っていた場合は既定へ戻す
     if(G.preset !== 'custom' && !PRESETS[G.preset]) G.preset = 'kagayaki';
     if(typeof G.showRange !== 'boolean') G.showRange = true;
-    const rg = document.getElementById('s-range');
-    if(rg){ rg.checked = G.showRange;
-      document.querySelectorAll('.rg-lg').forEach(e=>{ e.style.display = G.showRange ? '' : 'none'; }); }
     G.undoSnap = null;   // 取り消しは同一セッション内だけ
     document.getElementById('s-level').value=G.level;
     document.getElementById('s-hammer').value=G.hammerId;
@@ -3476,10 +3261,6 @@ function load(){
 
 if(!load()) resetAll();
 renderAll();
-
-// 入力のたびに保存する
-const _origRender = renderAll;
-renderAll = function(){ _origRender(); save(); };
 
 </script>
 </body>
