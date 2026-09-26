@@ -90,9 +90,16 @@
           ① 上の「地金特性」を選ぶ<br>
           ② 使うマスだけチェックを残す(外したマスは盤面から消えます)<br>
           ③ 各マスの成功ゾーンを 下限〜上限 で入れる<br>
-          ④「ゾーンを反映」を押す
+          ④ 大成功の許容誤差(誤差の合計がいくつ以下なら大成功か)を入れる<br>
+          ⑤「ゾーンを反映」を押す
         </div>
         <div id="zoneRows"></div>
+        <div class="zrow zth">
+          <span class="zl">許容誤差</span>
+          <input type="number" id="z-th" min="0" max="99" step="1" oninput="markZoneDirty()">
+          <span class="zs">以下で大成功</span>
+        </div>
+        <div class="zth-note">例: 6マスの練金ツボ・家具は7、盾・アタマは3</div>
         <div id="zoneWarn" style="font-size:11.5px;color:#e5534b;margin-top:6px;display:none"></div>
         <div style="display:flex;align-items:center;margin-top:8px">
           <button class="calc" style="flex:0 0 auto" onclick="applyZones()">ゾーンを反映</button>

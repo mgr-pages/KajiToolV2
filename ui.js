@@ -741,8 +741,12 @@ function onPresetChange(){
   const box = document.getElementById('zoneEdit');
   if(v === 'custom'){
     box.style.display = 'block';
-    renderZoneRows();
+    // 手動設定は今の盤面(直前の素材のゾーン)を引き継いで始まるので、許容誤差も引き継ぐ。
+    // 切り替えただけで計算の前提が変わらないようにし、入力欄には実際に使う値を出す。
+    G.customThreshold = SUCCESS_THRESHOLD;
     G.preset = 'custom';
+    applyThreshold();
+    renderZoneRows();
     // ゾーンの入力欄は設定の中にあるので、選んだら開いて見せる
     const acc = document.getElementById('setAcc');
     if(acc) acc.open = true;
@@ -773,6 +777,8 @@ function renderZoneRows(){
   const el = document.getElementById('zoneRows');
   if(!el) return;
   markZoneDirty(false);
+  const th = document.getElementById('z-th');
+  if(th) th.value = G.customThreshold;
   el.innerHTML = G.masses.map((m,i)=>{
     const on = !m.off;
     // 無効化したマスはゾーンを0にしているので、入力欄には控えを表示する
@@ -825,6 +831,13 @@ function applyZones(){
               warn.style.display = 'block'; }
     return;
   }
+  const thEl = document.getElementById('z-th');
+  const th = thEl && thEl.value !== '' ? Number(thEl.value) : NaN;
+  if(!isValidThreshold(th)){
+    if(warn){ warn.textContent = '許容誤差は0〜99の整数で入れてください。';
+              warn.style.display = 'block'; }
+    return;
+  }
   if(warn) warn.style.display = 'none';
   for(const x of next){
     const m = G.masses[x.i];
@@ -848,6 +861,8 @@ function applyZones(){
   G.pending = G.pending.filter(i => !G.masses[i].off);
   if(Array.isArray(G.obs)) G.masses.forEach((m,i)=>{ if(m.off) G.obs[i] = null; });
   G.preset = 'custom';
+  G.customThreshold = th;
+  applyThreshold();                  // 反映しないと、直前の素材の許容誤差で計算し続ける
   G.rec = null; G.plan = [];
   renderZoneRows(); markZoneDirty(false); renderAll(); save();
 }
@@ -893,6 +908,7 @@ function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
     level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax, lit:litMassIndex,
+    customThreshold:G.customThreshold,
     pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
   })); }catch(e){}
 }
@@ -910,7 +926,8 @@ function load(){
     delete G.lit;
     G.masses.forEach(m => { if(m.off === undefined) m.off = false; });
     syncActiveMask();
-    applyThreshold();                 // 許容誤差は素材で決まる
+    if(!isValidThreshold(G.customThreshold)) G.customThreshold = DEFAULT_THRESHOLD;
+    applyThreshold();                 // 許容誤差は素材で決まる(手動設定は設定値)
     if(!Array.isArray(G.pending)) G.pending = [];
     if(!Array.isArray(G.hist)) G.hist = [];
     // 廃止した素材が保存データに残っていた場合は既定へ戻す

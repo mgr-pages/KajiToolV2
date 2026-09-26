@@ -11,6 +11,7 @@ const G = {
   masses: [],
   level: 80, hammerId:'light', star:3, trait:'shuchu',
   rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null,
+  customThreshold: 7,   // 手動設定の大成功の許容誤差(プリセットは素材ごとの値を使う)
   // 実行済み反映で「数値の手入力待ち」になっているマス番号
   pending: [], undoSnap: null, showRange: true, hist: [], posts: null, obs: null,
   fx: null   // 値が変わった直後のマスに一度だけ動きを付ける
@@ -241,10 +242,17 @@ function baseValues(key){ return BASE_N[key] || null; }
 const GRID_ROWS = 3, GRID_COLS = 2; // 縦3×横2(超かがやきの樹液)
 // 大成功の許容誤差(誤差合計)。商材の盤面の形で決まるため、素材を切り替えるたびに設定し直す。
 // 出典: 公式ガイドブックを元にした種別ごとの表(6マスの練金ツボ・家具=7、盾・アタマ=3 など)。
+// 手動設定では盤面の形が分からないので、設定の「許容誤差」(G.customThreshold)を使う。
 let SUCCESS_THRESHOLD = 7;
+const DEFAULT_THRESHOLD = 7;
+function isValidThreshold(v){ return Number.isInteger(v) && v >= 0 && v <= 99; }
 function applyThreshold(){
+  if(G.preset === 'custom'){
+    SUCCESS_THRESHOLD = isValidThreshold(G.customThreshold) ? G.customThreshold : DEFAULT_THRESHOLD;
+    return;
+  }
   const p = PRESETS[G.preset];
-  SUCCESS_THRESHOLD = (p && typeof p.threshold === 'number') ? p.threshold : 7;
+  SUCCESS_THRESHOLD = (p && typeof p.threshold === 'number') ? p.threshold : DEFAULT_THRESHOLD;
 }
 const MAX_ERR = 4;                  // ゾーン内の誤差キャップ
 // ゾーンを超えたマスの誤差の下限。公開情報「成功ゾーン内は差が5以上でも4扱い、
