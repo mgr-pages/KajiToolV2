@@ -7,6 +7,7 @@
       "amatsuyu",
       "hidane",
       "bloom",
+      "kimonsho",
       "orb"
     ],
     "seed": 20260926
@@ -102,6 +103,28 @@
         "avgMoves": 16.6,
         "avgFocusLeft": 47.7,
         "fingerprint": "12cfdebc"
+      }
+    },
+    "kimonsho": {
+      "mc": {
+        "games": 2,
+        "great": 100,
+        "unreached": 0,
+        "over": 0,
+        "avgErr": 1.5,
+        "avgMoves": 19.5,
+        "avgFocusLeft": 48,
+        "fingerprint": "2e0a2053"
+      },
+      "greedy": {
+        "games": 300,
+        "great": 52.7,
+        "unreached": 7,
+        "over": 3.3,
+        "avgErr": 5.34,
+        "avgMoves": 20.9,
+        "avgFocusLeft": 33.3,
+        "fingerprint": "8357ab06"
       }
     },
     "orb": {
