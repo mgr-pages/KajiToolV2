@@ -39,8 +39,8 @@ const { fork } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const BASELINE = path.join(__dirname, 'baseline.json');
 // 基準の条件。変えると基準と比べられなくなるので、変えたら --update する。
-const DEFAULT = { games: 300, mc: 2, presets: ['kagayaki', 'amatsuyu', 'hidane', 'bloom', 'orb'], seed: 20260926 };
-const NAMES = { kagayaki: '超かがやきの樹液', amatsuyu: '超あまつゆのいと', hidane: '超ようせいのひだね', bloom: 'ブルームシールド', orb: '虹色のオーブ' };
+const DEFAULT = { games: 300, mc: 2, presets: ['kagayaki', 'amatsuyu', 'hidane', 'bloom', 'kimonsho', 'orb'], seed: 20260926 };
+const NAMES = { kagayaki: '超かがやきの樹液', amatsuyu: '超あまつゆのいと', hidane: '超ようせいのひだね', bloom: 'ブルームシールド', kimonsho: '輝紋章の盾', orb: '虹色のオーブ' };
 
 // 32bit FNV-1a。全対局の手順から作る指紋。エンジンの挙動が1手でも変われば値が変わる。
 function fnv(s, h){
