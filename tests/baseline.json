@@ -19,13 +19,13 @@
     "kagayaki": {
       "mc": {
         "games": 2,
-        "great": 0,
+        "great": 50,
         "unreached": 0,
         "over": 0,
-        "avgErr": 9.5,
-        "avgMoves": 20,
-        "avgFocusLeft": 5.5,
-        "fingerprint": "dd2690b3"
+        "avgErr": 7.5,
+        "avgMoves": 20.5,
+        "avgFocusLeft": 17,
+        "fingerprint": "ce60643d"
       },
       "greedy": {
         "games": 300,
@@ -41,13 +41,13 @@
     "amatsuyu": {
       "mc": {
         "games": 2,
-        "great": 50,
+        "great": 100,
         "unreached": 0,
-        "over": 50,
-        "avgErr": 21,
-        "avgMoves": 24,
-        "avgFocusLeft": 1,
-        "fingerprint": "66cae157"
+        "over": 0,
+        "avgErr": 6,
+        "avgMoves": 23.5,
+        "avgFocusLeft": 2.5,
+        "fingerprint": "b60bed45"
       },
       "greedy": {
         "games": 300,
