@@ -111,10 +111,10 @@
         "great": 100,
         "unreached": 0,
         "over": 0,
-        "avgErr": 2,
-        "avgMoves": 21.5,
-        "avgFocusLeft": 4.5,
-        "fingerprint": "a923a3e6"
+        "avgErr": 1.5,
+        "avgMoves": 19.5,
+        "avgFocusLeft": 48,
+        "fingerprint": "2e0a2053"
       },
       "greedy": {
         "games": 300,
