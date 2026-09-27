@@ -108,23 +108,23 @@
     "kimonsho": {
       "mc": {
         "games": 2,
-        "great": 50,
+        "great": 100,
         "unreached": 0,
         "over": 0,
-        "avgErr": 2.5,
-        "avgMoves": 22,
-        "avgFocusLeft": 29.5,
-        "fingerprint": "3fd7fe34"
+        "avgErr": 2,
+        "avgMoves": 21.5,
+        "avgFocusLeft": 4.5,
+        "fingerprint": "a923a3e6"
       },
       "greedy": {
         "games": 300,
-        "great": 41.7,
-        "unreached": 2.7,
-        "over": 1.7,
-        "avgErr": 4.37,
-        "avgMoves": 21.6,
-        "avgFocusLeft": 34.3,
-        "fingerprint": "430f8739"
+        "great": 52.7,
+        "unreached": 7,
+        "over": 3.3,
+        "avgErr": 5.34,
+        "avgMoves": 20.9,
+        "avgFocusLeft": 33.3,
+        "fingerprint": "8357ab06"
       }
     },
     "orb": {
