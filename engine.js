@@ -23,6 +23,12 @@ const PRESETS = {
     name: '超かがやきの樹液',
     trait: 'shuchu',
     threshold: 7,
+    // 先読み: 独走局面でも省かず(gate 0)、狙い打ちの優先などで決め打ちした手も先読みで比べる(early)。
+    //   決定局面のリグレット(真の最善手との差、pt/局面)で選んだ(利用者判断で採用)。
+    //     独走で省いていた局面(手の12%): 1.92 → 0.42 / 決め打ちの局面(手の30%): 2.02 → 0.95
+    //   1局の計算時間はほぼ同じ(37.0秒 → 38.8秒、このコンテナの1本の処理)。
+    //   実局(同じ局どうし200局): 69.0% → 70.5%。差は誤差の範囲(p=0.78)で、実局では未確定。
+    mc: { gate: 0, early: true },
     zones: [[155,161],[220,230],[155,161],[220,230],[140,150],[140,150]]
   },
   // ブルームシールド(防具鍛冶・盾、地金特性:集中力変化)
@@ -64,6 +70,13 @@ const PRESETS = {
     name: '超あまつゆのいと',
     trait: 'tataki',
     threshold: 7,
+    // 先読み: 独走局面でも省かず(gate 0)、候補を16手に増やす(K 16)。
+    //   決定局面のリグレット(pt/局面)で選んだ(利用者判断で採用)。
+    //     独走で省いていた局面(手の7%): 3.43 → 0.32 / 先読みする局面: 1.11 → 0.71
+    //   決め打ちの局面(開幕定跡・火力上げ)は先読みにしても良くならないので early は使わない。
+    //   1局の計算時間は約2.3倍(19.8秒 → 45.3秒、このコンテナの1本の処理)。
+    //   実局(同じ局どうし200局): 61.0% → 62.0%。差は誤差の範囲(p=0.90)で、実局では未確定。
+    mc: { gate: 0, K: 16 },
     zones: [[180,190],[245,251],[150,156],[180,190],[180,190],[245,251]]
   },
   // 超ようせいのひだね(地金特性:威力会心率上昇)
@@ -432,8 +445,10 @@ function rcToIdx(r,c){
 }
 
 // 技ごとの対象マスの組み合わせを、盤面の隣接関係に沿って列挙する
-// 使用しないマスを含む形も、残ったマスだけを対象にして打てる(実ゲームの挙動)。
-// 例: マス5・6が無い盤で上下打ち[3,5]は、マス3のみを叩く手になる。
+// 盤面に存在しないマス(使わないマス)にはみ出す形は打てない(実ゲームの挙動)。
+// 例: 2×2の盾で、超4連打ちを下段2マスだけに当てることはできない。
+// ※以前は「残ったマスだけを対象に打てる」としていたが、実際には打てないとの指摘を受けて戻した
+//   (引き継ぎ資料 v116)。ゾーンに到達済みのマスを含む形は、盤面上に存在するので打てる。
 let ACTIVE = null;                       // null = 全マス有効
 function setActiveMask(list){
   ACTIVE = (Array.isArray(list) && list.some(v => !v)) ? list.slice() : null;
@@ -466,17 +481,8 @@ function enumerateTargetSets(skill){
     }
   }
   if(!ACTIVE) return sets;
-  // 使わないマスを対象から落とす。空になった形は消し、
-  // 縮んだ結果が他の形と同じになった場合は重複を除く。
-  const seen = new Set(), out = [];
-  for(const g of sets){
-    const t = g.filter(i => ACTIVE[i]);
-    if(!t.length) continue;
-    const key = t.join(',');
-    if(seen.has(key)) continue;
-    seen.add(key); out.push(t);
-  }
-  return out;
+  // 存在しないマスを1つでも含む形は、盤面からはみ出すので打てない
+  return sets.filter(g => g.every(i => ACTIVE[i]));
 }
 
 // 地金特性「集中力変化」による消費の増減
@@ -547,9 +553,11 @@ function moves(ms,f,t,cfg){
   if(strict.some(m=>m.sk.masses>0)) return strict;
   // 安全に打てる打撃手が無い = 未到達マスがすべて超過圏にある状態。
   // ここまで来て初めて冷やし込みに価値が出る(他マスへの巻き添えがないため)。
+  // たたき変化では火力上げも同じ役に立つ。半減ターン(200の倍数)に上げればロールが縮む
+  // (例: 700℃で残り1のマスは、火力上げで1000℃にすればてかげん打ち3〜5で収まる)。
   const cool=[];
   for(const sk of SKILLS){
-    if(sk.lv>cfg.level||sk.masses!==0||sk.tempDelta>=0)continue;
+    if(sk.lv>cfg.level||sk.masses!==0||sk.tempDelta===0)continue;
     const c=actualCostOf(sk,t,cfg.trait);
     if(c>f)continue;
     const nt=Math.max(0,t+sk.tempDelta);
@@ -623,6 +631,8 @@ function moves(ms,f,t,cfg){
       // 対象なしで出すと、その前進量が計算から消えたまま推奨されることになり、
       // プレイヤーが実行した瞬間に盤面と予測がずれる。
       // 安全な対象が無い場合は、超過が最も小さい対象を選び、その超過リスクを明示する。
+      // ただし必ず超過する手は救いにならない(超過は大成功を失う)ので出さない。
+      // 出すと、超過の確率がもっと低い手(下の loose)が候補から消えてしまう。
       if(!added){
         let bestTg = null, bestOv = Infinity;
         for(const tg of enumerateTargetSets(sk)){
@@ -637,7 +647,7 @@ function moves(ms,f,t,cfg){
           }
           if(ov < bestOv){ bestOv = ov; bestTg = tg; }
         }
-        if(bestTg) rescue.push({sk,tg:bestTg,c,nt,overP:bestOv,cooling:true});
+        if(bestTg && bestOv < 1) rescue.push({sk,tg:bestTg,c,nt,overP:bestOv,cooling:true});
       }
     }
   }
@@ -689,10 +699,9 @@ function tatakiOpening(ms, f, t, cfg){
   const NN = SKILLS.find(s => s.id === 'naname'     && s.lv <= cfg.level);
   const TK = SKILLS.find(s => s.id === 'tataku'     && s.lv <= cfg.level);
   if(!K || !R || !C4 || !Y4 || !NN || !TK) return null;
-  const mk = (sk, tg0) => {
-    // 定跡はマス番号を直接指定するので、使わないマスをここで落とす
-    const tg = ACTIVE ? tg0.filter(i => ACTIVE[i]) : tg0;
-    if(sk.masses > 0 && !tg.length) return null;
+  const mk = (sk, tg) => {
+    // 定跡はマス番号を直接指定するので、存在しないマスを含む形はここで弾く
+    if(ACTIVE && tg.some(i => !ACTIVE[i])) return null;
     const c = actualCostOf(sk, t, cfg.trait);
     if(c > f) return null;
     const r = sk.masses > 0 ? getRollCandidates(sk, t, cfg.trait, false) : null;
@@ -1434,6 +1443,13 @@ function stratB(ms,f,t,P,cfg){
 // そこで1.65pt/局面を捨てていた。S・Kは大きいほど、THは低いほど良い。
 // 実局検証: いと +19.54/+13.64pt (t=2.93/2.24)、樹液 +20.00/+23.91pt (t=2.58/2.72)。
 const MC_K = 8, MC_S = 640, MC_GATE = 0.2, MC_TH = 0.5;
+// 素材ごとの先読みの設定(PRESETS の mc で上書き)。gate を 0 にすると独走局面でも先読みする。
+// early を true にすると、貪欲が評価の前に手を決めた局面でも先読みする(火力上げを除く)。
+function mcConf(){
+  const p = PRESETS[G.preset], o = (p && p.mc) || {};
+  return { K: o.K || MC_K, S: o.S || MC_S, gate: o.gate === undefined ? MC_GATE : o.gate,
+           th: o.th === undefined ? MC_TH : o.th, early: !!o.early };
+}
 const MC_CHUNK = 32;                 // この件数ごとに描画へ譲る
 let RANK = null;
 function rankedMoves(ms, f, t, P, cfg, K){
@@ -1536,13 +1552,27 @@ function mcYield(){ return new Promise(r => setTimeout(r, 0)); }
 // 先読みの準備。先読みが要らない局面(候補が1つ・貪欲が独走)なら {move} を、
 // 要るなら {pool, seedBase} を返す。
 function mcPrepare(ms, f, t, P, cfg){
-  const pool = rankedMoves(ms, f, t, P, cfg, MC_K);
+  const mc = mcConf();
+  const pool = rankedMoves(ms, f, t, P, cfg, mc.K);
   const extra = pool.extra || [];
   // 評価関数が過小評価した点灯マスの手があるなら、貪欲が独走していても先読みで比べる
   if(!extra.length){
+    if(pool.length <= 1 && mc.early){
+      // 貪欲が評価の前に手を決めた局面(狙い打ちの優先・会心ターンの計画など)でも先読みで比べる。
+      // 決めた手を基準(先頭)に置き、ほかの候補は決め打ちの処理を止めた評価の順位で並べる。
+      // 温度不足の火力上げは除く(先読みにしても良くならなかった)。
+      const ret = pool[0] || stratB(ms, f, t, P, cfg);
+      if(!ret || ret.sk.id === 'karyoku') return { move: ret };
+      const P2 = Object.assign({}, P, { pairSnipe:0, boostAim:0, aimNow:0, opening:0, boostPlan:0, heat:-1000 });
+      const key = x => x.sk.id + '|' + (x.tg || []).join(',');
+      const rest = rankedMoves(ms, f, t, P2, cfg, mc.K + 1).filter(x => key(x) !== key(ret));
+      const pl = [ret, ...rest].slice(0, mc.K);
+      if(pl.length <= 1) return { move: ret };
+      return { pool: pl, seedBase: stateSeed(ms, f, t) };
+    }
     if(pool.length <= 1) return { move: pool[0] || stratB(ms, f, t, P, cfg) };
     const s0 = pool.scores[0], s1 = pool.scores[1];
-    if(s0 - s1 > MC_GATE * Math.max(1, Math.abs(s0))) return { move: pool[0] };
+    if(mc.gate > 0 && s0 - s1 > mc.gate * Math.max(1, Math.abs(s0))) return { move: pool[0] };
   }
   if(!pool.length) return { move: extra[0] || stratB(ms, f, t, P, cfg) };
   for(const x of extra) pool.push(x);
@@ -1572,10 +1602,11 @@ async function stratMCAsync(ms, f, t, P, cfg, onProgress){
   if(prep.move !== undefined) return prep.move;
   const { pool, seedBase } = prep;
   const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
-  for(let j0 = 0; j0 < MC_S; j0 += MC_CHUNK){
-    const j1 = Math.min(MC_S, j0 + MC_CHUNK);
+  const S = mcConf().S;
+  for(let j0 = 0; j0 < S; j0 += MC_CHUNK){
+    const j1 = Math.min(S, j0 + MC_CHUNK);
     mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2);
-    if(onProgress) onProgress(j1, MC_S, n);
+    if(onProgress) onProgress(j1, S, n);
     await mcYield();
   }
   return mcPick(pool, sd, sd2);
@@ -1603,12 +1634,13 @@ function moveFromWire(w){ const sk = SKILLS.find(s => s.id === w.sk);
   if(w.cooling) mv.cooling = true;
   return mv; }
 function mcPick(pool, sd, sd2){
+  const { S, th } = mcConf();
   let bi = 0, bt = 0;
   for(let a = 1; a < pool.length; a++){
-    const md = sd[a]/MC_S, vr = sd2[a]/MC_S - md*md;
-    const se = Math.sqrt(Math.max(vr, 1e-9)/MC_S);
+    const md = sd[a]/S, vr = sd2[a]/S - md*md;
+    const se = Math.sqrt(Math.max(vr, 1e-9)/S);
     const tt = md/se;
-    if(tt > MC_TH && tt > bt){ bt = tt; bi = a; }
+    if(tt > th && tt > bt){ bt = tt; bi = a; }
   }
   return pool[bi];
 }

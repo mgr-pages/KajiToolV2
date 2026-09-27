@@ -1,6 +1,6 @@
 /* =====================================================================
    先読みを複数の Worker(mc-worker.js)に分担させる。
-   ・試行(MC_S 回)を Worker の数で分け、各 Worker が返した差の合計を足してから選ぶ。
+   ・試行(mcConf().S 回)を Worker の数で分け、各 Worker が返した差の合計を足してから選ぶ。
      差は整数なので、分け方によらず画面側だけで計算した場合と同じ手になる。
    ・推奨手に続く想定手順の試行(buildPlan)も同じように分担する。
    ・計算中も画面のスレッドは空くので、画面が固まらない。
@@ -68,14 +68,15 @@ const MCPool = (function(){
     const n = pool.length;
     const base = { snap: mcSnapshot(), pool: pool.map(moveToWire), ms, f, t, cfg, seedBase };
     // 試行を均等に分ける
-    const k = Math.min(workers.length, MC_S);
-    const per = Math.ceil(MC_S / k);
+    const S = mcConf().S;
+    const k = Math.min(workers.length, S);
+    const per = Math.ceil(S / k);
     let done = 0;
-    const tick = d => { done += d; if(onProgress) onProgress(done, MC_S, n); };
+    const tick = d => { done += d; if(onProgress) onProgress(done, S, n); };
     let parts;
     try{
       parts = await Promise.all(Array.from({ length: k }, (_, i) => {
-        const j0 = i * per, j1 = Math.min(MC_S, j0 + per);
+        const j0 = i * per, j1 = Math.min(S, j0 + per);
         return job(workers[i], Object.assign({ j0, j1 }, base), tick);
       }));
     }catch(e){

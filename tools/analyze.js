@@ -13,6 +13,9 @@
      --seed N           乱数の種(既定 1)。局 g の種は seed と g から決まる
      --params JSON      評価の重みの上書き(素材の params に重ねる)
      --mcs N --mck N    先読みの試行回数・候補数を変える(実験用)
+     --mc JSON          先読みの設定の上書き(例: '{"K":16,"gate":0}'。素材の mc に重ねる)
+     --tape 1           乱数テープ: ロール・会心などの乱数を「何手目のどのマスか」で決める。打ち方が
+                        分かれても同じ局の対応が崩れにくく、2つの設定の比較のばらつきが減る
      --log FILE         1局ごとの結果を追記する。同じ FILE で再実行すると、記録済みの局は飛ばす
                         (途中で止まっても続きから再開できる)
      --summary FILE     記録済みの FILE を集計して表示するだけ
@@ -21,12 +24,12 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 function args(){
-  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, log:null, summary:null };
+  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, tape:0, log:null, summary:null };
   const a = process.argv.slice(2);
   for(let i = 0; i < a.length; i++){
     const k = a[i].replace(/^--/, ''), v = a[++i];
     if(!(k in o)){ console.error('不明な引数: ' + a[i-1]); process.exit(2); }
-    o[k] = (k === 'params') ? JSON.parse(v) : (['games','seed','mcs','mck'].includes(k) ? Number(v) : v);
+    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck','tape'].includes(k) ? Number(v) : v);
   }
   return o;
 }
@@ -36,13 +39,13 @@ function seeded(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = M
 function loadEngine(o){
   Math.random = seeded(o.seed ^ 99);
   let src = fs.readFileSync(path.join(__dirname, '..', 'engine.js'), 'utf8');
-  if(o.mcs || o.mck){
-    const re = /const MC_K = \d+, MC_S = \d+/;
-    if(!re.test(src)) throw new Error('engine.js に先読みの設定が見つかりません');
-    src = src.replace(re, `const MC_K = ${o.mck || 8}, MC_S = ${o.mcs || 640}`);
-  }
   vm.runInThisContext(src, { filename: 'engine.js' });
   const E = c => vm.runInThisContext(c);
+  // 先読みの設定は素材の mc に重ねる(mcConf が読む)
+  if(o.mcs || o.mck || o.mc){
+    const pr = E('PRESETS')[o.preset];
+    pr.mc = Object.assign({}, pr.mc || {}, o.mc || {}, o.mck ? { K: o.mck } : {}, o.mcs ? { S: o.mcs } : {});
+  }
   if(o.params) E('PRESETS')[o.preset].params = Object.assign({}, E('PRESETS')[o.preset].params || {}, o.params);
   return E;
 }
@@ -50,6 +53,12 @@ function loadEngine(o){
 // 1局を打つ。アプリの resetAll と同じ初期化、プレイヤーは毎手候補ボタンで結果を入力する想定
 async function playGame(E, o, g){
   const rng = seeded((o.seed * 100003 + g * 7919) | 0);
+  // 乱数テープ: 種類(k)・手番(s)・マス(i)ごとに乱数を先に並べておき、同じ座標なら同じ値を使う
+  const tape = {};
+  const R = (k, s, i) => { if(!o.tape) return rng();
+    const key = k + ':' + s + ':' + i;
+    if(!(key in tape)) tape[key] = seeded((o.seed * 100003 + g * 7919) ^ (k.charCodeAt(0) * 1000003 + s * 131 + i * 7))();
+    return tape[key]; };
   const p = E('PRESETS')[o.preset], G = E('G');
   G.preset = o.preset; G.trait = p.trait; G.level = 80; G.hammerId = 'light'; G.star = 3;
   G.masses = p.zones.map(([lo,hi],i) => { const off = !!(p.off && p.off.includes(i));
@@ -59,7 +68,7 @@ async function playGame(E, o, g){
   G.focus = E('FOCUS_CAP[80] + HAMMERS.light.focusBonus');
   G.rec = null; G.plan = []; G.pending = []; G.hist = []; G.posts = null; G.obs = null;
   const cfg = E('cfgOf')(), P = E('PARAMS');
-  const ideal = G.masses.map(m => m.zoneLow + Math.floor(rng() * (m.zoneHigh - m.zoneLow + 1)));
+  const ideal = G.masses.map((m, i) => m.zoneLow + Math.floor(R('i', 0, i) * (m.zoneHigh - m.zoneLow + 1)));
   const fin = [];                     // 各マスの最後の一打の分類
   const modori = [];                  // 起きた戻り
   let moves = 0;
@@ -69,7 +78,7 @@ async function playGame(E, o, g){
     let lit = null;
     if(G.trait === 'kaishin' && !E('isStartState')() && G.temp % 200 === 0){
       const c = G.masses.map((m,i)=>i).filter(i => !G.masses[i].off && G.masses[i].current < G.masses[i].zoneLow);
-      if(c.length) lit = c[Math.floor(rng() * c.length)];
+      if(c.length) lit = c[Math.floor(R('l', s, 0) * c.length)];
     }
     E(`litMassIndex = ${lit === null ? 'null' : lit};`);
     const ms = G.masses.map(m => ({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh }));
@@ -81,7 +90,7 @@ async function playGame(E, o, g){
       const m = G.masses[i]; if(m.current >= m.zoneLow) continue;
       const rolls = E('rollsForMass')(mv.sk, G.temp, G.trait, i), cr = E('critForMass')(mv.sk, cfg, G.temp, i);
       if(!rolls) continue;
-      const roll = rolls[Math.floor(rng() * rolls.length)], crit = rng() < cr, before = m.current;
+      const roll = rolls[Math.floor(R('r', s, i) * rolls.length)], crit = R('c', s, i) < cr, before = m.current;
       m.current = crit ? Math.min(before + 2*roll, ideal[i]) : before + roll;
       if(m.current >= m.zoneLow){
         const boost = E('isBoostTurn')(G.temp) || (lit === i);
@@ -91,7 +100,7 @@ async function playGame(E, o, g){
       seen.push({ i, before, rolls, cr, crit });
     }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id); moves++;
-    const md = E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り
+    const md = E('applyModori')(G.masses, G.temp, G.trait, () => R('m', s, 0));   // 戻り
     if(md) modori.push(md);
     // 画面では戻りの後の値を入れるので、戻ったマスはそのように扱う
     for(const o of seen) E('updatePost')(o.i, o.before, o.rolls, o.cr, G.masses[o.i].current, o.crit,
