@@ -13,12 +13,16 @@
 <div class="hdr">
   <div class="hdr-title">
     <select class="mat-sel" id="s-preset" onchange="onPresetChange()">
-      <option value="kagayaki" selected>超かがやきの樹液</option>
-      <option value="amatsuyu">超あまつゆのいと</option>
-      <option value="hidane">超ようせいのひだね</option>
-      <option value="bloom">ブルームシールド</option>
-      <option value="kimonsho">輝紋章の盾</option>
-      <option value="orb">虹色のオーブ</option>
+      <optgroup label="道具鍛冶">
+        <option value="orb">虹色のオーブ</option>
+        <option value="hidane">超ようせいのひだね</option>
+        <option value="amatsuyu">超あまつゆのいと</option>
+        <option value="kagayaki" selected>超かがやきの樹液</option>
+      </optgroup>
+      <optgroup label="防具鍛冶">
+        <option value="bloom">ブルームシールド</option>
+        <option value="kimonsho">輝紋章の盾</option>
+      </optgroup>
       <option value="custom">手動設定</option>
     </select>
     <span class="hint-cust" id="v-cust" style="display:none">要設定</span>
