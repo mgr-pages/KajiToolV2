@@ -321,6 +321,35 @@ function modoriRecover(ms, f, t, cfg){
   return best;
 }
 
+// 威力会心率上昇で、手 x の後に着く温度(200の倍数)で点灯しうる未到達マスのうち、
+// 点灯したら狙い系の技で仕上げられる位置(会心なら理想値で止まり、会心でなくても超えない)にいるマスの割合。
+// 打つマスは中央のロールで進んだとみなす。重み litReady で評価に足す(既定 0)。
+// 点灯マスで仕上げると誤差0の率が約9割あるのに、点灯した時にそのマスが仕上げ位置にいたのは
+// 輝紋章の盾で4.1%だけだった(点灯の73%はゾーンまで100以上離れたマスに当たっていた)。
+function litReadyFrac(ms, x, t, f, cfg){
+  if(cfg.trait !== 'kaishin' || !(x.nt > 0) || x.nt % 200 !== 0) return 0;
+  const after = ms.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh }));
+  for(const i of x.tg){
+    if(after[i].current >= after[i].zoneLow) continue;
+    const r = rollsForMass(x.sk, t, cfg.trait, i);
+    if(r) after[i].current += r[Math.floor(r.length/2)];
+  }
+  const fa = f - x.c;
+  let un = 0, ready = 0;
+  for(let i = 0; i < after.length; i++){
+    const m = after[i];
+    if(m.zoneHigh <= 0 || m.current >= m.zoneLow) continue;
+    un++;
+    for(const sk of SKILLS){
+      if(!sk.crit || sk.masses !== 1 || sk.lv > cfg.level) continue;
+      if(actualCostOf(sk, x.nt, cfg.trait) > fa) continue;
+      const r = getRollCandidates(sk, x.nt, cfg.trait, true);
+      if(r && m.current + r[r.length-1] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh){ ready++; break; }
+    }
+  }
+  return un ? ready / un : 0;
+}
+
 function traitTempState(temp){
   const mod400 = temp % 400 === 0;
   const mod200 = temp % 200 === 0 && !mod400;
@@ -448,6 +477,7 @@ function massError(current, ideal, zoneLow, zoneHigh){
 //   rush : 会心の見込みが無いマスをゾーンへ押し込む手の抑制
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
+//   litReady : 点灯の抽選(200の倍数)に、点灯したら仕上げられる位置で臨む度合い(威力会心率上昇のみ)
 /* 評価パラメータ。素材ごとの効き方は検証済み(0にした時に結果が変わる対局の割合)。
    両方       cap adv land heat ov pr tmax te center far mpm slack effK slackMax
               rush wideAim pairSnipe
@@ -1433,7 +1463,8 @@ function stratB(ms,f,t,P,cfg){
       }
       if(maxGap > 0) farBonus = (myGap / maxGap) * P.far;
     }
-    const score=cap*capW + (adv/x.c)*advW + landBonus + prio*P.pr + farBonus
+    const litR = P.litReady ? P.litReady * litReadyFrac(ms, x, t, f, cfg) : 0;
+    const score=cap*capW + (adv/x.c)*advW + litR + landBonus + prio*P.pr + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(RANK) RANK.push({x, s:score});
     if(score>bs){bs=score;best=x;}
