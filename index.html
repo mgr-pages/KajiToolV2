@@ -6,19 +6,23 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>超素材をつくろう！V3.04</title>
-<link rel="stylesheet" href="style.css?v=40153940">
+<link rel="stylesheet" href="style.css?v=d84b6d3a">
 </head>
 <body>
 
 <div class="hdr">
   <div class="hdr-title">
     <select class="mat-sel" id="s-preset" onchange="onPresetChange()">
-      <option value="kagayaki" selected>超かがやきの樹液</option>
-      <option value="amatsuyu">超あまつゆのいと</option>
-      <option value="hidane">超ようせいのひだね</option>
-      <option value="bloom">ブルームシールド</option>
-      <option value="kimonsho">輝紋章の盾</option>
-      <option value="orb">虹色のオーブ</option>
+      <optgroup label="道具鍛冶">
+        <option value="orb">虹色のオーブ</option>
+        <option value="hidane">超ようせいのひだね</option>
+        <option value="amatsuyu">超あまつゆのいと</option>
+        <option value="kagayaki" selected>超かがやきの樹液</option>
+      </optgroup>
+      <optgroup label="防具鍛冶">
+        <option value="bloom">ブルームシールド</option>
+        <option value="kimonsho">輝紋章の盾</option>
+      </optgroup>
       <option value="custom">手動設定</option>
     </select>
     <span class="hint-cust" id="v-cust" style="display:none">要設定</span>
@@ -156,8 +160,8 @@
   </div>
 </div>
 
-<script src="engine.js?v=40153940"></script>
-<script src="mc-pool.js?v=40153940"></script>
-<script src="ui.js?v=40153940"></script>
+<script src="engine.js?v=d84b6d3a"></script>
+<script src="mc-pool.js?v=d84b6d3a"></script>
+<script src="ui.js?v=d84b6d3a"></script>
 </body>
 </html>

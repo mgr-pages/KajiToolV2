@@ -60,7 +60,10 @@ const PRESETS = {
     //   tools/tune.js(種7・3000局)で探し、1つずつ外して効いていた heat と rush だけを加えた。
     //   探索に使っていない種で、ブルームの重みとの同じ局どうしの比較(各5000局):
     //     種202 50.82% → 52.60%(z=2.13) / 種303 51.30% → 53.42%(z=2.49) / 種404 49.80% → 54.08%(z=5.05)
-    params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0, heat:0, rush:5.4 },
+    //   litReady 16(点灯の抽選に仕上げ位置で臨む)も加えた。12〜40で効きは同じ。
+    //     貪欲(種303・404・505、同じ局どうし各5000局): +5.3 / +3.9 / +4.6pt(z=6.32 / 4.83 / 5.45)
+    //     先読み(乱数テープ、同じ局どうし200局): 71.5% → 75.5%(新だけ大成功34 / 今だけ26、p=0.37)
+    params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0, heat:0, rush:5.4, litReady:16 },
     // 先読み: 独走局面でも省かず(gate 0)、試行を2倍にする(S 1280)。決定局面262件のリグレット(pt/局面)で選んだ。
     //   独走で省いていた局面(手の11%): 2.54 → 0.60 / 先読みする局面: 0.72 → 0.51(候補数を増やしても 0.71 で効かない)
     //   決め打ちの局面は8割が火力上げ(先読みの対象外)で、残りは手の約3%しかないので early は使わない。
@@ -110,7 +113,10 @@ const PRESETS = {
     // 評価の重みの上書き。ゾーン超過(16.6%)が多く、会心で理想値を捉える価値も足りていなかった。
     // tools/tune.js で座標探索し(3000局・種7、3巡目で改善なし)、別の種(5000局・種101)で
     // 大成功 45.7% → 52.5%、超過 16.6% → 10.8% を確認した(いずれも貪欲エンジン)。
-    params: { cap:24, adv:1.5, heat:1, ov:6, rush:0, center:4.5, pr:2.4, te:7.5 },
+    // litReady 100: 点灯の抽選に、点灯したら仕上げられる位置で臨む(威力会心率上昇)。
+    //   貪欲(探索に使っていない種303・404・505、同じ局どうし各5000局): +9.1 / +9.6 / +9.2pt(z≥10)
+    //   先読み(乱数テープ、同じ局どうし200局): 76.0% → 80.0%(新だけ大成功35 / 今だけ27、p=0.37)
+    params: { cap:24, adv:1.5, heat:1, ov:6, rush:0, center:4.5, pr:2.4, te:7.5, litReady:100 },
     zones: [[180,190],[250,258],[210,216],[250,258],[210,216],[145,155]]
   }
 };
@@ -321,6 +327,35 @@ function modoriRecover(ms, f, t, cfg){
   return best;
 }
 
+// 威力会心率上昇で、手 x の後に着く温度(200の倍数)で点灯しうる未到達マスのうち、
+// 点灯したら狙い系の技で仕上げられる位置(会心なら理想値で止まり、会心でなくても超えない)にいるマスの割合。
+// 打つマスは中央のロールで進んだとみなす。重み litReady で評価に足す(既定 0)。
+// 点灯マスで仕上げると誤差0の率が約9割あるのに、点灯した時にそのマスが仕上げ位置にいたのは
+// 輝紋章の盾で4.1%だけだった(点灯の73%はゾーンまで100以上離れたマスに当たっていた)。
+function litReadyFrac(ms, x, t, f, cfg){
+  if(cfg.trait !== 'kaishin' || !(x.nt > 0) || x.nt % 200 !== 0) return 0;
+  const after = ms.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh }));
+  for(const i of x.tg){
+    if(after[i].current >= after[i].zoneLow) continue;
+    const r = rollsForMass(x.sk, t, cfg.trait, i);
+    if(r) after[i].current += r[Math.floor(r.length/2)];
+  }
+  const fa = f - x.c;
+  let un = 0, ready = 0;
+  for(let i = 0; i < after.length; i++){
+    const m = after[i];
+    if(m.zoneHigh <= 0 || m.current >= m.zoneLow) continue;
+    un++;
+    for(const sk of SKILLS){
+      if(!sk.crit || sk.masses !== 1 || sk.lv > cfg.level) continue;
+      if(actualCostOf(sk, x.nt, cfg.trait) > fa) continue;
+      const r = getRollCandidates(sk, x.nt, cfg.trait, true);
+      if(r && m.current + r[r.length-1] <= m.zoneHigh && m.current + 2*r[0] >= m.zoneHigh){ ready++; break; }
+    }
+  }
+  return un ? ready / un : 0;
+}
+
 function traitTempState(temp){
   const mod400 = temp % 400 === 0;
   const mod200 = temp % 200 === 0 && !mod400;
@@ -448,6 +483,7 @@ function massError(current, ideal, zoneLow, zoneHigh){
 //   rush : 会心の見込みが無いマスをゾーンへ押し込む手の抑制
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
+//   litReady : 点灯の抽選(200の倍数)に、点灯したら仕上げられる位置で臨む度合い(威力会心率上昇のみ)
 /* 評価パラメータ。素材ごとの効き方は検証済み(0にした時に結果が変わる対局の割合)。
    両方       cap adv land heat ov pr tmax te center far mpm slack effK slackMax
               rush wideAim pairSnipe
@@ -1433,7 +1469,8 @@ function stratB(ms,f,t,P,cfg){
       }
       if(maxGap > 0) farBonus = (myGap / maxGap) * P.far;
     }
-    const score=cap*capW + (adv/x.c)*advW + landBonus + prio*P.pr + farBonus
+    const litR = P.litReady ? P.litReady * litReadyFrac(ms, x, t, f, cfg) : 0;
+    const score=cap*capW + (adv/x.c)*advW + litR + landBonus + prio*P.pr + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(RANK) RANK.push({x, s:score});
     if(score>bs){bs=score;best=x;}
