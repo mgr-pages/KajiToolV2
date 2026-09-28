@@ -1533,7 +1533,10 @@ function stratB(ms,f,t,P,cfg){
     }
     const litR = P.litReady ? P.litReady * litReadyFrac(ms, x, t, f, cfg) : 0;
     // tcost: 下げた温度の分も費用に数える(火力上げ10で300℃戻るので、1℃あたり約0.033)。既定 0。
-    const effC = x.c + (P.tcost || 0) * Math.max(0, -x.sk.tempDelta);
+    // tcostDyn(1手あたりの前進量の見積もり)を入れると、温度が足りない度合いで tcost を増減する。
+    // 必要な手数(残り前進量 ÷ tcostDyn)が、今の温度で打てる手数(温度 ÷ 50)より少なければ温度は余っているので安くする。
+    const tScar = P.tcostDyn ? Math.min(1, (needTotal(ms) / P.tcostDyn) / Math.max(1, t / 50)) : 1;
+    const effC = x.c + (P.tcost || 0) * tScar * Math.max(0, -x.sk.tempDelta);
     const score=cap*capW + (adv/effC)*advW + litR + landBonus + prio*P.pr + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(RANK) RANK.push({x, s:score});
