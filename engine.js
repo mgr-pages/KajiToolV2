@@ -1526,7 +1526,9 @@ function stratB(ms,f,t,P,cfg){
       if(maxGap > 0) farBonus = (myGap / maxGap) * P.far;
     }
     const litR = P.litReady ? P.litReady * litReadyFrac(ms, x, t, f, cfg) : 0;
-    const score=cap*capW + (adv/x.c)*advW + litR + landBonus + prio*P.pr + farBonus
+    // tcost: 下げた温度の分も費用に数える(火力上げ10で300℃戻るので、1℃あたり約0.033)。既定 0。
+    const effC = x.c + (P.tcost || 0) * Math.max(0, -x.sk.tempDelta);
+    const score=cap*capW + (adv/effC)*advW + litR + landBonus + prio*P.pr + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(RANK) RANK.push({x, s:score});
     if(score>bs){bs=score;best=x;}
