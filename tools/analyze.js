@@ -87,11 +87,12 @@ async function playGame(E, o, g){
     if(!mv || mv.c > G.focus) break;
     const seen = [];                    // この手で打ったマス(理想値の推定は戻りの後にまとめて更新)
     if(mv.sk.key) for(const i of mv.tg){
-      const m = G.masses[i]; if(m.current >= m.zoneLow) continue;
+      const m = G.masses[i]; if(m.current >= m.zoneLow && !mv.redo) continue;   // やり直しの手はゾーン内も打つ
       const rolls = E('rollsForMass')(mv.sk, G.temp, G.trait, i), cr = E('critForMass')(mv.sk, cfg, G.temp, i);
       if(!rolls) continue;
       const roll = rolls[Math.floor(R('r', s, i) * rolls.length)], crit = R('c', s, i) < cr, before = m.current;
-      m.current = crit ? Math.min(before + 2*roll, ideal[i]) : before + roll;
+      // 会心は理想値を通り越す時だけ理想値で止まる(既に理想値より上なら、そのまま2倍進む)
+      m.current = crit ? (before < ideal[i] ? Math.min(before + 2*roll, ideal[i]) : before + 2*roll) : before + roll;
       if(m.current >= m.zoneLow){
         const boost = E('isBoostTurn')(G.temp) || (lit === i);
         const pink = before + rolls[rolls.length-1] <= m.zoneHigh && before + 2*rolls[0] >= m.zoneHigh;

@@ -356,6 +356,44 @@ function litReadyFrac(ms, x, t, f, cfg){
   return un ? ready / un : 0;
 }
 
+// 戻りの地金で、ゾーン内にあるマスをわざと超過させ、直後の戻り(一番超えたマスが12〜16減る)で
+// ゾーンの手前に戻して打ち直す手。会心でゾーンに入ったマスは理想値ちょうどなので、
+// 理想値の見込み(G.posts)から期待誤差を求め、P.redoMin 以上のマスだけを対象にする。
+// 条件: 1マス技で必ず超過し、打った後の温度が200の倍数(=すぐ戻りが起きる)で、戻りの対象がそのマスになる。
+//       打った後に集中力が P.redoF 以上残る。
+function massExpErr(i, m){
+  const n = m.zoneHigh - m.zoneLow + 1;
+  const p = (G.posts && G.posts[i] && G.posts[i].length === n) ? G.posts[i] : null;
+  let e = 0;
+  for(let k = 0; k < n; k++) e += (p ? p[k] : 1/n) * massError(m.current, m.zoneLow + k, m.zoneLow, m.zoneHigh);
+  return e;
+}
+function modoriRedo(ms, f, t, P, cfg){
+  let best = null, bv = -1;
+  for(let i = 0; i < ms.length; i++){
+    const m = ms[i];
+    if(m.zoneHigh <= 0 || m.current < m.zoneLow || m.current > m.zoneHigh) continue;
+    const ee = massExpErr(i, m);
+    if(ee < P.redoMin) continue;
+    for(const sk of SKILLS){
+      if(sk.masses !== 1 || !sk.key || sk.crit || sk.lv > cfg.level) continue;   // 会心で大きく超えないよう狙い系は使わない
+      const c = actualCostOf(sk, t, cfg.trait);
+      if(c > f || f - c < P.redoF) continue;
+      const nt = Math.max(0, t + sk.tempDelta);
+      if(!(nt > 0) || nt % 200 !== 0) continue;
+      const r = rollsForMass(sk, t, cfg.trait, i);
+      if(!r || m.current + r[0] <= m.zoneHigh) continue;          // 必ず超過する
+      if(m.current + r[r.length-1] - modoriRange().min > m.zoneHigh) continue;   // 一番少ない戻りでも超過が解ける
+      const after = ms.map(x => ({ current: x.current, zoneLow: x.zoneLow, zoneHigh: x.zoneHigh }));
+      after[i].current = m.current + r[0];
+      if(modoriTarget(after) !== i) continue;                      // 戻りがこのマスに来る
+      const v = ee - c / 100;                                       // 誤差の大きいマスを、安い手で
+      if(v > bv){ bv = v; best = { sk, tg: [i], c, nt, overP: 1, redo: true }; }
+    }
+  }
+  return best;
+}
+
 function traitTempState(temp){
   const mod400 = temp % 400 === 0;
   const mod200 = temp % 200 === 0 && !mod400;
@@ -892,6 +930,11 @@ function stratB(ms,f,t,P,cfg){
   // ---- 戻りで超過を取り戻す(全マスがゾーンに届いた後) ----
   if(cfg.trait === 'modori' && ms.every(m => m.current >= m.zoneLow) && ms.some(m => m.current > m.zoneHigh))
     return modoriRecover(ms, f, t, cfg);
+  // ---- 戻りの地金: ゾーンに入ったが誤差が大きそうなマスをやり直す(実験。P.redo が 0 なら使わない) ----
+  if(cfg.trait === 'modori' && P.redo > 0){
+    const rd = modoriRedo(ms, f, t, P, cfg);
+    if(rd) return rd;
+  }
   // ---- 2マス同時の本会心を最優先 ----
   if(P.pairSnipe > 0){
     const ps = pairSnipe(ms, f, t, cfg);
@@ -1570,12 +1613,12 @@ function mcRollout(ms0, f, t, cfg, first){
     // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
     if(mv.sk.key) mv.tg.forEach(i=>{
       const m = ms[i];
-      if(m.current >= m.zoneLow) return;
+      if(m.current >= m.zoneLow && !mv.redo) return;   // やり直しの手だけはゾーン内のマスも打つ
       const r  = rollsForMass(mv.sk, to, cfg.trait, i);
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
       const roll = r[(MC_RNG()*r.length)|0];
-      if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
+      if(MC_RNG() < cr){ m.current = m.current < m.ideal ? Math.min(m.current + 2*roll, m.ideal) : m.current + 2*roll; }
       else m.current += roll;
     });
     fo -= mv.c; to = mv.nt; simFirstMove = false;
@@ -1950,12 +1993,12 @@ function tracedRollout(ms0, f, t, cfg, first, out){
     // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
     if(mv.sk.key) mv.tg.forEach(i=>{
       const m = ms[i];
-      if(m.current >= m.zoneLow) return;
+      if(m.current >= m.zoneLow && !mv.redo) return;   // やり直しの手だけはゾーン内のマスも打つ
       const r  = rollsForMass(mv.sk, to, cfg.trait, i);
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
       const roll = r[(MC_RNG()*r.length)|0];
-      if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
+      if(MC_RNG() < cr){ m.current = m.current < m.ideal ? Math.min(m.current + 2*roll, m.ideal) : m.current + 2*roll; }
       else m.current += roll;
     });
     fo -= mv.c; to = mv.nt; simFirstMove = false;
