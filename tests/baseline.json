@@ -8,6 +8,7 @@
       "hidane",
       "bloom",
       "kimonsho",
+      "yumon",
       "orb"
     ],
     "seed": 20260926
@@ -125,6 +126,28 @@
         "avgMoves": 19.9,
         "avgFocusLeft": 37.8,
         "fingerprint": "d266cb36"
+      }
+    },
+    "yumon": {
+      "mc": {
+        "games": 2,
+        "great": 50,
+        "unreached": 0,
+        "over": 0,
+        "avgErr": 2.5,
+        "avgMoves": 27,
+        "avgFocusLeft": 6.5,
+        "fingerprint": "213ad253"
+      },
+      "greedy": {
+        "games": 300,
+        "great": 33,
+        "unreached": 6.7,
+        "over": 1.7,
+        "avgErr": 5.16,
+        "avgMoves": 25.5,
+        "avgFocusLeft": 16,
+        "fingerprint": "a20caddf"
       }
     },
     "orb": {

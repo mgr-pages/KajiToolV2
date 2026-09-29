@@ -59,9 +59,11 @@ function modoriHint(){
     const rr = rollsForMass(r.sk, G.temp, G.trait, i); if(!rr) continue;
     const o = hitOutcomes(m.current, rr, m.zoneLow, m.zoneHigh);
     outcomes[i] = o.normal.concat(o.crit);
+    // みだれ打ちは当たらないマスもある(2回以上当たる場合は見ない。目安の表示なので)
+    if(r.sk.random) outcomes[i].push(m.current);
   }
   const T = possibleModoriTargets(G.masses, outcomes);
-  const val = T.size ? T : null;             // 減らせるマスが無ければ戻りは起きない
+  const val = T.size ? T : null;            // 減らせるマスが無ければ戻りは起きない
   _mdrCache = { key, val };
   return val;
 }
@@ -274,7 +276,7 @@ function renderHeader(){
 function renderSkills(){
   const rows = ['<tr><th>技</th><th>ロール</th><th class="cst">消費</th><th class="cst">会心</th></tr>'];
   for(const s of SKILLS){
-    if(s.lv>G.level || s.id==='midare') continue;
+    if(s.lv>G.level) continue;
     const r = s.key ? getRollCandidates(s, G.temp, G.trait, false) : null;
     const c = actualCostOf(s, G.temp, G.trait);
     const cr = s.key ? computeCritRate(s,G.level,G.hammerId,G.star,G.trait,G.temp) : 0;
@@ -303,7 +305,8 @@ function renderRec(){
     return;
   }
   const r = G.rec;
-  const tgt = r.tg.length ? r.tg.map(i=>'マス'+(i+1)).join('・') : '温度操作';
+  const tgt = r.sk.random ? `マス${r.tg.map(i=>i+1).join('・')}のどこかにランダムで4回`
+            : r.tg.length ? r.tg.map(i=>'マス'+(i+1)).join('・') : '温度操作';
   const cr = r.sk.key ? computeCritRate(r.sk,G.level,G.hammerId,G.star,G.trait,G.temp) : 0;
   // 点灯マスを含む手は、そのマスだけ会心率が違う。1つの数字に丸めると誤解を招くので分けて出す
   let critTxt = r.sk.key ? ' / 会心'+(cr*100).toFixed(0)+'%' : '';
@@ -374,7 +377,8 @@ function renderDetail(){
       const mark = (st.mk ? ` <b class="mk-${st.mk.k}">${st.mk.l}</b>` : '')
                  + ((i === 0 ? !!modoriHint() : modoriCanAt(G.plan, i)) ? ' <b class="mk-weak">↩ このあと戻り</b>' : '');
       const cls  = (st.mk ? ' on-'+st.mk.k : '') + (i===0?' first':'');
-      const tg   = st.tg.length ? st.tg.map(x=>'マス'+(x+1)).join('・') : '温度操作';
+      const tg   = st.name === 'みだれ打ち' ? 'ランダムで4回'
+                 : st.tg.length ? st.tg.map(x=>'マス'+(x+1)).join('・') : '温度操作';
       const note = '';
       const btn  = f < 0 ? ''
         : `<button class="pexec" onclick="applyExecuted(${i+1})">
@@ -458,7 +462,7 @@ function renderExec(){
     // 入力は主ボタンから順に進む。別の順で入れたい時は盤面のマスをタップすればよい
     el.innerHTML =
       `<div class="exec"><div class="need-box">
-         <div class="d">${names.join('・')} の結果待ち(温度・集中力は反映済み)</div>
+         <div class="d">${names.join('・')} の結果待ち(温度・集中力は反映済み)</div>${G.msg ? `<div class="d">${G.msg}</div>` : ''}
        </div></div>`;
     return;                                   // 主ボタンと取り消しの状態は syncCalcButton が決める
   }
@@ -490,8 +494,10 @@ function applyExecuted(k){
   // 理想値を絞り込むには「1回の打撃ごとの前後の値」が要る。
   // まとめて実行して同じマスを2回以上叩いた場合は分解できないので、
   // そのマスの推定は諦めて分布を一様に戻す。
+  // みだれ打ちはどのマスに何回当たったか分からないので、分解できない扱いにする
   const cnt = {};
-  steps.forEach(st => st.tg.forEach(i => { cnt[i] = (cnt[i]||0) + 1; }));
+  const isRandom = st => { const sk = SKILLS.find(x => x.name === st.name); return !!(sk && sk.random); };
+  steps.forEach(st => st.tg.forEach(i => { cnt[i] = (cnt[i]||0) + (isRandom(st) ? 2 : 1); }));
   ensurePosts();
   if(!G.obs) G.obs = new Array(G.masses.length).fill(null);
   let t2 = G.undoSnap.temp;
@@ -560,6 +566,9 @@ function applyExecuted(k){
       msgAfter = '戻りで値が変わったマスは、盤面のマスをタップして直してください';
     }
   }
+  if(steps.some(isRandom))
+    msgAfter = 'みだれ打ちの後は、各マスの今の値' + (mdSteps.length ? '(戻りがあれば戻った後の値)' : '')
+             + 'を入れてください。当たらなかったマスはそのまま「決定」';
   // 打っていないのに戻るかもしれないマスを先に聞く(候補が少なく、減っていれば他のマスの候補を絞れる)
   G.pending = [...hit].sort((a,b) => ((G.obs[b] && G.obs[b].modoriOnly) ? 1 : 0) - ((G.obs[a] && G.obs[a].modoriOnly) ? 1 : 0) || a - b);
 
@@ -1095,6 +1104,23 @@ function load(){
 }
 
 /* ====== 起動 ====== */
+// 商材の選択欄に、このツールの推奨どおりに打った時の大成功率の目安(PRESETS の rate)を添える。
+// 見出しの幅でも切れないよう「名前(約80%)」の短い形にし、意味は一覧の先頭の行で説明する。
+(function(){
+  const sel = document.getElementById('s-preset');
+  if(!sel) return;
+  let any = false;
+  for(const op of sel.querySelectorAll('option')){
+    const p = PRESETS[op.value];
+    if(p && typeof p.rate === 'number'){ op.textContent = op.textContent + '(約' + p.rate + '%)'; any = true; }
+  }
+  if(any){
+    const note = document.createElement('option');
+    note.disabled = true;
+    note.textContent = '( )は大成功率の目安 ※推奨どおり・職人Lv80・光のハンマー★3';
+    sel.insertBefore(note, sel.firstChild);
+  }
+})();
 ['s-level','s-hammer','s-star','s-trait'].forEach(id=>{
   document.getElementById(id).addEventListener('change', applySettings);
 });

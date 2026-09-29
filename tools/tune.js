@@ -49,13 +49,13 @@ if(process.argv[2] === '--worker'){
         const mv = E('stratB')(ms, G.focus, G.temp, P, cfg);
         if(!mv || mv.c > G.focus) break;
         const seen = [];
-        if(mv.sk.key) for(const i of mv.tg){
-          const m = G.masses[i]; if(m.current >= m.zoneLow) continue;
+        if(mv.sk.key) for(const i of E('hitSeq')(mv, rng)){
+          const m = G.masses[i]; if(m.current >= m.zoneLow && !mv.sk.random) continue;
           const rolls = E('rollsForMass')(mv.sk, G.temp, G.trait, i), cr = E('critForMass')(mv.sk, cfg, G.temp, i);
           if(!rolls) continue;
           const roll = rolls[Math.floor(rng()*rolls.length)], crit = rng() < cr, before = m.current;
           m.current = crit ? Math.min(before + 2*roll, ideal[i]) : before + roll;
-          seen.push({ i, before, rolls, cr, crit });
+          if(!mv.sk.random) seen.push({ i, before, rolls, cr, crit });
         }
         G.focus -= mv.c; G.temp = mv.nt; G.hist.push(1);
         const md = E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り
@@ -94,7 +94,9 @@ const evalP = params => new Promise(res => { const id = ++jid; waiting.set(id, r
 (async () => {
   let best = await evalP(cur);
   console.log(`開始 大成功 ${(best.great*100).toFixed(2)}%  ${JSON.stringify(cur)}`);
-  const keys = Object.keys(BASE).filter(k => typeof BASE[k] === 'number');
+  // 既定に無い素材だけの重み(tcost など)も、開始時の重みに入っていれば探索する
+  const keys = [...new Set([...Object.keys(BASE), ...Object.keys(cur)])]
+    .filter(k => typeof (cur[k] !== undefined ? cur[k] : BASE[k]) === 'number');
   for(let round = 0; round < o.rounds; round++){
     let improved = false;
     for(const k of keys){

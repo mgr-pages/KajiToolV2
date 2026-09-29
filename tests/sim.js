@@ -39,8 +39,8 @@ const { fork } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const BASELINE = path.join(__dirname, 'baseline.json');
 // 基準の条件。変えると基準と比べられなくなるので、変えたら --update する。
-const DEFAULT = { games: 300, mc: 2, presets: ['kagayaki', 'amatsuyu', 'hidane', 'bloom', 'kimonsho', 'orb'], seed: 20260926 };
-const NAMES = { kagayaki: '超かがやきの樹液', amatsuyu: '超あまつゆのいと', hidane: '超ようせいのひだね', bloom: 'ブルームシールド', kimonsho: '輝紋章の盾', orb: '虹色のオーブ' };
+const DEFAULT = { games: 300, mc: 2, presets: ['kagayaki', 'amatsuyu', 'hidane', 'bloom', 'kimonsho', 'yumon', 'orb'], seed: 20260926 };
+const NAMES = { kagayaki: '超かがやきの樹液', amatsuyu: '超あまつゆのいと', hidane: '超ようせいのひだね', bloom: 'ブルームシールド', kimonsho: '輝紋章の盾', yumon: '幽紋刀', orb: '虹色のオーブ' };
 
 // 32bit FNV-1a。全対局の手順から作る指紋。エンジンの挙動が1手でも変われば値が変わる。
 function fnv(s, h){
@@ -108,7 +108,7 @@ async function playGame(E, preset, rng, useMC){
   newGame(E, preset);
   const G = E('G'), cfg = E('cfgOf')(), PARAMS = E('PARAMS');
   const stratB = E('stratB'), stratMCAsync = E('stratMCAsync'), isStartState = E('isStartState');
-  const rollsForMass = E('rollsForMass'), critForMass = E('critForMass'), updatePost = E('updatePost');
+  const rollsForMass = E('rollsForMass'), critForMass = E('critForMass'), updatePost = E('updatePost'), hitSeq = E('hitSeq');
   const ideal = G.masses.map(m => m.zoneLow + Math.floor(rng() * (m.zoneHigh - m.zoneLow + 1)));
   const trace = [];
   for(let step = 0; step < 70; step++){
@@ -126,9 +126,10 @@ async function playGame(E, preset, rng, useMC){
     if(!mv || mv.c > G.focus) break;
     trace.push(mv.sk.id + ':' + mv.tg.join(''));
     const seen = [];                    // この手で打ったマス(理想値の推定は戻りの後にまとめて更新)
-    if(mv.sk.key) for(const i of mv.tg){
+    // みだれ打ちは使うマスからランダムに4回(ゾーン内のマスにも当たる)
+    if(mv.sk.key) for(const i of hitSeq(mv, rng)){
       const m = G.masses[i];
-      if(m.current >= m.zoneLow) continue;
+      if(m.current >= m.zoneLow && !mv.sk.random) continue;
       const rolls = rollsForMass(mv.sk, G.temp, G.trait, i);
       const cr = critForMass(mv.sk, cfg, G.temp, i);
       if(!rolls) continue;
@@ -136,7 +137,7 @@ async function playGame(E, preset, rng, useMC){
       const crit = rng() < cr;
       const before = m.current;
       m.current = crit ? Math.min(before + 2 * roll, ideal[i]) : before + roll;
-      seen.push({ i, before, rolls, cr, crit });
+      if(!mv.sk.random) seen.push({ i, before, rolls, cr, crit });   // みだれ打ちは理想値の推定に使わない
     }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id);
     const md = E('applyModori')(G.masses, G.temp, G.trait, rng);   // 戻り(温度が200の倍数になった時)

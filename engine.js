@@ -70,6 +70,28 @@ const PRESETS = {
     mc: { gate: 0, S: 1280 },
     zones: [[260,268],[400,408],[380,388],[190,197],[0,0],[0,0]]
   },
+  // 幽紋刀(武器鍛冶・片手剣 Lv135、地金特性:戻り)
+  //   盤面は縦1列×3マス。縦3×横2の盤面の左の列を使い、右の列は使わない。
+  //   ゾーンは利用者がゲーム画面で確認した値(上 500〜508 / 中 300〜308 / 下 405〜413)。
+  //   許容誤差は片手剣の値2(利用者の情報)。
+  //   戻る量は、戻りの地金ならどの素材も虹色のオーブと同じ 12〜16(利用者の情報)。
+  yumon: {
+    name: '幽紋刀',
+    trait: 'modori',
+    threshold: 2,
+    off: [1, 3, 5],
+    modori: { min: 12, max: 16 },
+    // 評価の重み: ゾーン下限の合計が1205と大きく、縦1列で集中力が足りなくなりやすい。
+    //   midare 1・midareW 1.5: みだれ打ち(集中力あたりの伸びが大きい)を使う。未到達 55% → 3%。
+    //   mdc 0.5: 戻りで未到達のマスが減る分を前進から差し引く。
+    //   tcost 0.017・cap 12・rush 0.9・heat 8: tools/tune.js の座標探索(種7)。
+    //   貪欲(探索に使っていない種202・303・404・505、各3000局)は 約6% → 約33%。
+    // 先読み: gate 0・S 1280。今の設定と同じ局どうし(種90〜93 各24局、計96局)で 31.3% → 45.8%(28局対14局、z=2.16)。
+    //   候補を16に増やす(K 16)のは、同じ局どうし24局で 8局対8局(片方だけ成功 4対4)と差が無く、計算が2倍になるので見送り。
+    params: { tcost:0.017, cap:12, rush:0.9, heat:8, midare:1, midareW:1.5, mdc:0.5 },
+    mc: { gate: 0, S: 1280 },
+    zones: [[500,508],[0,0],[300,308],[0,0],[405,413],[0,0]]
+  },
   // 虹色のオーブ(道具鍛冶、地金特性:戻り)
   //   盤面は縦3×横2で A:左上 B:右上 / C:左中 D:右中 / E:左下 F:右下。
   //   ゾーンは公開の攻略情報(複数で一致)より。大成功はずれ合計7以下(6マスの商材と同じ)。
@@ -146,6 +168,9 @@ const SKILLS = [
   {id:'nibai', name:'2倍打ち', lv:5, cost:8, key:'nibai', masses:1, shape:'single', tempDelta:-50},
   {id:'karyoku', name:'火力上げ', lv:7, cost:10, key:null, masses:0, shape:'none', tempDelta:300},
   {id:'yonren', name:'4連打ち', lv:11, cost:12, key:'joge', masses:4, shape:'square', tempDelta:-50},
+  // みだれ打ち: 使うマス全部(ゾーンに入った・超えたマスも含む)からランダムに4回叩く。同じマスに重なることもある。
+  // 会心は1回ごとに判定する(利用者の情報)。
+  {id:'midare', name:'みだれ打ち', lv:13, cost:7, key:'midare', masses:4, shape:'random', random:true, tempDelta:-50},
   {id:'sanbai', name:'3倍打ち', lv:16, cost:11, key:'sanbai', masses:1, shape:'single', tempDelta:-50},
   {id:'nerai', name:'ねらい打ち', lv:23, cost:16, key:'tataku', masses:1, shape:'single', crit:true, tempDelta:-50},
   {id:'chouyonren', name:'超4連打ち', lv:27, cost:18, key:'nibai', masses:4, shape:'square', tempDelta:-50},
@@ -303,6 +328,20 @@ function possibleModoriTargets(ms, outcomes){
   found.asTarget = asTarget; found.asOther = asOther; found.none = none;
   return found;
 }
+// 手 x を打った後に起きる戻りで、未到達のマスが失う量の見込み(打つマスは中央のロールで進んだとみなす)。
+// 戻りが起きない・超過したマスに来る(取り戻しになる)時は 0。
+function modoriLossAfter(ms, x, t, cfg){
+  if(!(x.nt > 0) || x.nt % 200 !== 0) return 0;
+  const after = ms.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh }));
+  for(const i of x.tg){
+    const r = rollsForMass(x.sk, t, cfg.trait, i);
+    if(r) after[i].current += r[Math.floor(r.length/2)];
+  }
+  const i = modoriTarget(after);
+  if(i === null || after[i].current > after[i].zoneHigh) return 0;
+  const rg = modoriRange();
+  return Math.min(after[i].current, (rg.min + rg.max) / 2);
+}
 // 盤面が仕上がったか。戻りの地金では超過も取り戻せるので、超過が残る間は仕上がりとしない。
 function boardDone(ms, trait){
   if(!ms.every(m => m.current >= m.zoneLow)) return false;
@@ -354,6 +393,44 @@ function litReadyFrac(ms, x, t, f, cfg){
     }
   }
   return un ? ready / un : 0;
+}
+
+// 戻りの地金で、ゾーン内にあるマスをわざと超過させ、直後の戻り(一番超えたマスが12〜16減る)で
+// ゾーンの手前に戻して打ち直す手。会心でゾーンに入ったマスは理想値ちょうどなので、
+// 理想値の見込み(G.posts)から期待誤差を求め、P.redoMin 以上のマスだけを対象にする。
+// 条件: 1マス技で必ず超過し、打った後の温度が200の倍数(=すぐ戻りが起きる)で、戻りの対象がそのマスになる。
+//       打った後に集中力が P.redoF 以上残る。
+function massExpErr(i, m){
+  const n = m.zoneHigh - m.zoneLow + 1;
+  const p = (G.posts && G.posts[i] && G.posts[i].length === n) ? G.posts[i] : null;
+  let e = 0;
+  for(let k = 0; k < n; k++) e += (p ? p[k] : 1/n) * massError(m.current, m.zoneLow + k, m.zoneLow, m.zoneHigh);
+  return e;
+}
+function modoriRedo(ms, f, t, P, cfg){
+  let best = null, bv = -1;
+  for(let i = 0; i < ms.length; i++){
+    const m = ms[i];
+    if(m.zoneHigh <= 0 || m.current < m.zoneLow || m.current > m.zoneHigh) continue;
+    const ee = massExpErr(i, m);
+    if(ee < P.redoMin) continue;
+    for(const sk of SKILLS){
+      if(sk.masses !== 1 || !sk.key || sk.crit || sk.lv > cfg.level) continue;   // 会心で大きく超えないよう狙い系は使わない
+      const c = actualCostOf(sk, t, cfg.trait);
+      if(c > f || f - c < P.redoF) continue;
+      const nt = Math.max(0, t + sk.tempDelta);
+      if(!(nt > 0) || nt % 200 !== 0) continue;
+      const r = rollsForMass(sk, t, cfg.trait, i);
+      if(!r || m.current + r[0] <= m.zoneHigh) continue;          // 必ず超過する
+      if(m.current + r[r.length-1] - modoriRange().min > m.zoneHigh) continue;   // 一番少ない戻りでも超過が解ける
+      const after = ms.map(x => ({ current: x.current, zoneLow: x.zoneLow, zoneHigh: x.zoneHigh }));
+      after[i].current = m.current + r[0];
+      if(modoriTarget(after) !== i) continue;                      // 戻りがこのマスに来る
+      const v = ee - c / 100;                                       // 誤差の大きいマスを、安い手で
+      if(v > bv){ bv = v; best = { sk, tg: [i], c, nt, overP: 1, redo: true }; }
+    }
+  }
+  return best;
 }
 
 function traitTempState(temp){
@@ -503,6 +580,7 @@ function rcToIdx(r,c){
 // 技ごとの対象マスの組み合わせを、盤面の隣接関係に沿って列挙する
 // 盤面に存在しないマス(使わないマス)にはみ出す形は打てない(実ゲームの挙動)。
 // 例: 2×2の盾で、超4連打ちを下段2マスだけに当てることはできない。
+// ただし4連打ち・超4連打ちは、使うマスを囲む枠の中の空きマスや、1列だけの盤の隣の列は含めて打てる(利用者の情報)。
 // ※以前は「残ったマスだけを対象に打てる」としていたが、実際には打てないとの指摘を受けて戻した
 //   (引き継ぎ資料 v116)。ゾーンに到達済みのマスを含む形は、盤面上に存在するので打てる。
 let ACTIVE = null;                       // null = 全マス有効
@@ -537,8 +615,35 @@ function enumerateTargetSets(skill){
     }
   }
   if(!ACTIVE) return sets;
-  // 存在しないマスを1つでも含む形は、盤面からはみ出すので打てない
-  return sets.filter(g => g.every(i => ACTIVE[i]));
+  if(skill.shape !== 'square'){
+    // 存在しないマスを1つでも含む形は、盤面からはみ出すので打てない
+    return sets.filter(g => g.every(i => ACTIVE[i]));
+  }
+  // 4連打ち・超4連打ちは、使うマスを囲む枠の中なら、空いたマスを含んでも打てる
+  // (空いたマスには効果が無いので、対象から落とす)。例: マス1〜3だけで4が空いた盤。
+  // 使うマスが1列だけの盤(片手剣など)は、その列の縦に並んだ2マスだけに当てられる。
+  // 枠の外にはみ出す形は、これまでどおり打てない(例: 2×2の盾の下段2マスだけ)。
+  let r0 = GRID_ROWS, r1 = -1, c0 = GRID_COLS, c1 = -1;
+  for(let i = 0; i < GRID_ROWS*GRID_COLS; i++){
+    if(!ACTIVE[i]) continue;
+    const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
+    r0 = Math.min(r0, r); r1 = Math.max(r1, r); c0 = Math.min(c0, c); c1 = Math.max(c1, c);
+  }
+  const oneCol = c0 === c1;
+  const seen = new Set(), out = [];
+  for(const g of sets){
+    const inFrame = g.every(i => {
+      const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
+      return r >= r0 && r <= r1 && (oneCol || (c >= c0 && c <= c1));
+    });
+    if(!inFrame) continue;
+    const t = g.filter(i => ACTIVE[i]);
+    if(!t.length) continue;
+    const key = t.join(',');
+    if(seen.has(key)) continue;
+    seen.add(key); out.push(t);
+  }
+  return out;
 }
 
 // 地金特性「集中力変化」による消費の増減
@@ -576,6 +681,75 @@ function getRollCandidates(skill, temp, trait, isLit){
   return out;
 }
 
+// ---- みだれ打ち ----
+// 使うマス全部から1回ずつ等確率で選んで4回叩く。k回当たった時の伸びの合計の分布(会心は1回ごとに判定、
+// 会心で理想値に止まる効果は見ない=超過の見積もりは保守的)を、温度・ロール・会心率ごとに覚えておく。
+const MIDARE_HITS = 4;
+const MIDARE_SAFE = 0.01;
+const MIDARE_DIST = new Map();
+function midareSumDist(r, cr, k){
+  const key = r.join(',') + '|' + cr + '|' + k;
+  let d = MIDARE_DIST.get(key);
+  if(d) return d;
+  d = new Map([[0, 1]]);
+  for(let h = 0; h < k; h++){
+    const nd = new Map();
+    for(const [v, p] of d) for(const x of r){
+      const q = p / r.length;
+      nd.set(v + x, (nd.get(v + x) || 0) + q * (1 - cr));
+      nd.set(v + 2*x, (nd.get(v + 2*x) || 0) + q * cr);
+    }
+    d = nd;
+  }
+  if(MIDARE_DIST.size > 4000) MIDARE_DIST.clear();
+  MIDARE_DIST.set(key, d);
+  return d;
+}
+function binomP(n, k, p){
+  let c = 1; for(let i = 0; i < k; i++) c = c * (n - i) / (i + 1);
+  return c * Math.pow(p, k) * Math.pow(1 - p, n - k);
+}
+// みだれ打ちの手。tg は使うマス全部(どこに当たるかは打つまで分からない)。
+// advE: 未到達のマスが進む量の期待値(ゾーン下限で頭打ち) / overP: どれかのマスが超過する、
+// またはゾーンに入っているマスに当たって値が動く確率の最大 / prioE: 残り距離の割合の期待値。
+function midareMove(ms, f, t, cfg, sk){
+  const c = actualCostOf(sk, t, cfg.trait);
+  if(c > f) return null;
+  const nt = Math.max(0, t + sk.tempDelta);
+  if(nt <= 0) return null;
+  const act = [];
+  for(let i = 0; i < ms.length; i++) if(ms[i].zoneHigh > 0 && isActive(i)) act.push(i);
+  if(!act.length) return null;
+  const p = 1 / act.length;
+  let advE = 0, overP = 0, prioE = 0;
+  for(const i of act){
+    const m = ms[i];
+    const r = rollsForMass(sk, t, cfg.trait, i);
+    if(!r) return null;
+    const cr = critForMass(sk, cfg, t, i);
+    const gap = m.zoneLow - m.current, room = m.zoneHigh - m.current;
+    let pOver = 0, eAdv = 0;
+    for(let k = 1; k <= MIDARE_HITS; k++){
+      const pk = binomP(MIDARE_HITS, k, p);
+      if(gap <= 0){ pOver += pk; continue; }        // ゾーンに入っているマスは、当たれば値が動く
+      for(const [v, q] of midareSumDist(r, cr, k)){
+        if(v > room) pOver += pk * q;
+        eAdv += pk * q * Math.min(v, gap);
+      }
+    }
+    if(gap > 0){ advE += eAdv; prioE += (MIDARE_HITS * p) * gap / Math.max(1, m.zoneLow); }
+    overP = Math.max(overP, pOver);
+  }
+  return { sk, tg: act, c, nt, overP, advE, prioE };
+}
+// 手を打った時に叩かれるマスの並び。みだれ打ちは使うマスからランダムに4回、それ以外は対象のマスそのもの。
+function hitSeq(mv, rnd){
+  if(!mv.sk.random) return mv.tg;
+  const out = [];
+  for(let h = 0; h < MIDARE_HITS; h++) out.push(mv.tg[Math.floor(rnd() * mv.tg.length)]);
+  return out;
+}
+
 // 超過リスクのあるマスは「今は触らない」のが正解。
 // 全体の温度を下げると他マスの効率まで落ちるが、そのマスを後回しにして
 // 他を進めれば、打撃のたびに温度は自然に下がり、やがて安全圏に入る。
@@ -583,7 +757,14 @@ function getRollCandidates(skill, temp, trait, isLit){
 function moves(ms,f,t,cfg){
   const strict=[], loose=[];
   for(const sk of SKILLS){
-    if(sk.lv>cfg.level||sk.id==='midare')continue;
+    if(sk.lv>cfg.level)continue;
+    if(sk.random){
+      if(!PARAMS.midare) continue;      // 運の要素が大きいので、素材の params で midare:1 を入れた時だけ使う(幽紋刀のみ)
+      const mv = midareMove(ms, f, t, cfg, sk);
+      // 4回とも会心で大きく伸びた時だけ超える、のような僅かな確率は安全とみなす(MIDARE_SAFE 以下)
+      if(mv) (mv.overP <= MIDARE_SAFE ? strict : loose).push(mv);
+      continue;
+    }
     const c=actualCostOf(sk,t,cfg.trait);
     if(c>f)continue;
     const nt=Math.max(0,t+sk.tempDelta);
@@ -892,6 +1073,11 @@ function stratB(ms,f,t,P,cfg){
   // ---- 戻りで超過を取り戻す(全マスがゾーンに届いた後) ----
   if(cfg.trait === 'modori' && ms.every(m => m.current >= m.zoneLow) && ms.some(m => m.current > m.zoneHigh))
     return modoriRecover(ms, f, t, cfg);
+  // ---- 戻りの地金: ゾーンに入ったが誤差が大きそうなマスをやり直す(実験。P.redo が 0 なら使わない) ----
+  if(cfg.trait === 'modori' && P.redo > 0){
+    const rd = modoriRedo(ms, f, t, P, cfg);
+    if(rd) return rd;
+  }
   // ---- 2マス同時の本会心を最優先 ----
   if(P.pairSnipe > 0){
     const ps = pairSnipe(ms, f, t, cfg);
@@ -1103,6 +1289,18 @@ function stratB(ms,f,t,P,cfg){
         if(sc>bs){bs=sc;best=x;}
         continue;
       }
+      continue;
+    }
+    if(x.sk.random){
+      // みだれ打ち: どこに当たるか分からないので、会心で仕留める価値や本会心の加点は見ず、
+      // 前進の期待値・残り距離・超過の確率だけで測る
+      let advM = x.advE;
+      if(P.mdc && cfg.trait === 'modori') advM -= P.mdc * modoriLossAfter(ms, x, t, cfg);
+      const effM = x.c + (P.tcost || 0) * Math.max(0, -x.sk.tempDelta);
+      const sc = (advM / effM) * P.adv * (P.midareW === undefined ? 1 : P.midareW)
+               + x.prioE * P.pr - x.overP * P.ov;
+      if(RANK) RANK.push({x, s:sc});
+      if(sc > bs){ bs = sc; best = x; }
       continue;
     }
     const r=getRollCandidates(x.sk,t,cfg.trait,false);
@@ -1470,7 +1668,15 @@ function stratB(ms,f,t,P,cfg){
       if(maxGap > 0) farBonus = (myGap / maxGap) * P.far;
     }
     const litR = P.litReady ? P.litReady * litReadyFrac(ms, x, t, f, cfg) : 0;
-    const score=cap*capW + (adv/x.c)*advW + litR + landBonus + prio*P.pr + farBonus
+    // tcost: 下げた温度の分も費用に数える(火力上げ10で300℃戻るので、1℃あたり約0.033)。既定 0。
+    // tcostDyn(1手あたりの前進量の見積もり)を入れると、温度が足りない度合いで tcost を増減する。
+    // 必要な手数(残り前進量 ÷ tcostDyn)が、今の温度で打てる手数(温度 ÷ 50)より少なければ温度は余っているので安くする。
+    const tScar = P.tcostDyn ? Math.min(1, (needTotal(ms) / P.tcostDyn) / Math.max(1, t / 50)) : 1;
+    const effC = x.c + (P.tcost || 0) * tScar * Math.max(0, -x.sk.tempDelta);
+    // mdc: 戻りの地金で、打った後の温度が200の倍数になり戻りが未到達のマスに来る手は、
+    // 戻る量(平均)を前進から差し引く。既定 0。
+    if(P.mdc && cfg.trait === 'modori') adv -= P.mdc * modoriLossAfter(ms, x, t, cfg);
+    const score=cap*capW + (adv/effC)*advW + litR + landBonus + prio*P.pr + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(RANK) RANK.push({x, s:score});
     if(score>bs){bs=score;best=x;}
@@ -1568,14 +1774,15 @@ function mcRollout(ms0, f, t, cfg, first){
     if(s > 0) rollLit(ms, to, cfg.trait, MC_RNG);   // 現在の手番の点灯は既知なので触らない
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
     // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
-    if(mv.sk.key) mv.tg.forEach(i=>{
+    if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
-      if(m.current >= m.zoneLow) return;
+      // やり直しの手とみだれ打ちだけはゾーン内のマスも打つ
+      if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random) return;
       const r  = rollsForMass(mv.sk, to, cfg.trait, i);
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
       const roll = r[(MC_RNG()*r.length)|0];
-      if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
+      if(MC_RNG() < cr){ m.current = m.current < m.ideal ? Math.min(m.current + 2*roll, m.ideal) : m.current + 2*roll; }
       else m.current += roll;
     });
     fo -= mv.c; to = mv.nt; simFirstMove = false;
@@ -1948,14 +2155,15 @@ function tracedRollout(ms0, f, t, cfg, first, out){
                name: mv.sk.name, tg: mv.tg.slice(), temp: to,
                cost: mv.c, tempAfter: mv.nt, traitOn: !simFirstMove, mk: traitMark(to) });
     // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
-    if(mv.sk.key) mv.tg.forEach(i=>{
+    if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
-      if(m.current >= m.zoneLow) return;
+      // やり直しの手とみだれ打ちだけはゾーン内のマスも打つ
+      if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random) return;
       const r  = rollsForMass(mv.sk, to, cfg.trait, i);
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
       const roll = r[(MC_RNG()*r.length)|0];
-      if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }
+      if(MC_RNG() < cr){ m.current = m.current < m.ideal ? Math.min(m.current + 2*roll, m.ideal) : m.current + 2*roll; }
       else m.current += roll;
     });
     fo -= mv.c; to = mv.nt; simFirstMove = false;
