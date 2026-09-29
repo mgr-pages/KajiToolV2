@@ -86,11 +86,14 @@ async function playGame(E, o, g){
                                : E('stratB')(ms, G.focus, G.temp, P, cfg);
     if(!mv || mv.c > G.focus) break;
     const seen = [];                    // この手で打ったマス(理想値の推定は戻りの後にまとめて更新)
-    if(mv.sk.key) for(const i of mv.tg){
-      const m = G.masses[i]; if(m.current >= m.zoneLow && !mv.redo) continue;   // やり直しの手はゾーン内も打つ
+    // みだれ打ちは使うマスからランダムに4回(同じマスに重なることもある)。ゾーン内のマスにも当たる
+    const hits = mv.sk.random ? [0,1,2,3].map(h => ({ i: mv.tg[Math.floor(R('h', s, h) * mv.tg.length)], k: 100 + h }))
+                              : mv.tg.map(i => ({ i, k: i }));
+    if(mv.sk.key) for(const { i, k } of hits){
+      const m = G.masses[i]; if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random) continue;   // やり直しの手はゾーン内も打つ
       const rolls = E('rollsForMass')(mv.sk, G.temp, G.trait, i), cr = E('critForMass')(mv.sk, cfg, G.temp, i);
       if(!rolls) continue;
-      const roll = rolls[Math.floor(R('r', s, i) * rolls.length)], crit = R('c', s, i) < cr, before = m.current;
+      const roll = rolls[Math.floor(R('r', s, k) * rolls.length)], crit = R('c', s, k) < cr, before = m.current;
       // 会心は理想値を通り越す時だけ理想値で止まる(既に理想値より上なら、そのまま2倍進む)
       m.current = crit ? (before < ideal[i] ? Math.min(before + 2*roll, ideal[i]) : before + 2*roll) : before + roll;
       if(m.current >= m.zoneLow){
@@ -98,7 +101,8 @@ async function playGame(E, o, g){
         const pink = before + rolls[rolls.length-1] <= m.zoneHigh && before + 2*rolls[0] >= m.zoneHigh;
         fin.push({ i, aim: !!mv.sk.crit, boost, pink, exact: m.current === ideal[i] });
       }
-      seen.push({ i, before, rolls, cr, crit });
+      // みだれ打ちは画面で打つ前と後の値だけを入れるので、理想値の推定には使わない
+      if(!mv.sk.random) seen.push({ i, before, rolls, cr, crit });
     }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id); moves++;
     const md = E('applyModori')(G.masses, G.temp, G.trait, () => R('m', s, 0));   // 戻り

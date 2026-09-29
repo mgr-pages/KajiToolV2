@@ -86,7 +86,7 @@ const PRESETS = {
     //   tcost 0.033(下げた温度も費用に数える)と cap 6(遠いうちの会心狙いを控える)で、
     //   貪欲 0.0% → 5.9% / 6.3%(探索に使っていない種202・303、各3000局)。先読みありは 48局で 16.7%。
     //   まだ未到達が半分ほどあり、打ち方の改善が必要。
-    params: { tcost:0.033, cap:6 },
+    params: { tcost:0.033, cap:6, midareW:1.5, mdc:0.5 },
     zones: [[500,508],[0,0],[300,308],[0,0],[405,413],[0,0]]
   },
   // 虹色のオーブ(道具鍛冶、地金特性:戻り)
@@ -165,6 +165,9 @@ const SKILLS = [
   {id:'nibai', name:'2倍打ち', lv:5, cost:8, key:'nibai', masses:1, shape:'single', tempDelta:-50},
   {id:'karyoku', name:'火力上げ', lv:7, cost:10, key:null, masses:0, shape:'none', tempDelta:300},
   {id:'yonren', name:'4連打ち', lv:11, cost:12, key:'joge', masses:4, shape:'square', tempDelta:-50},
+  // みだれ打ち: 使うマス全部(ゾーンに入った・超えたマスも含む)からランダムに4回叩く。同じマスに重なることもある。
+  // 会心は1回ごとに判定する(利用者の情報)。
+  {id:'midare', name:'みだれ打ち', lv:13, cost:7, key:'midare', masses:4, shape:'random', random:true, tempDelta:-50},
   {id:'sanbai', name:'3倍打ち', lv:16, cost:11, key:'sanbai', masses:1, shape:'single', tempDelta:-50},
   {id:'nerai', name:'ねらい打ち', lv:23, cost:16, key:'tataku', masses:1, shape:'single', crit:true, tempDelta:-50},
   {id:'chouyonren', name:'超4連打ち', lv:27, cost:18, key:'nibai', masses:4, shape:'square', tempDelta:-50},
@@ -675,6 +678,75 @@ function getRollCandidates(skill, temp, trait, isLit){
   return out;
 }
 
+// ---- みだれ打ち ----
+// 使うマス全部から1回ずつ等確率で選んで4回叩く。k回当たった時の伸びの合計の分布(会心は1回ごとに判定、
+// 会心で理想値に止まる効果は見ない=超過の見積もりは保守的)を、温度・ロール・会心率ごとに覚えておく。
+const MIDARE_HITS = 4;
+const MIDARE_SAFE = 0.01;
+const MIDARE_DIST = new Map();
+function midareSumDist(r, cr, k){
+  const key = r.join(',') + '|' + cr + '|' + k;
+  let d = MIDARE_DIST.get(key);
+  if(d) return d;
+  d = new Map([[0, 1]]);
+  for(let h = 0; h < k; h++){
+    const nd = new Map();
+    for(const [v, p] of d) for(const x of r){
+      const q = p / r.length;
+      nd.set(v + x, (nd.get(v + x) || 0) + q * (1 - cr));
+      nd.set(v + 2*x, (nd.get(v + 2*x) || 0) + q * cr);
+    }
+    d = nd;
+  }
+  if(MIDARE_DIST.size > 4000) MIDARE_DIST.clear();
+  MIDARE_DIST.set(key, d);
+  return d;
+}
+function binomP(n, k, p){
+  let c = 1; for(let i = 0; i < k; i++) c = c * (n - i) / (i + 1);
+  return c * Math.pow(p, k) * Math.pow(1 - p, n - k);
+}
+// みだれ打ちの手。tg は使うマス全部(どこに当たるかは打つまで分からない)。
+// advE: 未到達のマスが進む量の期待値(ゾーン下限で頭打ち) / overP: どれかのマスが超過する、
+// またはゾーンに入っているマスに当たって値が動く確率の最大 / prioE: 残り距離の割合の期待値。
+function midareMove(ms, f, t, cfg, sk){
+  const c = actualCostOf(sk, t, cfg.trait);
+  if(c > f) return null;
+  const nt = Math.max(0, t + sk.tempDelta);
+  if(nt <= 0) return null;
+  const act = [];
+  for(let i = 0; i < ms.length; i++) if(ms[i].zoneHigh > 0 && isActive(i)) act.push(i);
+  if(!act.length) return null;
+  const p = 1 / act.length;
+  let advE = 0, overP = 0, prioE = 0;
+  for(const i of act){
+    const m = ms[i];
+    const r = rollsForMass(sk, t, cfg.trait, i);
+    if(!r) return null;
+    const cr = critForMass(sk, cfg, t, i);
+    const gap = m.zoneLow - m.current, room = m.zoneHigh - m.current;
+    let pOver = 0, eAdv = 0;
+    for(let k = 1; k <= MIDARE_HITS; k++){
+      const pk = binomP(MIDARE_HITS, k, p);
+      if(gap <= 0){ pOver += pk; continue; }        // ゾーンに入っているマスは、当たれば値が動く
+      for(const [v, q] of midareSumDist(r, cr, k)){
+        if(v > room) pOver += pk * q;
+        eAdv += pk * q * Math.min(v, gap);
+      }
+    }
+    if(gap > 0){ advE += eAdv; prioE += (MIDARE_HITS * p) * gap / Math.max(1, m.zoneLow); }
+    overP = Math.max(overP, pOver);
+  }
+  return { sk, tg: act, c, nt, overP, advE, prioE };
+}
+// 手を打った時に叩かれるマスの並び。みだれ打ちは使うマスからランダムに4回、それ以外は対象のマスそのもの。
+function hitSeq(mv, rnd){
+  if(!mv.sk.random) return mv.tg;
+  const out = [];
+  for(let h = 0; h < MIDARE_HITS; h++) out.push(mv.tg[Math.floor(rnd() * mv.tg.length)]);
+  return out;
+}
+
 // 超過リスクのあるマスは「今は触らない」のが正解。
 // 全体の温度を下げると他マスの効率まで落ちるが、そのマスを後回しにして
 // 他を進めれば、打撃のたびに温度は自然に下がり、やがて安全圏に入る。
@@ -682,7 +754,14 @@ function getRollCandidates(skill, temp, trait, isLit){
 function moves(ms,f,t,cfg){
   const strict=[], loose=[];
   for(const sk of SKILLS){
-    if(sk.lv>cfg.level||sk.id==='midare')continue;
+    if(sk.lv>cfg.level)continue;
+    if(sk.random){
+      if(PARAMS.midare === 0) continue;
+      const mv = midareMove(ms, f, t, cfg, sk);
+      // 4回とも会心で大きく伸びた時だけ超える、のような僅かな確率は安全とみなす(MIDARE_SAFE 以下)
+      if(mv) (mv.overP <= MIDARE_SAFE ? strict : loose).push(mv);
+      continue;
+    }
     const c=actualCostOf(sk,t,cfg.trait);
     if(c>f)continue;
     const nt=Math.max(0,t+sk.tempDelta);
@@ -1209,6 +1288,18 @@ function stratB(ms,f,t,P,cfg){
       }
       continue;
     }
+    if(x.sk.random){
+      // みだれ打ち: どこに当たるか分からないので、会心で仕留める価値や本会心の加点は見ず、
+      // 前進の期待値・残り距離・超過の確率だけで測る
+      let advM = x.advE;
+      if(P.mdc && cfg.trait === 'modori') advM -= P.mdc * modoriLossAfter(ms, x, t, cfg);
+      const effM = x.c + (P.tcost || 0) * Math.max(0, -x.sk.tempDelta);
+      const sc = (advM / effM) * P.adv * (P.midareW === undefined ? 1 : P.midareW)
+               + x.prioE * P.pr - x.overP * P.ov;
+      if(RANK) RANK.push({x, s:sc});
+      if(sc > bs){ bs = sc; best = x; }
+      continue;
+    }
     const r=getRollCandidates(x.sk,t,cfg.trait,false);
     // 会心率はマスごとに critForMass で引く(技単位の値を使うと点灯マスを見誤る)
     let adv=0,cap=0,prio=0;
@@ -1680,9 +1771,10 @@ function mcRollout(ms0, f, t, cfg, first){
     if(s > 0) rollLit(ms, to, cfg.trait, MC_RNG);   // 現在の手番の点灯は既知なので触らない
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
     // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
-    if(mv.sk.key) mv.tg.forEach(i=>{
+    if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
-      if(m.current >= m.zoneLow && !mv.redo) return;   // やり直しの手だけはゾーン内のマスも打つ
+      // やり直しの手とみだれ打ちだけはゾーン内のマスも打つ
+      if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random) return;
       const r  = rollsForMass(mv.sk, to, cfg.trait, i);
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
@@ -2060,9 +2152,10 @@ function tracedRollout(ms0, f, t, cfg, first, out){
                name: mv.sk.name, tg: mv.tg.slice(), temp: to,
                cost: mv.c, tempAfter: mv.nt, traitOn: !simFirstMove, mk: traitMark(to) });
     // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
-    if(mv.sk.key) mv.tg.forEach(i=>{
+    if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
-      if(m.current >= m.zoneLow && !mv.redo) return;   // やり直しの手だけはゾーン内のマスも打つ
+      // やり直しの手とみだれ打ちだけはゾーン内のマスも打つ
+      if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random) return;
       const r  = rollsForMass(mv.sk, to, cfg.trait, i);
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
