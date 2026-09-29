@@ -322,6 +322,20 @@ function possibleModoriTargets(ms, outcomes){
   found.asTarget = asTarget; found.asOther = asOther; found.none = none;
   return found;
 }
+// 手 x を打った後に起きる戻りで、未到達のマスが失う量の見込み(打つマスは中央のロールで進んだとみなす)。
+// 戻りが起きない・超過したマスに来る(取り戻しになる)時は 0。
+function modoriLossAfter(ms, x, t, cfg){
+  if(!(x.nt > 0) || x.nt % 200 !== 0) return 0;
+  const after = ms.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh }));
+  for(const i of x.tg){
+    const r = rollsForMass(x.sk, t, cfg.trait, i);
+    if(r) after[i].current += r[Math.floor(r.length/2)];
+  }
+  const i = modoriTarget(after);
+  if(i === null || after[i].current > after[i].zoneHigh) return 0;
+  const rg = modoriRange();
+  return Math.min(after[i].current, (rg.min + rg.max) / 2);
+}
 // 盤面が仕上がったか。戻りの地金では超過も取り戻せるので、超過が残る間は仕上がりとしない。
 function boardDone(ms, trait){
   if(!ms.every(m => m.current >= m.zoneLow)) return false;
@@ -1565,6 +1579,9 @@ function stratB(ms,f,t,P,cfg){
     // 必要な手数(残り前進量 ÷ tcostDyn)が、今の温度で打てる手数(温度 ÷ 50)より少なければ温度は余っているので安くする。
     const tScar = P.tcostDyn ? Math.min(1, (needTotal(ms) / P.tcostDyn) / Math.max(1, t / 50)) : 1;
     const effC = x.c + (P.tcost || 0) * tScar * Math.max(0, -x.sk.tempDelta);
+    // mdc: 戻りの地金で、打った後の温度が200の倍数になり戻りが未到達のマスに来る手は、
+    // 戻る量(平均)を前進から差し引く。既定 0。
+    if(P.mdc && cfg.trait === 'modori') adv -= P.mdc * modoriLossAfter(ms, x, t, cfg);
     const score=cap*capW + (adv/effC)*advW + litR + landBonus + prio*P.pr + farBonus
               + sureIn*(tight?3.0:1.0) + turnEff - (x.overP||0)*P.ov;
     if(RANK) RANK.push({x, s:score});

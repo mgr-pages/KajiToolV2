@@ -94,7 +94,9 @@ const evalP = params => new Promise(res => { const id = ++jid; waiting.set(id, r
 (async () => {
   let best = await evalP(cur);
   console.log(`開始 大成功 ${(best.great*100).toFixed(2)}%  ${JSON.stringify(cur)}`);
-  const keys = Object.keys(BASE).filter(k => typeof BASE[k] === 'number');
+  // 既定に無い素材だけの重み(tcost など)も、開始時の重みに入っていれば探索する
+  const keys = [...new Set([...Object.keys(BASE), ...Object.keys(cur)])]
+    .filter(k => typeof (cur[k] !== undefined ? cur[k] : BASE[k]) === 'number');
   for(let round = 0; round < o.rounds; round++){
     let improved = false;
     for(const k of keys){
