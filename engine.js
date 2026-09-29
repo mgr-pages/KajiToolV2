@@ -560,6 +560,7 @@ function rcToIdx(r,c){
 // 技ごとの対象マスの組み合わせを、盤面の隣接関係に沿って列挙する
 // 盤面に存在しないマス(使わないマス)にはみ出す形は打てない(実ゲームの挙動)。
 // 例: 2×2の盾で、超4連打ちを下段2マスだけに当てることはできない。
+// ただし4連打ち・超4連打ちは、使うマスを囲む枠の中の空きマスや、1列だけの盤の隣の列は含めて打てる(利用者の情報)。
 // ※以前は「残ったマスだけを対象に打てる」としていたが、実際には打てないとの指摘を受けて戻した
 //   (引き継ぎ資料 v116)。ゾーンに到達済みのマスを含む形は、盤面上に存在するので打てる。
 let ACTIVE = null;                       // null = 全マス有効
@@ -594,8 +595,35 @@ function enumerateTargetSets(skill){
     }
   }
   if(!ACTIVE) return sets;
-  // 存在しないマスを1つでも含む形は、盤面からはみ出すので打てない
-  return sets.filter(g => g.every(i => ACTIVE[i]));
+  if(skill.shape !== 'square'){
+    // 存在しないマスを1つでも含む形は、盤面からはみ出すので打てない
+    return sets.filter(g => g.every(i => ACTIVE[i]));
+  }
+  // 4連打ち・超4連打ちは、使うマスを囲む枠の中なら、空いたマスを含んでも打てる
+  // (空いたマスには効果が無いので、対象から落とす)。例: マス1〜3だけで4が空いた盤。
+  // 使うマスが1列だけの盤(片手剣など)は、その列の縦に並んだ2マスだけに当てられる。
+  // 枠の外にはみ出す形は、これまでどおり打てない(例: 2×2の盾の下段2マスだけ)。
+  let r0 = GRID_ROWS, r1 = -1, c0 = GRID_COLS, c1 = -1;
+  for(let i = 0; i < GRID_ROWS*GRID_COLS; i++){
+    if(!ACTIVE[i]) continue;
+    const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
+    r0 = Math.min(r0, r); r1 = Math.max(r1, r); c0 = Math.min(c0, c); c1 = Math.max(c1, c);
+  }
+  const oneCol = c0 === c1;
+  const seen = new Set(), out = [];
+  for(const g of sets){
+    const inFrame = g.every(i => {
+      const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
+      return r >= r0 && r <= r1 && (oneCol || (c >= c0 && c <= c1));
+    });
+    if(!inFrame) continue;
+    const t = g.filter(i => ACTIVE[i]);
+    if(!t.length) continue;
+    const key = t.join(',');
+    if(seen.has(key)) continue;
+    seen.add(key); out.push(t);
+  }
+  return out;
 }
 
 // 地金特性「集中力変化」による消費の増減
