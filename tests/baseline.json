@@ -9,7 +9,8 @@
       "bloom",
       "kimonsho",
       "yumon",
-      "orb"
+      "orb",
+      "kajihammer"
     ],
     "seed": 20260926
   },
@@ -170,6 +171,28 @@
         "avgMoves": 15.4,
         "avgFocusLeft": 37,
         "fingerprint": "6130160d"
+      }
+    },
+    "kajihammer": {
+      "mc": {
+        "games": 2,
+        "great": 100,
+        "unreached": 0,
+        "over": 0,
+        "avgErr": 2,
+        "avgMoves": 17,
+        "avgFocusLeft": 65,
+        "fingerprint": "2bc38e27"
+      },
+      "greedy": {
+        "games": 300,
+        "great": 78.3,
+        "unreached": 0,
+        "over": 0.3,
+        "avgErr": 3.28,
+        "avgMoves": 16.2,
+        "avgFocusLeft": 56.6,
+        "fingerprint": "3e2b4b55"
       }
     }
   }
