@@ -1105,21 +1105,26 @@ function load(){
 
 /* ====== 起動 ====== */
 // 商材の選択欄に、このツールの推奨どおりに打った時の大成功率の目安(PRESETS の rate)を添える。
-// 見出しの幅でも切れないよう「名前(約80%)」の短い形にし、意味は一覧の先頭の行で説明する。
+// 目安は選ぶ時だけ出す(一覧を開く直前に「名前(約80%)」へ替え、選び終わる・閉じると名前だけに戻す)。
+// 選択欄は標準の部品なので、見出しに出る文字と一覧の文字を別々にはできないため、この形にしている。
+// ( )の意味は、一覧の一番下(手動設定の下)の選べない行で説明する。
 (function(){
   const sel = document.getElementById('s-preset');
   if(!sel) return;
-  let any = false;
+  const rated = [];
   for(const op of sel.querySelectorAll('option')){
     const p = PRESETS[op.value];
-    if(p && typeof p.rate === 'number'){ op.textContent = op.textContent + '(約' + p.rate + '%)'; any = true; }
+    if(p && typeof p.rate === 'number')
+      rated.push({ op, name: op.textContent, withRate: op.textContent + '(約' + p.rate + '%)' });
   }
-  if(any){
-    const note = document.createElement('option');
-    note.disabled = true;
-    note.textContent = '( )は大成功率の目安 ※推奨どおり・職人Lv80・光のハンマー★3';
-    sel.insertBefore(note, sel.firstChild);
-  }
+  if(!rated.length) return;
+  const note = document.createElement('option');
+  note.disabled = true;
+  note.textContent = '( )は大成功率の目安 ※推奨どおり・職人Lv80・光のハンマー★3';
+  sel.appendChild(note);
+  const show = on => { for(const r of rated) r.op.textContent = on ? r.withRate : r.name; };
+  ['focus', 'mousedown', 'touchstart'].forEach(ev => sel.addEventListener(ev, () => show(true), { passive: true }));
+  ['change', 'blur'].forEach(ev => sel.addEventListener(ev, () => show(false)));
 })();
 ['s-level','s-hammer','s-star','s-trait'].forEach(id=>{
   document.getElementById(id).addEventListener('change', applySettings);
