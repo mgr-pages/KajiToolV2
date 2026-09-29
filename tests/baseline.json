@@ -131,23 +131,23 @@
     "yumon": {
       "mc": {
         "games": 2,
-        "great": 0,
-        "unreached": 50,
+        "great": 50,
+        "unreached": 0,
         "over": 0,
-        "avgErr": 15,
-        "avgMoves": 29.5,
-        "avgFocusLeft": 1,
-        "fingerprint": "4d936ae1"
+        "avgErr": 2,
+        "avgMoves": 24.5,
+        "avgFocusLeft": 26,
+        "fingerprint": "fa3c040b"
       },
       "greedy": {
         "games": 300,
-        "great": 5.7,
-        "unreached": 58.3,
-        "over": 8.7,
-        "avgErr": 19.01,
-        "avgMoves": 27.5,
-        "avgFocusLeft": 3.3,
-        "fingerprint": "d4d23f70"
+        "great": 33,
+        "unreached": 6.7,
+        "over": 1.7,
+        "avgErr": 5.16,
+        "avgMoves": 25.5,
+        "avgFocusLeft": 16,
+        "fingerprint": "a20caddf"
       }
     },
     "orb": {

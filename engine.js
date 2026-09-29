@@ -86,7 +86,7 @@ const PRESETS = {
     //   tcost 0.033(下げた温度も費用に数える)と cap 6(遠いうちの会心狙いを控える)で、
     //   貪欲 0.0% → 5.9% / 6.3%(探索に使っていない種202・303、各3000局)。先読みありは 48局で 16.7%。
     //   まだ未到達が半分ほどあり、打ち方の改善が必要。
-    params: { tcost:0.033, cap:6, midareW:1.5, mdc:0.5 },
+    params: { tcost:0.017, cap:12, rush:0.9, heat:8, midare:1, midareW:1.5, mdc:0.5 },
     zones: [[500,508],[0,0],[300,308],[0,0],[405,413],[0,0]]
   },
   // 虹色のオーブ(道具鍛冶、地金特性:戻り)
@@ -756,7 +756,7 @@ function moves(ms,f,t,cfg){
   for(const sk of SKILLS){
     if(sk.lv>cfg.level)continue;
     if(sk.random){
-      if(PARAMS.midare === 0) continue;
+      if(!PARAMS.midare) continue;      // 運の要素が大きいので、素材の params で midare:1 を入れた時だけ使う(幽紋刀のみ)
       const mv = midareMove(ms, f, t, cfg, sk);
       // 4回とも会心で大きく伸びた時だけ超える、のような僅かな確率は安全とみなす(MIDARE_SAFE 以下)
       if(mv) (mv.overP <= MIDARE_SAFE ? strict : loose).push(mv);
