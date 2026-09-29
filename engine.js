@@ -451,6 +451,126 @@ function modoriRedo(ms, f, t, P, cfg){
   return best;
 }
 
+// ===================== 残り1マスの仕上げ(総当たりの最善、lastDP、既定 0) =====================
+// 残り1マスになると、温度も集中力もすべてそのマスに使える。1マスだけなら状態(ゾーン下限までの残り距離 g・
+// 温度 T・集中力 F)が小さいので、打てる手をすべて総当たりで比べて最善の手を選べる(動的計画法)。
+// 実測(ブルームシールド・貪欲 2000局): 残り1マスの時点から誤差0で仕上がる割合は、エンジン 51.9% に対して最善 68.8%。
+// 評価は「全体で大成功になる確率」。先に仕上げたマスの誤差の合計は、理想値の推定(G.posts)から分布を出し、
+// 最後のマスに許される誤差(許容誤差 − 先のマスの誤差)ごとの表を混ぜて使う。
+// 地金特性の効果(会心ターン・消費の増減・威力の増減・点灯)は、そのまま計算に入れる。戻りの地金は対象外。理想値はゾーン内で一様とみなす。
+// 表は必要になった分だけ作り、同じ条件なら使い回す。先読みの中の打ち手では使わない(lastDProll で使える)。
+const LDP_TMAX = 2200, LDP_GMAX = 160, LDP_NT = LDP_TMAX / 50;     // 温度 50〜2200℃(50刻み)
+const LDP_HIT_IDS = ['tataku', 'tekagen', 'nibai', 'sanbai', 'nerai', 'reppuu', 'yowanerai'];
+const LDP_CACHE = new Map();
+let IN_ROLLOUT = 0;                      // 先読みの試行の中か(mcRollout・tracedRollout が数える)
+function ldpTable(L, H, a, cfg){
+  const key = [L, H, a, cfg.level, cfg.hammerId, cfg.star, cfg.trait].join('|');
+  let tb = LDP_CACHE.get(key);
+  if(tb) return tb;
+  const w = H - L + 1, big = a >= MAX_ERR;          // 誤差は4で頭打ちなので、許される誤差が4以上ならゾーン内はどこでも良い
+  const pIn = new Float64Array(w), pCrit = new Float64Array(w);
+  for(let v = L; v <= H; v++){
+    let n1 = 0, n2 = 0;
+    for(let id = L; id <= H; id++){
+      if(big || Math.abs(v - id) <= a) n1++;
+      if(v >= id || big || id - v <= a) n2++;       // 会心は理想値を越えれば理想値で止まる。届かなければ v に止まる
+    }
+    pIn[v - L] = n1 / w; pCrit[v - L] = n2 / w;
+  }
+  // 手ごとの温度別の 消費・打った後の温度・ロール・会心率(開始直後ではない前提で計算する)
+  const saved = simFirstMove; simFirstMove = false;
+  const acts = [];
+  for(const id of [...LDP_HIT_IDS, 'karyoku', 'hiyashikomi']){
+    const sk = SKILLS.find(x => x.id === id);
+    if(!sk || sk.lv > cfg.level) continue;
+    const rows = [];
+    for(let ti = 0; ti < LDP_NT; ti++){
+      const T = (ti + 1) * 50, nt = T + sk.tempDelta;
+      const row = { c: actualCostOf(sk, T, cfg.trait), nti: (nt > 0 && nt <= LDP_TMAX) ? nt / 50 - 1 : -1 };
+      // 威力会心率上昇: 残り1マスなら、200の倍数の温度で光るのは必ずそのマス(ロール2倍・会心率上昇)
+      const lit = cfg.trait === 'kaishin' && T % 200 === 0;
+      if(sk.key){ row.r = getRollCandidates(sk, T, cfg.trait, lit);
+                  row.cr = computeCritRate(sk, cfg.level, cfg.hammerId, cfg.star, cfg.trait, T, lit); }
+      else if(row.nti < 0) row.skip = true;                                   // 温度の範囲の外へは動かさない
+      rows.push(row);
+    }
+    acts.push({ sk, rows });
+  }
+  simFirstMove = saved;
+  tb = { L, H, w, pIn, pCrit, acts, V: [] };
+  LDP_CACHE.set(key, tb);
+  return tb;
+}
+const ldpIdx = (ti, g) => ti * (LDP_GMAX + 1) + g;
+// 手 act を、温度 ti・残り g・集中力 F で打った時の価値
+function ldpQ(tb, act, ti, g, F){
+  const row = act.rows[ti];
+  if(row.skip || row.c > F) return -1;
+  const F2 = F - row.c, V2 = tb.V[F2];
+  if(!act.sk.key) return V2[ldpIdx(row.nti, g)];
+  const L = tb.L, H = tb.H, c = L - g, r = row.r, cr = row.cr, nti = row.nti;
+  let s = 0;
+  for(let k = 0; k < r.length; k++){
+    const v = c + r[k], v2 = c + 2*r[k];
+    const a = v > H ? 0 : (v >= L ? tb.pIn[v - L] : (nti < 0 ? 0 : V2[ldpIdx(nti, L - v)]));
+    const b = v2 >= L ? (v2 >= H ? 1 : tb.pCrit[v2 - L]) : (nti < 0 ? 0 : V2[ldpIdx(nti, L - v2)]);
+    s += (1 - cr) * a + cr * b;
+  }
+  return s / r.length;
+}
+function ldpEnsure(tb, F){
+  while(tb.V.length <= F){
+    const Fc = tb.V.length, arr = new Float32Array(LDP_NT * (LDP_GMAX + 1));
+    tb.V.push(arr);                       // 消費は1以上なので、同じ集中力の値は参照しない
+    for(let ti = 0; ti < LDP_NT; ti++) for(let g = 1; g <= LDP_GMAX; g++){
+      let best = 0;
+      for(const act of tb.acts){ const q = ldpQ(tb, act, ti, g, Fc); if(q > best) best = q; }
+      arr[ldpIdx(ti, g)] = best;
+    }
+  }
+}
+// 先に仕上げたマス(i 以外)の誤差の合計の分布 [P(0), P(1), …, P(th)]。超過したマスがあれば null
+function finishedErrDist(ms, i, th){
+  let dist = [1];
+  for(let j = 0; j < ms.length; j++){
+    const m = ms[j];
+    if(j === i || m.zoneHigh <= 0) continue;
+    if(m.current > m.zoneHigh) return null;
+    const n = m.zoneHigh - m.zoneLow + 1;
+    const p = (G.posts && G.posts[j] && G.posts[j].length === n) ? G.posts[j] : null;
+    const e = new Array(MAX_ERR + 1).fill(0);
+    for(let k = 0; k < n; k++) e[Math.min(Math.abs(m.current - (m.zoneLow + k)), MAX_ERR)] += p ? p[k] : 1 / n;
+    const nd = new Array(th + 1).fill(0);
+    for(let x = 0; x < dist.length; x++) for(let y = 0; y <= MAX_ERR; y++) if(x + y <= th) nd[x + y] += dist[x] * e[y];
+    dist = nd;
+  }
+  return dist;
+}
+function lastMassMove(ms, f, t, P, cfg){
+  // 戻りの地金は超過を取り戻せる分だけ計算の形が違うので対象外
+  if(cfg.trait === 'modori' || isStartState()) return null;
+  const open = [];
+  for(let j = 0; j < ms.length; j++) if(ms[j].zoneHigh > 0 && ms[j].current < ms[j].zoneLow) open.push(j);
+  if(open.length !== 1) return null;
+  const i = open[0], m = ms[i], g = m.zoneLow - m.current;
+  if(g < 1 || g > LDP_GMAX || t % 50 !== 0 || t < 50 || t > LDP_TMAX) return null;
+  const th = SUCCESS_THRESHOLD, dist = finishedErrDist(ms, i, th);
+  if(!dist) return null;
+  const F = Math.min(f, P.ldpF || 200), ti = t / 50 - 1;
+  // 最後のマスに許される誤差 a = th − (先のマスの誤差) ごとの表を、その確率で混ぜる
+  const mix = [];
+  for(let k = 0; k <= th; k++) if(dist[k] > 1e-6){ const tb = ldpTable(m.zoneLow, m.zoneHigh, Math.min(th - k, MAX_ERR), cfg); ldpEnsure(tb, F); mix.push({ w: dist[k], tb }); }
+  if(!mix.length) return null;
+  let best = null, bq = 0;
+  for(let x = 0; x < mix[0].tb.acts.length; x++){
+    let q = 0, ok = true;
+    for(const e of mix){ const v = ldpQ(e.tb, e.tb.acts[x], ti, g, F); if(v < 0){ ok = false; break; } q += e.w * v; }
+    if(ok && q > bq){ bq = q; best = mix[0].tb.acts[x].sk; }
+  }
+  if(!best) return null;
+  return { sk: best, tg: best.masses ? [i] : [], c: actualCostOf(best, t, cfg.trait), nt: Math.max(0, t + best.tempDelta), overP: 0, ldp: bq };
+}
+
 function traitTempState(temp){
   const mod400 = temp % 400 === 0;
   const mod200 = temp % 200 === 0 && !mod400;
@@ -1088,6 +1208,11 @@ function tatakiOpening(ms, f, t, cfg){
 }
 
 function stratB(ms,f,t,P,cfg){
+  // ---- 残り1マスは総当たりの最善で仕上げる(lastDP、既定 0。戻りの地金は対象外) ----
+  if(P.lastDP > 0 && (P.lastDProll > 0 || !IN_ROLLOUT)){
+    const lm = lastMassMove(ms, f, t, P, cfg);
+    if(lm) return lm;
+  }
   // ---- 戻りで超過を取り戻す(全マスがゾーンに届いた後) ----
   if(cfg.trait === 'modori' && ms.every(m => m.current >= m.zoneLow) && ms.some(m => m.current > m.zoneHigh))
     return modoriRecover(ms, f, t, cfg);
@@ -1782,6 +1907,10 @@ function mcRand(a){
 }
 // 1回の試行。first を打ったあとは貪欲手順で打ち切り、大成功なら1を返す。
 function mcRollout(ms0, f, t, cfg, first){
+  IN_ROLLOUT++;
+  try{ return mcRolloutBody(ms0, f, t, cfg, first); } finally { IN_ROLLOUT--; }
+}
+function mcRolloutBody(ms0, f, t, cfg, first){
   const ms = ms0.map((m,i)=>({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
                                ideal: sampleIdeal(i, m) }));
   let fo = f, to = t, mv = first;
@@ -2161,6 +2290,10 @@ function traitMark(t){
 const PLAN_TRIALS = 200, PLAN_MIN = 0.5, PLAN_MIN_SAMPLE = 8, PLAN_RANDOM = 2;
 
 function tracedRollout(ms0, f, t, cfg, first, out){
+  IN_ROLLOUT++;
+  try{ return tracedRolloutBody(ms0, f, t, cfg, first, out); } finally { IN_ROLLOUT--; }
+}
+function tracedRolloutBody(ms0, f, t, cfg, first, out){
   // 乱数は呼び出し側(buildPlan)が盤面から決めた種で固定している
   const ms = ms0.map((m,i)=>({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
                                ideal: sampleIdeal(i, m) }));
