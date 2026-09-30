@@ -66,6 +66,10 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .cand:active{background:var(--ember); color:#fbf3e0;}
 .cand.crit{border-color:rgba(196,26,143,.5); color:var(--pink);}
 .cand.crit:active{background:var(--pink); color:#fbf3e0;}
+/* 温度の一覧: 1行4つ(行の先頭が200℃の倍数)。数が多いのでマスの候補より詰める */
+.cand-row.temp{grid-template-columns:repeat(4,1fr); margin-bottom:10px;}
+.cand-row.temp .cand{padding:9px 2px; font-size:15px;}
+.cand.cur{border-color:var(--ember); color:var(--ember); box-shadow:inset 0 0 0 1px var(--ember);}
 .cand-more{width:100%; background:transparent; border:1px dashed var(--line);
   color:var(--dim); border-radius:7px; padding:10px; font-size:12.5px; margin:2px 0 10px;}
 /* ===== 推奨手順:各手の右に「ここまで打った」ボタン ===== */
@@ -87,7 +91,6 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .pexec .s{display:block; font-size:9px; color:var(--dim); font-weight:600;}
 .pexec .s.ok{color:var(--green);}
 .pexec .s.warn{color:var(--dim); text-decoration:line-through;}
-.plist-note{font-size:10px; color:var(--dim); line-height:1.5; margin:8px 2px 0;}
 .dup-line{font-size:10.5px; color:var(--dim); text-align:center; margin:8px 0 4px;
   border-top:1px dashed var(--line); padding-top:6px;}
 .badge.wait{background:rgba(181,72,15,.12); color:var(--ember);
@@ -477,14 +480,14 @@ table.sk .cst{text-align:right; font-weight:700;}
 }
 /* 柄はページ全体の地(html)に敷く。body に敷いて background-attachment:fixed にすると、
    iPhone の Safari などで柄が出ないことがあるため、固定もしない(ページと一緒に流れる)。 */
-:root{--css-ver:"a0e77fcf";}
+:root{--css-ver:"7a4f0bab";}
 .ver{margin-top:12px; font-size:10.5px; color:var(--dim); text-align:right;}
 .ver b{color:var(--red);}   /* 表示中の見た目のファイルの版(tools/stamp.py が付け直す) */
 html{
   /* 地は全面同じ色。上部を明るくするグラデーションは、ページの高さで途切れて
      下の方だけ色が変わって見えたためやめた。 */
   background:
-    url("bg-motif.svg?v=a0e77fcf") 0 0 / 900px 900px repeat,
+    url("bg-motif.svg?v=7a4f0bab") 0 0 / 900px 900px repeat,
     var(--bg);
 }
 body{background:transparent;}
@@ -543,8 +546,6 @@ body{background:transparent;}
 
 /* 推奨手: 技名を見出しらしく */
 .rec-skill{font-size:18px; letter-spacing:.02em;}
-.rec-skill::before{content:'推奨手'; display:block; font-size:10px; color:var(--dim);
-  font-weight:700; letter-spacing:.1em; margin-bottom:1px;}
 
 /* 入力画面(下から出る紙): つまみを付けて引き出しらしく */
 .pad{background:linear-gradient(180deg,#fbf3e0,#f4e8cc); box-shadow:0 -6px 20px rgba(0,0,0,.25);}
