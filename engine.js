@@ -11,7 +11,6 @@ const G = {
   masses: [],
   level: 80, hammerId:'light', star:3, trait:'shuchu',
   rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null,
-  customThreshold: 7,   // 手動設定の大成功の許容誤差(プリセットは素材ごとの値を使う)
   // 実行済み反映で「数値の手入力待ち」になっているマス番号
   pending: [], undoSnap: null, showRange: true, hist: [], posts: null, obs: null,
   fx: null   // 値が変わった直後のマスに一度だけ動きを付ける
@@ -653,10 +652,12 @@ function baseValues(key){ return BASE_N[key] || null; }
 const GRID_ROWS = 3, GRID_COLS = 2; // 縦3×横2(超かがやきの樹液)
 // 大成功の許容誤差(誤差合計)。商材の盤面の形で決まるため、素材を切り替えるたびに設定し直す。
 // 出典: 公式ガイドブックを元にした種別ごとの表(6マスの練金ツボ・家具=7、盾・アタマ=3 など)。
-// 手動設定では盤面の形が分からないので、設定の「許容誤差」(G.customThreshold)を使う。
+// 手動設定では、使うマスの数で決める(利用者の指示。2マス=0・3マス=2・4マス=3・5マス=5・6マス=7。
+// 幽紋刀・ブルームシールド・光の鍛冶ハンマー・6マスの素材と同じ値)。
 let SUCCESS_THRESHOLD = 7;
 const DEFAULT_THRESHOLD = 7;
-function isValidThreshold(v){ return Number.isInteger(v) && v >= 0 && v <= 99; }
+const THRESHOLD_BY_MASSES = [0, 0, 0, 2, 3, 5, 7];     // 添字 = 使うマスの数
+function thresholdForMasses(n){ return THRESHOLD_BY_MASSES[Math.max(0, Math.min(6, n))]; }
 // 素材ごとの設定(許容誤差と、評価の重みの上書き)を反映する。素材を切り替えた時に呼ぶ。
 function applyThreshold(){
   // 評価の重みは既定値に戻してから、素材に上書きがあれば重ねる
@@ -667,7 +668,7 @@ function applyThreshold(){
     if(pp && pp.params) Object.assign(PARAMS, pp.params);
   }
   if(G.preset === 'custom'){
-    SUCCESS_THRESHOLD = isValidThreshold(G.customThreshold) ? G.customThreshold : DEFAULT_THRESHOLD;
+    SUCCESS_THRESHOLD = Array.isArray(G.masses) ? thresholdForMasses(G.masses.filter(m => !m.off).length) : DEFAULT_THRESHOLD;
     return;
   }
   const p = PRESETS[G.preset];
@@ -2028,7 +2029,7 @@ async function stratMCAsync(ms, f, t, P, cfg, onProgress){
    手(move)は技オブジェクトを含むため、技はIDで送って受け側で引き直す。 */
 function mcSnapshot(){
   return { G: { trait:G.trait, posts:G.posts, temp:G.temp, focus:G.focus, masses:G.masses, level:G.level,
-                hammerId:G.hammerId, star:G.star, preset:G.preset, customThreshold:G.customThreshold },
+                hammerId:G.hammerId, star:G.star, preset:G.preset },
            lit: litMassIndex, simFirstMove };
 }
 function mcRestore(snap){

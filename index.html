@@ -11,7 +11,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=35f058cb">
+<link rel="stylesheet" href="style.css?v=79a874a8">
 </head>
 <body>
 
@@ -120,16 +120,14 @@
           ① 上の「地金特性」を選ぶ<br>
           ② 使うマスだけチェックを残す(外したマスは盤面から消えます)<br>
           ③ 各マスの成功ゾーンを 下限〜上限 で入れる<br>
-          ④ 大成功の許容誤差(誤差の合計がいくつ以下なら大成功か)を入れる<br>
-          ⑤「ゾーンを反映」を押す
+          ④「ゾーンを反映」を押す(大成功の許容誤差は、使うマスの数で自動で決まります)
         </div>
         <div id="zoneRows"></div>
         <div class="zrow zth">
           <span class="zl">許容誤差</span>
-          <input type="number" id="z-th" min="0" max="99" step="1" oninput="markZoneDirty()">
-          <span class="zs">以下で大成功</span>
+          <span class="zs" id="z-th-auto"></span>
         </div>
-        <div class="zth-note">例: 6マスの練金ツボ・家具は7、盾・アタマは3</div>
+        <div class="zth-note">使うマスの数で決まります: 2マス 0・3マス 2・4マス 3・5マス 5・6マス 7</div>
         <div id="zoneWarn" style="font-size:11.5px;color:#e5534b;margin-top:6px;display:none"></div>
         <div style="display:flex;align-items:center;margin-top:8px">
           <button class="calc" style="flex:0 0 auto" onclick="applyZones()">ゾーンを反映</button>
@@ -169,8 +167,8 @@
   </div>
 </div>
 
-<script src="engine.js?v=35f058cb"></script>
-<script src="mc-pool.js?v=35f058cb"></script>
-<script src="ui.js?v=35f058cb"></script>
+<script src="engine.js?v=79a874a8"></script>
+<script src="mc-pool.js?v=79a874a8"></script>
+<script src="ui.js?v=79a874a8"></script>
 </body>
 </html>

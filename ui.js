@@ -335,6 +335,8 @@ function renderDetail(){
   let h = '';
   // 打った手の履歴は出さない。取り消しは「直前の反映を取り消す」で足りる。
   if(G.plan.length){
+    // 2手目以降は、1手目の結果(ロール・会心・戻り・点灯)で変わる。手順を鵜呑みにしないよう常に添える(利用者の指示)
+    h += '<div class="plan-note">※あくまでも目安です。この先の手順は変わり得ます。</div>';
     h += '<div style="color:var(--dim);font-size:11px;margin-bottom:6px">'
        + '何手かまとめて打った時は、打ったところの「ここまで打った」を押してください</div>';
     let f = G.focus;
@@ -889,9 +891,7 @@ function onPresetChange(){
   const box = document.getElementById('zoneEdit');
   if(v === 'custom'){
     box.style.display = 'block';
-    // 手動設定は今の盤面(直前の素材のゾーン)を引き継いで始まるので、許容誤差も引き継ぐ。
-    // 切り替えただけで計算の前提が変わらないようにし、入力欄には実際に使う値を出す。
-    G.customThreshold = SUCCESS_THRESHOLD;
+    // 手動設定は今の盤面(直前の素材のゾーン)を引き継いで始まる。許容誤差は使うマスの数で決まる。
     G.preset = 'custom';
     applyThreshold();
     renderZoneRows();
@@ -925,8 +925,6 @@ function renderZoneRows(){
   const el = document.getElementById('zoneRows');
   if(!el) return;
   markZoneDirty(false);
-  const th = document.getElementById('z-th');
-  if(th) th.value = G.customThreshold;
   el.innerHTML = G.masses.map((m,i)=>{
     const on = !m.off;
     // 無効化したマスはゾーンを0にしているので、入力欄には控えを表示する
@@ -942,6 +940,15 @@ function renderZoneRows(){
        <input type="number" id="z-hi-${i}" value="${hi}" min="1" max="999"
               oninput="markZoneDirty()">
      </div>`;}).join('');
+  showZoneThreshold();
+}
+// 許容誤差はチェックの入ったマスの数で決まるので、入切に合わせてその場で出す
+function showZoneThreshold(){
+  const el = document.getElementById('z-th-auto');
+  if(!el) return;
+  let n = 0;
+  for(let i = 0; i < G.masses.length; i++){ const c = document.getElementById('z-on-'+i); if(c ? c.checked : !G.masses[i].off) n++; }
+  el.textContent = thresholdForMasses(n) + ' 以下で大成功(' + n + 'マス)';
 }
 
 // チェックの入切で行の見た目だけ切り替える(反映はボタンで行う)
@@ -949,6 +956,7 @@ function onZoneToggle(i){
   const row = document.getElementById('z-row-'+i);
   const on  = document.getElementById('z-on-'+i).checked;
   if(row) row.classList.toggle('zoff', !on);
+  showZoneThreshold();
   markZoneDirty();
 }
 
@@ -979,13 +987,6 @@ function applyZones(){
               warn.style.display = 'block'; }
     return;
   }
-  const thEl = document.getElementById('z-th');
-  const th = thEl && thEl.value !== '' ? Number(thEl.value) : NaN;
-  if(!isValidThreshold(th)){
-    if(warn){ warn.textContent = '許容誤差は0〜99の整数で入れてください。';
-              warn.style.display = 'block'; }
-    return;
-  }
   if(warn) warn.style.display = 'none';
   for(const x of next){
     const m = G.masses[x.i];
@@ -1009,8 +1010,7 @@ function applyZones(){
   G.pending = G.pending.filter(i => !G.masses[i].off);
   if(Array.isArray(G.obs)) G.masses.forEach((m,i)=>{ if(m.off) G.obs[i] = null; });
   G.preset = 'custom';
-  G.customThreshold = th;
-  applyThreshold();                  // 反映しないと、直前の素材の許容誤差で計算し続ける
+  applyThreshold();                  // 使うマスの数が変わるので、許容誤差も決め直す
   G.rec = null; G.plan = [];
   renderZoneRows(); markZoneDirty(false); renderAll(); save();
 }
@@ -1056,7 +1056,6 @@ function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
     level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax, lit:litMassIndex,
-    customThreshold:G.customThreshold,
     pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
   })); }catch(e){}
 }
@@ -1074,8 +1073,8 @@ function load(){
     delete G.lit;
     G.masses.forEach(m => { if(m.off === undefined) m.off = false; });
     syncActiveMask();
-    if(!isValidThreshold(G.customThreshold)) G.customThreshold = DEFAULT_THRESHOLD;
-    applyThreshold();                 // 許容誤差は素材で決まる(手動設定は設定値)
+    delete G.customThreshold;          // 以前の版で手入力した許容誤差は使わない(使うマスの数で決まる)
+    applyThreshold();                 // 許容誤差は素材で決まる(手動設定は使うマスの数)
     if(!Array.isArray(G.pending)) G.pending = [];
     if(!Array.isArray(G.hist)) G.hist = [];
     // 廃止した素材が保存データに残っていた場合は既定へ戻す
