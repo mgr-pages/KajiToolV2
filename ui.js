@@ -1114,7 +1114,7 @@ function load(){
   if(!rated.length) return;
   const note = document.createElement('option');
   note.disabled = true;
-  note.textContent = '( )は大成功率の目安 ※推奨どおり・職人Lv80・光のハンマー★3';
+  note.textContent = '( )は大成功率の目安 ※職人Lv80、光★3の場合';
   sel.appendChild(note);
   const show = on => { for(const r of rated) r.op.textContent = on ? r.withRate : r.name; };
   ['focus', 'mousedown', 'touchstart'].forEach(ev => sel.addEventListener(ev, () => show(true), { passive: true }));
