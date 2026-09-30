@@ -11,6 +11,15 @@ self.onmessage = function(e){
   const q = e.data;
   try{
     mcRestore(q.snap);
+    if(q.type === 'prepare'){
+      // 候補選び(mcPrepare)。最後の1マスの表づくりなどで重くなることがあるので、画面の外で行う
+      const prep = mcPrepare(q.ms, q.f, q.t, PARAMS, q.cfg);
+      const hasMove = prep.move !== undefined;
+      self.postMessage({ id: q.id, type: 'done', hasMove,
+        move: hasMove && prep.move ? moveToWire(prep.move) : null,
+        pool: hasMove ? null : prep.pool.map(moveToWire), seedBase: hasMove ? 0 : prep.seedBase });
+      return;
+    }
     if(q.type === 'plan'){
       // 手順用の試行(buildPlan の前半)。集計は画面側で順に繋いでから行う
       const traces = planTraces(q.ms, q.cfg, moveFromWire(q.first), q.i0, q.i1);

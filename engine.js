@@ -28,9 +28,8 @@ const PRESETS = {
     //   1局の計算時間はほぼ同じ(37.0秒 → 38.8秒、このコンテナの1本の処理)。
     //   実局(同じ局どうし200局): 69.0% → 70.5%。差は誤差の範囲(p=0.78)で、実局では未確定。
     mc: { gate: 0, early: true },
-    // 残り1マスは総当たりの最善で仕上げ、先読みの中の打ち手でも使う。先読みあり・同じ局どうし(乱数テープ・種31)100局で
-    //   68.0%→75.0%(18局対25局)。
-    params: { lastDP:1, lastDProll:1 },
+    // 残り1マスは総当たりの最善で仕上げ、先読みの中の打ち手でも使う(既定の lastDP・lastDProll)。先読みあり・同じ局どうし
+    //   (乱数テープ・種31)100局で 68.0%→75.0%(18局対25局)。
     zones: [[155,161],[220,230],[155,161],[220,230],[140,150],[140,150]]
   },
   // ブルームシールド(防具鍛冶・盾、地金特性:集中力変化)
@@ -46,10 +45,10 @@ const PRESETS = {
     // 許容誤差3のこの盤面では会心で理想値を捉える価値が足りなかった。
     // tests と同じモデルの貪欲エンジンで座標探索し(3000局・種7)、別の種(5000局・種101)で
     // 大成功 33.5% → 39.9% を確認した。
-    // 残り1マスは総当たりの最善で仕上げ(lastDP)、先読みの中の打ち手でも使う(lastDProll)。
+    // 残り1マスは総当たりの最善で仕上げ(lastDP)、先読みの中の打ち手でも使う(lastDProll)。どちらも既定で入る。
     //   先読みあり・同じ局どうし: 種70・71 50.8%→60.0%(22局対33局)、種72・73 53.3%→65.0%(26局対40局)、
     //   計240局で 48局対73局(z=2.27)。先読みの中でも使うと、最後の1マスの前の手の選び方も良くなる。
-    params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0, lastDP:1, lastDProll:1 },
+    params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0 },
     zones: [[207,213],[255,267],[255,267],[207,213],[0,0],[0,0]]
   },
   // 輝紋章の盾(防具鍛冶・盾、地金特性:威力会心率上昇)
@@ -68,6 +67,9 @@ const PRESETS = {
     //   litReady 16(点灯の抽選に仕上げ位置で臨む)も加えた。12〜40で効きは同じ。
     //     貪欲(種303・404・505、同じ局どうし各5000局): +5.3 / +3.9 / +4.6pt(z=6.32 / 4.83 / 5.45)
     //     先読み(乱数テープ、同じ局どうし200局): 71.5% → 75.5%(新だけ大成功34 / 今だけ26、p=0.37)
+    //   残り1マスは総当たりの最善で仕上げ、先読みの中の打ち手でも使う(既定の lastDP・lastDProll)。先読みあり・同じ局どうし
+    //   (乱数テープ・種41)50局で 84.0% → 76.0%(新だけ大成功6 / 今だけ10、z=-1.0)と差は誤差の範囲。
+    //   局数が足りないとみて、ほかの商材とそろえて入れた(利用者の判断)。
     params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0, heat:0, rush:5.4, litReady:16 },
     // 先読み: 独走局面でも省かず(gate 0)、試行を2倍にする(S 1280)。決定局面262件のリグレット(pt/局面)で選んだ。
     //   独走で省いていた局面(手の11%): 2.54 → 0.60 / 先読みする局面: 0.72 → 0.51(候補数を増やしても 0.71 で効かない)
@@ -85,6 +87,10 @@ const PRESETS = {
   //   許容誤差は5(公開情報2件「5マスの鍛冶ハンマーは誤差5以内で大成功」。利用者も了承)。
   //   重み: 輝紋章の盾の重みで、貪欲(種303・404 各3000局)60.0%/59.8% → 75.2%/75.0%。
   //   そこから tools/tune.js(種7)で effK 2・litReady 32。種202・303・404 で +1.4/+1.2/+1.8pt(z=1.65/1.44/2.14)。
+  //   残り1マスは総当たりの最善で仕上げ、先読みの中の打ち手でも使う(既定の lastDP・lastDProll)。先読みあり・同じ局どうしで
+  //   種60・61 の48局 87.5% → 79.2%(新だけ大成功4 / 今だけ8)、乱数テープ・種62 の48局 85.4% → 87.5%(7 / 6)。
+  //   合わせて96局で 86.5% → 83.3%(z=-0.6)と差は誤差の範囲。局数が足りないとみて、ほかの商材とそろえて入れた
+  //   (利用者の判断)。lastDP だけ(先読みの中では使わない)は種62 で 85.4% → 81.3%。
   kajihammer: { name: '光の鍛冶ハンマー', trait: 'kaishin', threshold: 5, off: [5],
     params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0, heat:0, rush:5.4, litReady:32, effK:2 },
     zones: [[120,126],[180,186],[236,245],[140,149],[160,170],[0,0]] },
@@ -135,9 +141,8 @@ const PRESETS = {
     //   1局の計算時間は約2.3倍(19.8秒 → 45.3秒、このコンテナの1本の処理)。
     //   実局(同じ局どうし200局): 61.0% → 62.0%。差は誤差の範囲(p=0.90)で、実局では未確定。
     mc: { gate: 0, K: 16 },
-    // 残り1マスは総当たりの最善で仕上げ、先読みの中の打ち手でも使う。先読みあり・同じ局どうし(乱数テープ・種31)100局で
-    //   63.0%→68.0%(10局対15局)。
-    params: { lastDP:1, lastDProll:1 },
+    // 残り1マスは総当たりの最善で仕上げ、先読みの中の打ち手でも使う(既定の lastDP・lastDProll)。先読みあり・同じ局どうし
+    //   (乱数テープ・種31)100局で 63.0%→68.0%(10局対15局)。
     zones: [[180,190],[245,251],[150,156],[180,190],[180,190],[245,251]]
   },
   // 超ようせいのひだね(地金特性:威力会心率上昇)
@@ -154,23 +159,24 @@ const PRESETS = {
     // litReady 100: 点灯の抽選に、点灯したら仕上げられる位置で臨む(威力会心率上昇)。
     //   貪欲(探索に使っていない種303・404・505、同じ局どうし各5000局): +9.1 / +9.6 / +9.2pt(z≥10)
     //   先読み(乱数テープ、同じ局どうし200局): 76.0% → 80.0%(新だけ大成功35 / 今だけ27、p=0.37)
-    // 残り1マスは総当たりの最善で仕上げ、先読みの中の打ち手でも使う(lastDP・lastDProll)。先読みあり・同じ局どうし
+    // 残り1マスは総当たりの最善で仕上げ、先読みの中の打ち手でも使う(既定の lastDP・lastDProll)。先読みあり・同じ局どうし
     //   (乱数テープ・種41)50局で 80.0%→86.0%(5局対8局)。
-    params: { cap:24, adv:1.5, heat:1, ov:6, rush:0, center:4.5, pr:2.4, te:7.5, litReady:100, lastDP:1, lastDProll:1 },
+    params: { cap:24, adv:1.5, heat:1, ov:6, rush:0, center:4.5, pr:2.4, te:7.5, litReady:100 },
     zones: [[180,190],[250,258],[210,216],[250,258],[210,216],[145,155]]
   }
 };
 // 商材の選択欄に出す大成功率の目安(%、5%刻み)。このツールの推奨(先読みあり)どおりに打った場合で、
 // 職人Lv80・光のハンマー★3。tools/analyze.js --mode mc で今のエンジンの設定のまま打った局の割合(括弧内は局数と95%の範囲)。
 //   超かがやきの樹液 75.0%(100局 67〜83%) / 超あまつゆのいと 68.0%(100局 59〜77%)
-//   超ようせいのひだね 86.0%(50局 76〜96%) / 輝紋章の盾 77.2%(232局 72〜83%)
+//   超ようせいのひだね 86.0%(50局 76〜96%) / 輝紋章の盾 76.0%(50局 64〜88%)
 //   ブルームシールド 62.5%(240局 56〜69%) / 虹色のオーブ 69.4%(134局 62〜77%)
-//   幽紋刀 45.1%(144局 37〜53%) / 光の鍛冶ハンマー 88.5%(113局 83〜94%)
-// 樹液・あまつゆ・ひだね・ブルームは、残り1マスを総当たりの最善で仕上げる設定(lastDP・lastDProll)を
-// 入れた後の値。ブルームの 62.5% は5%刻みのちょうど中間なので、高く見せないよう低い方の 60 にした。
+//   幽紋刀 45.1%(144局 37〜53%) / 光の鍛冶ハンマー 83.3%(96局 76〜91%)
+// 樹液・あまつゆ・ひだね・ブルーム・輝紋章の盾・光の鍛冶ハンマーは、残り1マスを総当たりの最善で仕上げる設定
+// (lastDP・lastDProll)を入れた後の値。ブルームの 62.5% は5%刻みのちょうど中間なので、高く見せないよう低い方の 60 にした。
+// 虹色のオーブ・幽紋刀は lastDP を入れる前の値(貪欲では同じ局どうし5000局で +3.5pt / +3.6pt。先読みありでは未測定)。
 // 過去の検証の記録は、今のエンジンで打ち直して手順と結果が一致することを確かめてから使った。
 // 打ち方を変えたら測り直すこと。
-const PRESET_RATES = { kagayaki:75, amatsuyu:70, hidane:85, kimonsho:75, bloom:60, orb:70, yumon:45, kajihammer:90 };
+const PRESET_RATES = { kagayaki:75, amatsuyu:70, hidane:85, kimonsho:75, bloom:60, orb:70, yumon:45, kajihammer:85 };
 for(const k of Object.keys(PRESET_RATES)) if(PRESETS[k]) PRESETS[k].rate = PRESET_RATES[k];
 
 /* ===================== 演算エンジン ===================== */
@@ -463,22 +469,33 @@ function modoriRedo(ms, f, t, P, cfg){
   return best;
 }
 
-// ===================== 残り1マスの仕上げ(総当たりの最善、lastDP、既定 0) =====================
+// ===================== 残り1マスの仕上げ(総当たりの最善、lastDP・lastDProll、既定で使う) =====================
 // 残り1マスになると、温度も集中力もすべてそのマスに使える。1マスだけなら状態(ゾーン下限までの残り距離 g・
 // 温度 T・集中力 F)が小さいので、打てる手をすべて総当たりで比べて最善の手を選べる(動的計画法)。
 // 実測(ブルームシールド・貪欲 2000局): 残り1マスの時点から誤差0で仕上がる割合は、エンジン 51.9% に対して最善 68.8%。
 // 評価は「全体で大成功になる確率」。先に仕上げたマスの誤差の合計は、理想値の推定(G.posts)から分布を出し、
 // 最後のマスに許される誤差(許容誤差 − 先のマスの誤差)ごとの表を混ぜて使う。
-// 地金特性の効果(会心ターン・消費の増減・威力の増減・点灯)は、そのまま計算に入れる。戻りの地金は対象外。理想値はゾーン内で一様とみなす。
-// 表は必要になった分だけ作り、同じ条件なら使い回す。先読みの中の打ち手では使わない(lastDProll で使える)。
+// 地金特性の効果(会心ターン・消費の増減・威力の増減・点灯)は、そのまま計算に入れる。理想値はゾーン内で一様とみなす。
+// 戻りの地金は、状態に「ゾーンを超えた量」を足した版で計算する(ldpQM。下の説明を参照)。
+// 表は必要になった分だけ作り、同じ条件なら使い回す。lastDProll が 0 なら先読みの中の打ち手では使わない。
+// 省力化(表は Worker ごとに持つので、作る時間とメモリが1回目の計算の重さになる):
+// ・集中力は ldpF(既定 120)で頭打ちにする。最後の1マスにそれ以上は使い切れない
+//   (貪欲 3000局で 200 と比べ、ブルーム・樹液・ひだねとも 99.8% 以上の局が同じ結果)。
+// ・先読みの中は、許される誤差のうち一番ありそうな1つの表だけを使い、集中力は ldpFR(既定 80)で頭打ち。
+// ・値は 0〜65535 の整数(2バイト)で持つ。表の合計が LDP_CACHE_MAX を超えたら、長く使っていない表から捨てる。
+//   省力化の前は、1回目の計算に 樹液 +3.9秒・オーブ +22秒、表のメモリが Worker 1つあたり 28〜102MB かかっていた
+//   (今は +0.7〜2.2秒・2〜5MB)。商材ごとのコメントにある先読みありの成績は、省力化の前の版で測った値。
+// ・候補選び(mcPrepare)は Worker で行う(mc-pool.js)。画面のスレッドで表を作ると最大4秒止まっていた。
 const LDP_TMAX = 2200, LDP_GMAX = 160, LDP_NT = LDP_TMAX / 50;     // 温度 50〜2200℃(50刻み)
+const LDP_SCALE = 65535, LDP_INV = 1 / 65535, LDP_CACHE_MAX = 24 * 1048576;
 const LDP_HIT_IDS = ['tataku', 'tekagen', 'nibai', 'sanbai', 'nerai', 'reppuu', 'yowanerai'];
 const LDP_CACHE = new Map();
 let IN_ROLLOUT = 0;                      // 先読みの試行の中か(mcRollout・tracedRollout が数える)
 function ldpTable(L, H, a, cfg){
-  const key = [L, H, a, cfg.level, cfg.hammerId, cfg.star, cfg.trait].join('|');
+  const mod = cfg.trait === 'modori' ? modoriRange() : null;
+  const key = [L, H, a, cfg.level, cfg.hammerId, cfg.star, cfg.trait].join('|') + (mod ? '|' + mod.min + '|' + mod.max : '');
   let tb = LDP_CACHE.get(key);
-  if(tb) return tb;
+  if(tb){ LDP_CACHE.delete(key); LDP_CACHE.set(key, tb); return tb; }
   const w = H - L + 1, big = a >= MAX_ERR;          // 誤差は4で頭打ちなので、許される誤差が4以上ならゾーン内はどこでも良い
   const pIn = new Float64Array(w), pCrit = new Float64Array(w);
   for(let v = L; v <= H; v++){
@@ -509,7 +526,11 @@ function ldpTable(L, H, a, cfg){
     acts.push({ sk, rows });
   }
   simFirstMove = saved;
-  tb = { L, H, w, pIn, pCrit, acts, V: [] };
+  tb = { L, H, w, pIn, pCrit, acts, V: [], bytes: 0 };
+  if(mod){
+    tb.mod = mod; tb.GM = LDP_GM_M; tb.S = LDP_GM_M + LDP_OM + 1;
+    tb.smLo = Math.max(0, L - LDP_GM_M); tb.smHi = H + LDP_OM + mod.max; tb.smN = tb.smHi - tb.smLo + 1;
+  }
   LDP_CACHE.set(key, tb);
   return tb;
 }
@@ -519,26 +540,110 @@ function ldpQ(tb, act, ti, g, F){
   const row = act.rows[ti];
   if(row.skip || row.c > F) return -1;
   const F2 = F - row.c, V2 = tb.V[F2];
-  if(!act.sk.key) return V2[ldpIdx(row.nti, g)];
+  if(!act.sk.key) return V2[ldpIdx(row.nti, g)] * LDP_INV;
   const L = tb.L, H = tb.H, c = L - g, r = row.r, cr = row.cr, nti = row.nti;
   let s = 0;
   for(let k = 0; k < r.length; k++){
     const v = c + r[k], v2 = c + 2*r[k];
-    const a = v > H ? 0 : (v >= L ? tb.pIn[v - L] : (nti < 0 ? 0 : V2[ldpIdx(nti, L - v)]));
-    const b = v2 >= L ? (v2 >= H ? 1 : tb.pCrit[v2 - L]) : (nti < 0 ? 0 : V2[ldpIdx(nti, L - v2)]);
+    const a = v > H ? 0 : (v >= L ? tb.pIn[v - L] : (nti < 0 ? 0 : V2[ldpIdx(nti, L - v)] * LDP_INV));
+    const b = v2 >= L ? (v2 >= H ? 1 : tb.pCrit[v2 - L]) : (nti < 0 ? 0 : V2[ldpIdx(nti, L - v2)] * LDP_INV);
     s += (1 - cr) * a + cr * b;
   }
   return s / r.length;
 }
 function ldpEnsure(tb, F){
   while(tb.V.length <= F){
-    const Fc = tb.V.length, arr = new Float32Array(LDP_NT * (LDP_GMAX + 1));
-    tb.V.push(arr);                       // 消費は1以上なので、同じ集中力の値は参照しない
+    const Fc = tb.V.length, arr = new Uint16Array(LDP_NT * (LDP_GMAX + 1));
+    tb.V.push(arr); tb.bytes += arr.byteLength;   // 消費は1以上なので、同じ集中力の値は参照しない
     for(let ti = 0; ti < LDP_NT; ti++) for(let g = 1; g <= LDP_GMAX; g++){
       let best = 0;
       for(const act of tb.acts){ const q = ldpQ(tb, act, ti, g, Fc); if(q > best) best = q; }
-      arr[ldpIdx(ti, g)] = best;
+      arr[ldpIdx(ti, g)] = Math.round(best * LDP_SCALE);
     }
+  }
+}
+// ---- 戻りの地金の版 ----
+// 残り1マスなら、200の倍数の温度で起きる戻りの対象は必ずそのマス(ほかのマスはゾーン内なので対象にならない)。
+// ゾーンの手前にいれば12〜16減り(損)、ゾーンを超えていれば減って取り戻せる(超過は失敗で終わらない)。
+// そこで状態の「残り g」に「超えた量 o」を足す(位置 p = g、または GM + o)。戻りの量は範囲の中で等しい確率とみなす。
+// 超えている間は打たず(ゲームでも打たない)、温度操作で200の倍数に着けて戻りを待つ。ゾーンに入れば戻りは起きない。
+// みだれ打ちは仕上がったマスにも当たるので使わない。残りが GM、超えた量が OM を超えたら失敗とみなす
+// (GM は残り160から戻り1回分、OM は1回の打撃で超えうる量。どちらもまず起きない)。
+const LDP_GM_M = LDP_GMAX + 16, LDP_OM = 90;
+// 値 c で温度 nti に着いた時の価値(戻りの前)
+function ldpAtM(tb, V2, nti, c){
+  if(c >= tb.L && c <= tb.H) return tb.pIn[c - tb.L];
+  if(nti < 0) return 0;
+  if(c < tb.L){ const g = tb.L - c; return g <= tb.GM ? V2[nti * tb.S + g] * LDP_INV : 0; }
+  const o = c - tb.H; return o <= LDP_OM ? V2[nti * tb.S + tb.GM + o] * LDP_INV : 0;
+}
+// 戻りを入れた価値。md は着いた温度が200の倍数か。ゾーン内と値0のマスには戻りが起きない
+function ldpAfterM(tb, V2, nti, md, c){
+  if(!md || c <= 0 || (c >= tb.L && c <= tb.H)) return ldpAtM(tb, V2, nti, c);
+  let s = 0;
+  for(let k = tb.mod.min; k <= tb.mod.max; k++) s += ldpAtM(tb, V2, nti, Math.max(0, c - k));
+  return s / (tb.mod.max - tb.mod.min + 1);
+}
+// 表を作る間は、戻りの平均(12〜16の5通り)を層ごとに前もって求めておき、1回の参照で済ませる。
+// sm は200の倍数の温度(11通り)× 値 c(smLo〜smHi)の「戻りを入れた価値」
+function ldpSmoothM(tb, V2){
+  const sm = new Float32Array((LDP_NT / 4) * tb.smN);
+  for(let m = 0; m < LDP_NT / 4; m++){
+    const nti = m * 4 + 3;
+    for(let c = tb.smLo; c <= tb.smHi; c++) sm[m * tb.smN + c - tb.smLo] = ldpAfterM(tb, V2, nti, true, c);
+  }
+  return sm;
+}
+function ldpAfterSM(tb, V2, nti, md, sm, c){
+  if(sm && c >= tb.smLo && c <= tb.smHi) return sm[((nti + 1) / 4 - 1) * tb.smN + c - tb.smLo];
+  return ldpAfterM(tb, V2, nti, md, c);
+}
+// smOf は表を作る間だけ渡す(層ごとの前計算を返す)。最後の手を選ぶ時は渡さずにそのまま計算する
+function ldpQM(tb, act, ti, p, F, smOf){
+  const row = act.rows[ti];
+  if(row.skip || row.c > F) return -1;
+  const over = p > tb.GM;
+  if(over && act.sk.key) return -1;
+  const F2 = F - row.c, V2 = tb.V[F2], nti = row.nti, md = nti >= 0 && (nti + 1) % 4 === 0;
+  const sm = md && smOf ? smOf(F2) : null;
+  const c = over ? tb.H + (p - tb.GM) : tb.L - p;
+  if(!act.sk.key) return ldpAfterSM(tb, V2, nti, md, sm, c);
+  const r = row.r, cr = row.cr, L = tb.L, H = tb.H;
+  let s = 0;
+  for(let k = 0; k < r.length; k++){
+    const v2 = c + 2*r[k];
+    // 会心はゾーンに届けば理想値で止まる(ゾーン内なので戻りは起きない)。届かなければ手前に止まり、戻りを受けうる
+    const b = v2 >= L ? (v2 >= H ? 1 : tb.pCrit[v2 - L]) : ldpAfterSM(tb, V2, nti, md, sm, v2);
+    s += (1 - cr) * ldpAfterSM(tb, V2, nti, md, sm, c + r[k]) + cr * b;
+  }
+  return s / r.length;
+}
+function ldpEnsureM(tb, F){
+  if(tb.V.length > F) return;
+  const cache = new Map();
+  const smOf = F2 => { let x = cache.get(F2); if(!x){ x = ldpSmoothM(tb, tb.V[F2]); cache.set(F2, x); } return x; };
+  const ops = tb.acts.filter(a => !a.sk.key);          // 超えている間は温度操作だけ
+  while(tb.V.length <= F){
+    const Fc = tb.V.length, arr = new Uint16Array(LDP_NT * tb.S);
+    tb.V.push(arr); tb.bytes += arr.byteLength;
+    for(let ti = 0; ti < LDP_NT; ti++) for(let p = 1; p < tb.S; p++){
+      if(p <= tb.GM && p > tb.L) continue;          // 値が負になる位置は起きない
+      let best = 0;
+      for(const act of (p > tb.GM ? ops : tb.acts)){ const q = ldpQM(tb, act, ti, p, Fc, smOf); if(q > best) best = q; }
+      arr[ti * tb.S + p] = Math.round(best * LDP_SCALE);
+    }
+    cache.delete(Fc - 40);                            // 消費は多くても30ほどなので、古い層の前計算は捨てる
+  }
+}
+// 表の合計が上限を超えたら、長く使っていない表から捨てる(keep は今使う表)
+function ldpTrim(keep){
+  let total = 0;
+  for(const tb of LDP_CACHE.values()) total += tb.bytes;
+  if(total <= LDP_CACHE_MAX) return;
+  for(const [k, tb] of LDP_CACHE){
+    if(total <= LDP_CACHE_MAX * 0.75) break;
+    if(keep.includes(tb)) continue;
+    LDP_CACHE.delete(k); total -= tb.bytes;
   }
 }
 // 先に仕上げたマス(i 以外)の誤差の合計の分布 [P(0), P(1), …, P(th)]。超過したマスがあれば null
@@ -559,24 +664,46 @@ function finishedErrDist(ms, i, th){
   return dist;
 }
 function lastMassMove(ms, f, t, P, cfg){
-  // 戻りの地金は超過を取り戻せる分だけ計算の形が違うので対象外
-  if(cfg.trait === 'modori' || isStartState()) return null;
-  const open = [];
-  for(let j = 0; j < ms.length; j++) if(ms[j].zoneHigh > 0 && ms[j].current < ms[j].zoneLow) open.push(j);
-  if(open.length !== 1) return null;
-  const i = open[0], m = ms[i], g = m.zoneLow - m.current;
-  if(g < 1 || g > LDP_GMAX || t % 50 !== 0 || t < 50 || t > LDP_TMAX) return null;
+  if(isStartState()) return null;
+  const mod = cfg.trait === 'modori';
+  const open = [], over = [];
+  for(let j = 0; j < ms.length; j++){
+    if(ms[j].zoneHigh <= 0) continue;
+    if(ms[j].current < ms[j].zoneLow) open.push(j); else if(ms[j].current > ms[j].zoneHigh) over.push(j);
+  }
+  // 残り1マス(ほかはゾーン内)。戻りの地金では、残りの1マスがゾーンを超えている時も戻りで取り戻す道を計算する
+  let i, p;
+  if(open.length === 1 && !over.length){
+    i = open[0]; p = ms[i].zoneLow - ms[i].current;
+    if(p < 1 || p > LDP_GMAX) return null;
+  } else if(mod && !open.length && over.length === 1){
+    i = over[0]; const o = ms[i].current - ms[i].zoneHigh;
+    if(o > LDP_OM) return null;
+    p = LDP_GM_M + o;
+  } else return null;
+  const m = ms[i];
+  if(t % 50 !== 0 || t < 50 || t > LDP_TMAX) return null;
   const th = SUCCESS_THRESHOLD, dist = finishedErrDist(ms, i, th);
   if(!dist) return null;
-  const F = Math.min(f, P.ldpF || 200), ti = t / 50 - 1;
-  // 最後のマスに許される誤差 a = th − (先のマスの誤差) ごとの表を、その確率で混ぜる
+  const roll = IN_ROLLOUT > 0;
+  const F = Math.min(f, roll ? (P.ldpFR || 80) : (P.ldpF || 120)), ti = t / 50 - 1;
+  // 最後のマスに許される誤差 a = th − (先のマスの誤差) ごとの表を、その確率で混ぜる。
+  // 先読みの中は一番ありそうな a の表1枚だけにする
+  let ks = [];
+  if(roll){ let kb = 0; for(let k = 1; k <= th; k++) if(dist[k] > dist[kb]) kb = k; if(dist[kb] > 1e-6) ks = [kb]; }
+  else for(let k = 0; k <= th; k++) if(dist[k] > 1e-6) ks.push(k);
   const mix = [];
-  for(let k = 0; k <= th; k++) if(dist[k] > 1e-6){ const tb = ldpTable(m.zoneLow, m.zoneHigh, Math.min(th - k, MAX_ERR), cfg); ldpEnsure(tb, F); mix.push({ w: dist[k], tb }); }
+  for(const k of ks){
+    const tb = ldpTable(m.zoneLow, m.zoneHigh, Math.min(th - k, MAX_ERR), cfg);
+    if(mod) ldpEnsureM(tb, F); else ldpEnsure(tb, F);
+    mix.push({ w: roll ? 1 : dist[k], tb });
+  }
   if(!mix.length) return null;
+  ldpTrim(mix.map(e => e.tb));
   let best = null, bq = 0;
   for(let x = 0; x < mix[0].tb.acts.length; x++){
     let q = 0, ok = true;
-    for(const e of mix){ const v = ldpQ(e.tb, e.tb.acts[x], ti, g, F); if(v < 0){ ok = false; break; } q += e.w * v; }
+    for(const e of mix){ const v = mod ? ldpQM(e.tb, e.tb.acts[x], ti, p, F) : ldpQ(e.tb, e.tb.acts[x], ti, p, F); if(v < 0){ ok = false; break; } q += e.w * v; }
     if(ok && q > bq){ bq = q; best = mix[0].tb.acts[x].sk; }
   }
   if(!best) return null;
@@ -713,6 +840,8 @@ function massError(current, ideal, zoneLow, zoneHigh){
 //   save : 消費半減ターンで、節約額の大きい技を選ぶ度合い
 //   turn : 特殊温度(会心+400% / 消費半減)に乗る手を優先する度合い
 //   litReady : 点灯の抽選(200の倍数)に、点灯したら仕上げられる位置で臨む度合い(威力会心率上昇のみ)
+//   lastDP / lastDProll : 残り1マスを総当たりの最善で仕上げる / 先読みの中の打ち手でも使う(1で使う。全商材・手動設定の既定)
+//   ldpF / ldpFR : その計算で見る集中力の上限(既定 120 / 先読みの中 80)
 /* 評価パラメータ。素材ごとの効き方は検証済み(0にした時に結果が変わる対局の割合)。
    両方       cap adv land heat ov pr tmax te center far mpm slack effK slackMax
               rush wideAim pairSnipe
@@ -720,7 +849,8 @@ function massError(current, ideal, zoneLow, zoneHigh){
    いとのみ    opening(51.0%) center(16.4%) tatakiFit(5.1%) x2turn aimNow aimRes
    ※ 樹液=超かがやきの樹液(集中力変化) / いと=超あまつゆのいと(たたき変化) */
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
-                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24, x2turn:10, aimNow:1, aimRes:2.2 };
+                 te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24, x2turn:10, aimNow:1, aimRes:2.2,
+                 lastDP:1, lastDProll:1 };
 // 既定の重み。素材ごとの上書き(PRESETS の params)は applyThreshold が重ねる。
 const BASE_PARAMS = Object.freeze(Object.assign({}, PARAMS));
 
@@ -1222,7 +1352,7 @@ function tatakiOpening(ms, f, t, cfg){
 }
 
 function stratB(ms,f,t,P,cfg){
-  // ---- 残り1マスは総当たりの最善で仕上げる(lastDP、既定 0。戻りの地金は対象外) ----
+  // ---- 残り1マスは総当たりの最善で仕上げる(lastDP) ----
   if(P.lastDP > 0 && (P.lastDProll > 0 || !IN_ROLLOUT)){
     const lm = lastMassMove(ms, f, t, P, cfg);
     if(lm) return lm;
@@ -2053,10 +2183,11 @@ function mcRestore(snap){
   applyThreshold();
 }
 function moveToWire(mv){ return { sk: mv.sk.id, tg: mv.tg.slice(), c: mv.c, nt: mv.nt,
-                                  overP: mv.overP || 0, cooling: !!mv.cooling }; }
+                                  overP: mv.overP || 0, cooling: !!mv.cooling, redo: !!mv.redo }; }
 function moveFromWire(w){ const sk = SKILLS.find(s => s.id === w.sk);
   const mv = { sk, tg: w.tg, c: w.c, nt: w.nt, overP: w.overP };
   if(w.cooling) mv.cooling = true;
+  if(w.redo) mv.redo = true;
   return mv; }
 function mcPick(pool, sd, sd2){
   const { S, th } = mcConf();
