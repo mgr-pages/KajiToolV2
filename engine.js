@@ -107,7 +107,17 @@ const PRESETS = {
     //   貪欲(探索に使っていない種202・303・404・505、各3000局)は 約6% → 約33%。
     // 先読み: gate 0・S 1280。今の設定と同じ局どうし(種90〜93 各24局、計96局)で 31.3% → 45.8%(28局対14局、z=2.16)。
     //   候補を16に増やす(K 16)のは、同じ局どうし24局で 8局対8局(片方だけ成功 4対4)と差が無く、計算が2倍になるので見送り。
-    params: { tcost:0.017, cap:12, rush:0.9, heat:8, midare:1, midareW:1.5, mdc:0.5 },
+    // 2マス残りでは、ゾーンに近い方を総当たりの最善で仕上げる(ldp2。もう1マスに集中力を 0.15×残り距離+15、
+    //   誤差を1残す)。貪欲(乱数テープ、選ぶのに使っていない種202・404・505、同じ局どうし各5000局)で
+    //   +1.1 / +1.5 / +1.1pt、計15000局で 37.2% → 38.4%(z=2.62)。先読みでは候補の1つとして比べる。
+    //   仮説と結果: 集中力を多く残すと仕上げ中のマスが足りず、少なすぎるともう1マスが足りない(種303で
+    //   0.3×距離+35 は −5.1pt、0×距離+0 は −9.4pt)。
+    //   見送った仮説(貪欲、同じ局どうし):
+    //   ・重みの再調整(tools/tune.js 種7 で cap 18・pr 0・center 1.5・ov 0 が 35.9% → 40.0%)は、
+    //     選ぶのに使っていない種202・303・404 の計15000局で 37.1% → 36.9%(z=-0.54)。探索の種に合っただけ。
+    //   ・ゾーン内の外れたマスをわざと超過させて戻りでやり直す(redo): 期待誤差2.0以上で −0.7pt(z=-2.6)、
+    //     2.5以上で ±0(種303、5000局)。やり直すとゾーンの12〜16手前に戻り、集中力も足りなくなる。
+    params: { tcost:0.017, cap:12, rush:0.9, heat:8, midare:1, midareW:1.5, mdc:0.5, ldp2:1, ldp2R:0.15, ldp2C:15, ldp2B:1 },
     mc: { gate: 0, S: 1280 },
     zones: [[500,508],[0,0],[300,308],[0,0],[405,413],[0,0]]
   },
@@ -647,11 +657,11 @@ function ldpTrim(keep){
   }
 }
 // 先に仕上げたマス(i 以外)の誤差の合計の分布 [P(0), P(1), …, P(th)]。超過したマスがあれば null
-function finishedErrDist(ms, i, th){
+function finishedErrDist(ms, i, th, i2){
   let dist = [1];
   for(let j = 0; j < ms.length; j++){
     const m = ms[j];
-    if(j === i || m.zoneHigh <= 0) continue;
+    if(j === i || j === i2 || m.zoneHigh <= 0) continue;
     if(m.current > m.zoneHigh) return null;
     const n = m.zoneHigh - m.zoneLow + 1;
     const p = (G.posts && G.posts[j] && G.posts[j].length === n) ? G.posts[j] : null;
@@ -708,6 +718,47 @@ function lastMassMove(ms, f, t, P, cfg){
   }
   if(!best) return null;
   return { sk: best, tg: best.masses ? [i] : [], c: actualCostOf(best, t, cfg.trait), nt: Math.max(0, t + best.tempDelta), overP: 0, ldp: bq };
+}
+
+// ---- 2マス残り: ゾーンに近い方を総当たりの最善で仕上げる(ldp2、既定 0。実験) ----
+// もう1マスのために集中力を ldp2R × そのマスの残り距離 + ldp2C だけ残し、残りの集中力で計算する。
+// このマスに許す誤差は、仕上がったマスの誤差を引いた残りから、もう1マスの分 ldp2B を差し引いたもの。
+// もう1マスには当てない(2マスを同時に打つ技は使わない)。戻りの地金でも、戻りは近い方のマスに来る。
+function twoMassMove(ms, f, t, P, cfg){
+  if(isStartState()) return null;
+  const open = [];
+  for(let j = 0; j < ms.length; j++){
+    if(ms[j].zoneHigh <= 0) continue;
+    if(ms[j].current > ms[j].zoneHigh) return null;
+    if(ms[j].current < ms[j].zoneLow) open.push(j);
+  }
+  if(open.length !== 2) return null;
+  const gap = j => ms[j].zoneLow - ms[j].current;
+  const [i, j] = gap(open[0]) <= gap(open[1]) ? open : [open[1], open[0]];
+  const p = gap(i);
+  if(p < 1 || p > LDP_GMAX || t % 50 !== 0 || t < 50 || t > LDP_TMAX) return null;
+  const F = Math.min(f - Math.round((P.ldp2R || 0) * gap(j) + (P.ldp2C || 0)), P.ldpF || 120);
+  if(F < 5) return null;
+  const th = SUCCESS_THRESHOLD, dist = finishedErrDist(ms, i, th, j);
+  if(!dist) return null;
+  const mod = cfg.trait === 'modori', ti = t / 50 - 1, mix = [];
+  for(let k = 0; k <= th; k++){
+    const a = th - k - (P.ldp2B || 0);
+    if(dist[k] <= 1e-6 || a < 0) continue;
+    const tb = ldpTable(ms[i].zoneLow, ms[i].zoneHigh, Math.min(a, MAX_ERR), cfg);
+    if(mod) ldpEnsureM(tb, F); else ldpEnsure(tb, F);
+    mix.push({ w: dist[k], tb });
+  }
+  if(!mix.length) return null;
+  ldpTrim(mix.map(e => e.tb));
+  let best = null, bq = 0;
+  for(let x = 0; x < mix[0].tb.acts.length; x++){
+    let q = 0, ok = true;
+    for(const e of mix){ const v = mod ? ldpQM(e.tb, e.tb.acts[x], ti, p, F) : ldpQ(e.tb, e.tb.acts[x], ti, p, F); if(v < 0){ ok = false; break; } q += e.w * v; }
+    if(ok && q > bq){ bq = q; best = mix[0].tb.acts[x].sk; }
+  }
+  if(!best) return null;
+  return { sk: best, tg: best.masses ? [i] : [], c: actualCostOf(best, t, cfg.trait), nt: Math.max(0, t + best.tempDelta), overP: 0 };
 }
 
 function traitTempState(temp){
@@ -1357,6 +1408,12 @@ function stratB(ms,f,t,P,cfg){
     const lm = lastMassMove(ms, f, t, P, cfg);
     if(lm) return lm;
   }
+  if(P.ldp2 > 0 && !IN_ROLLOUT){
+    const m2 = twoMassMove(ms, f, t, P, cfg);
+    // 先読みの候補を作っている間(RANK)は決め打ちせず、候補に足すだけにする(選ぶのは先読み)。
+    // もう1マスに残す集中力は目安なので、先読みの判断より悪い局面もありうるため
+    if(m2){ if(RANK) LDP2_CAND = m2; else return m2; }
+  }
   // ---- 戻りで超過を取り戻す(全マスがゾーンに届いた後) ----
   if(cfg.trait === 'modori' && ms.every(m => m.current >= m.zoneLow) && ms.some(m => m.current > m.zoneHigh))
     return modoriRecover(ms, f, t, cfg);
@@ -2002,8 +2059,9 @@ function mcConf(){
 }
 const MC_CHUNK = 32;                 // この件数ごとに描画へ譲る
 let RANK = null;
+let LDP2_CAND = null;                 // 候補を作っている間に見つかった、2マス残りの総当たりの手
 function rankedMoves(ms, f, t, P, cfg, K){
-  RANK = [];
+  RANK = []; LDP2_CAND = null;
   const ret = stratB(ms, f, t, P, cfg);
   let r = RANK; RANK = null;
   // 貪欲エンジンは2マス同時本会心などの優先処理で、評価ループに入る前に手を返すことがある。
@@ -2037,6 +2095,11 @@ function rankedMoves(ms, f, t, P, cfg, K){
       if((e.x.overP||0) > 0) continue;          // 超過しうる手は入れない
       seen.add(k); out.extra.push(e.x);
     }
+  }
+  if(LDP2_CAND){
+    const k = LDP2_CAND.sk.id+'|'+(LDP2_CAND.tg||[]).join(',');
+    if(!seen.has(k)) out.extra.push(LDP2_CAND);
+    LDP2_CAND = null;
   }
   return out;
 }
