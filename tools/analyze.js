@@ -19,17 +19,19 @@
      --log FILE         1局ごとの結果を追記する。同じ FILE で再実行すると、記録済みの局は飛ばす
                         (途中で止まっても続きから再開できる)
      --summary FILE     記録済みの FILE を集計して表示するだけ
+     --from N           局 N から打つ(既定 0)。局の結果は seed と局の番号だけで決まるので、
+                        --from と --games で範囲を分けて並べて回しても、通しで打った時と同じ局になる
    ===================================================================== */
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 function args(){
-  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, tape:0, log:null, summary:null };
+  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, tape:0, log:null, summary:null, from:0 };
   const a = process.argv.slice(2);
   for(let i = 0; i < a.length; i++){
     const k = a[i].replace(/^--/, ''), v = a[++i];
     if(!(k in o)){ console.error('不明な引数: ' + a[i-1]); process.exit(2); }
-    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck','tape'].includes(k) ? Number(v) : v);
+    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck','tape','from'].includes(k) ? Number(v) : v);
   }
   return o;
 }
@@ -163,7 +165,7 @@ function summarize(rows, label){
   if(o.log && fs.existsSync(o.log)){
     for(const l of fs.readFileSync(o.log, 'utf8').split('\n').filter(Boolean)){ const r = JSON.parse(l); done.add(r.g); rows.push(r); }
   }
-  for(let g = 0; g < o.games; g++){
+  for(let g = o.from; g < o.games; g++){
     if(done.has(g)) continue;
     const r = await playGame(E, o, g);
     rows.push(r);
