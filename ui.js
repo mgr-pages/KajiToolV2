@@ -98,16 +98,9 @@ function markersFor(m, skill, massIdx){
 
   const out = {
     zone:[pct(lo), pct(hi)], cur:pct(m.current),
-    pink:null, blue:null, red:null,
+    blue:null, red:null,
     raw:{ lo, hi, cur:Math.round(m.current) }
   };
-
-  // 本会心ゾーン:技ごとに成立範囲が違うので、その和をとる
-  const cz = critZoneRange(lo, hi, G.temp, G.level, G.trait, massIdx);
-  if(cz){
-    out.pink = [pct(cz[0]), pct(cz[1])];
-    out.raw.pink = [Math.round(cz[0]), Math.round(cz[1])];
-  }
 
   if(skill && skill.key){
     // 点灯マスは前進量が2倍。共通のロールで描くと、盤面のバーが実際の半分の幅になる
@@ -179,9 +172,11 @@ function renderBoard(){
   const usedRow = r => !G.masses[2*r].off || !G.masses[2*r+1].off;
   const usedCol = c => [0,1,2].some(r => !G.masses[2*r+c].off);
   const anyUsed = G.masses.some(m => !m.off);
+  // 1列だけの盤は、段の幅をふつうの盤の半分にして中央に置く(ゲージが横いっぱいに伸びないように)
+  const oneCol = anyUsed && (usedCol(0) !== usedCol(1));
   for(let row=0; row<3; row++){
     if(anyUsed && !usedRow(row)) continue;
-    html += '<div class="brow">';
+    html += `<div class="brow${oneCol ? ' half' : ''}">`;
     for(let col=0; col<2; col++){
       if(anyUsed && !usedCol(col)) continue;
       const i = row*2+col;
@@ -236,9 +231,6 @@ function buildBar(mk, flip){
   };
   const line = (v,cls) => `<i class="${cls}" style="left:${v}%"></i>`;
   let s = '';
-  // 本会心ゾーンを先に敷き、成功ゾーンを上に重ねる。
-  // 成功ゾーンの方が判断上重要なので、重なっても必ず見えるようにする。
-  if(mk.pink) s += band(mk.pink[0], mk.pink[1], 'm-pink');
   if(mk.zone) s += band(mk.zone[0], mk.zone[1], 'm-green');
   if(G.showRange && mk.blue) s += band(mk.blue[0], mk.blue[1], 'm-blue');
   if(G.showRange && mk.red)  s += band(mk.red[0],  mk.red[1],  'm-red');
