@@ -1,6 +1,6 @@
 {
-  "name": "超素材をつくろう！",
-  "short_name": "超素材",
+  "name": "鍛冶アドバイザー",
+  "short_name": "鍛冶アドバイザー",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
