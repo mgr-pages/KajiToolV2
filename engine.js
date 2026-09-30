@@ -10,7 +10,7 @@ const G = {
   focus: 253,
   masses: [],
   level: 80, hammerId:'light', star:3, trait:'shuchu',
-  rec: null, plan: [], barSkill:'tataku', preset:'kagayaki', barMax:null,
+  rec: null, plan: [], barSkill:'tataku', preset:'kagayaki',
   // 実行済み反映で「数値の手入力待ち」になっているマス番号
   pending: [], undoSnap: null, showRange: true, hist: [], posts: null, obs: null,
   fx: null   // 値が変わった直後のマスに一度だけ動きを付ける

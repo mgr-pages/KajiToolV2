@@ -69,19 +69,17 @@ function modoriHint(){
 }
 
 /* ====== 描画 ====== */
-// バーの最大値(全マス共通)。設定で手入力された値があればそれを使い、
-// 無ければ全マスのゾーン上限の最大値に少し余裕を足した値を自動で決める。
+// バーの最大値(全マス共通)。使うマスのゾーン上限の最大値に少し余裕を足した値を自動で決める
+// (手動設定でも、入れたゾーンに合わせて決まる。使わないマスはゾーンが0なので効かない)。
 function barScaleMax(){
-  if(G.barMax && G.barMax > 0) return G.barMax;
   let hi = 0;
   for(const m of G.masses) if(m.zoneHigh > hi) hi = m.zoneHigh;
   return Math.max(50, Math.ceil((hi * 1.15) / 10) * 10);
 }
 
 // そのマスについて、バー上の各マーカー位置を求める。
-// 推奨技の有無にかかわらず常に表示する(基準técは G.barSkill で切り替え)。
+// 推奨技の有無にかかわらず常に表示する(基準の技は推奨手、無ければ たたく)。
 //   緑   = 成功ゾーン
-//   ピンク = ここから狙い打てば、会心時に確実に本会心になる範囲
 //   青   = 選んだ技を通常ロールで打った時の到達範囲(最小〜最大)
 //   赤   = 同じ技で会心(2倍)が出た時の到達範囲(最小〜最大)
 //   白   = 現在値
@@ -884,12 +882,6 @@ function applySettings(){
   }
   renderAll(); save();
 }
-// バーの最大値を変更した時。空欄なら自動計算に戻す。
-function onBarMaxChange(){
-  const v = Number(document.getElementById('s-barmax').value);
-  G.barMax = (isFinite(v) && v > 0) ? v : null;
-  renderAll(); save();
-}
 
 // 素材の選択が変わった時。手動設定ならゾーン入力欄を出す。
 function onPresetChange(){
@@ -1061,7 +1053,7 @@ const SKEY='kajiAdvisorStateV1';
 function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
-    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax, lit:litMassIndex,
+    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, lit:litMassIndex,
     pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
   })); }catch(e){}
 }
@@ -1091,10 +1083,7 @@ function load(){
     document.getElementById('s-hammer').value=G.hammerId;
     document.getElementById('s-star').value=G.star;
     document.getElementById('s-trait').value=G.trait;
-    if(G.barMax){
-      const bm = document.getElementById('s-barmax');
-      if(bm) bm.value = G.barMax;
-    }
+    delete G.barMax;                   // 以前の版で手入力したバーの最大値は使わない(自動で決まる)
     if(G.preset){
       const pre = document.getElementById('s-preset');
       if(pre) pre.value = G.preset;
