@@ -174,11 +174,23 @@ function renderBoard(){
   const skill = (G.rec && G.rec.sk && G.rec.sk.key) ? G.rec.sk
               : SKILLS.find(s=>s.id==='tataku');
   let html = '';
+  // 使わないマスは出さない(利用者の指示)。段・列が丸ごと使われていなければ詰め、
+  // 1マスだけ空く所は見えない空白にして、ほかのマスの上下左右の並び(技の形)は崩さない。
+  const usedRow = r => !G.masses[2*r].off || !G.masses[2*r+1].off;
+  const usedCol = c => [0,1,2].some(r => !G.masses[2*r+c].off);
+  const anyUsed = G.masses.some(m => !m.off);
   for(let row=0; row<3; row++){
+    if(anyUsed && !usedRow(row)) continue;
     html += '<div class="brow">';
     for(let col=0; col<2; col++){
+      if(anyUsed && !usedCol(col)) continue;
       const i = row*2+col;
       const m = G.masses[i];
+      if(anyUsed && m.off){
+        const gap = `<div class="cell gap" aria-hidden="true"></div>`, bar = `<div class="bar-wrap ${col===0?'left':'right'}"></div>`;
+        html += col===0 ? bar+gap : gap+bar;
+        continue;
+      }
       const mk = markersFor(m, skill, i);
       const flip = (col===0);
       const st = m.off ? ''
