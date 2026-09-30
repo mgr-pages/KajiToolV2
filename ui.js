@@ -305,7 +305,7 @@ function renderRec(){
   const el = document.getElementById('rec');
   if(G.pending.length){ el.innerHTML = ''; return; }
   if(!G.rec){
-    el.innerHTML = '<div class="rec-empty">'+(G.msg||'盤面・温度・集中力を合わせて「次の一手を計算」')+'</div>';
+    el.innerHTML = '<div class="rec-empty">'+(G.msg||'盤面・温度・集中力を合わせて「推奨手を計算」')+'</div>';
     return;
   }
   const r = G.rec;
@@ -406,7 +406,7 @@ function renderDetail(){
        + '入力すると次の推奨手の精度が上がります。</div>';
     h += traitNote();
   }
-  el.innerHTML = h || '<span style="color:var(--dim)">入力した結果から、次の一手を計算してください</span>';
+  el.innerHTML = h || '<span style="color:var(--dim)">入力した結果から、推奨手を計算してください</span>';
 }
 
 function renderAll(){ renderHeader(); renderBoard(); renderSkills(); renderRec();
@@ -432,7 +432,7 @@ function syncCalcButton(){
 //   入力待ち   → 結果の入力を開く(計算はさせない。打つ前の値で計算してしまうため)
 //   点灯待ち   → 押せない(盤面の光ったマスをタップしてもらう)
 //   推奨手あり → 「打った」= 手順の1手目を実行済みとして反映する
-//   それ以外   → 次の一手を計算
+//   それ以外   → 推奨手を計算
 function primaryAction(){
   if(G.pending.length){
     const n = G.pending.length;
@@ -442,13 +442,13 @@ function primaryAction(){
   if(needLitPick()) return { kind:'lit', label:'光ったマスをタップしてください' };
   if(G.rec && G.plan.length){
     return { kind:'exec', label: G.rec.tg.length ? '打った' : '使った',
-             sub: G.rec.tg.length ? '結果の入力へ' : '次の一手を計算',
+             sub: G.rec.tg.length ? '結果の入力へ' : '推奨手を計算',
              run: () => applyExecuted(1) };
   }
   const active = G.masses.filter(m => !m.off);
   // 戻りの地金では超過も取り戻せるので、超過が残る間は続ける(boardDone)
   if(active.length && boardDone(G.masses, G.trait)) return { kind:'end', label:'全マス到達' };
-  return { kind:'calc', label:'次の一手を計算', run: doCalc };
+  return { kind:'calc', label:'推奨手を計算', run: doCalc };
 }
 function onPrimary(){
   if(CALC_BUSY) return;
@@ -651,7 +651,7 @@ async function doCalc(){
     document.getElementById('rec').innerHTML =
       '<div class="rec-empty">計算に失敗しました: '+e.message+'</div>';
   }
-  setCalcProgress(null, '次の一手を計算');
+  setCalcProgress(null, '推奨手を計算');
   CALC_BUSY=false; syncCalcButton();
 }
 

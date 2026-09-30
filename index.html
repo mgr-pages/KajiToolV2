@@ -11,7 +11,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=6304f0f5">
+<link rel="stylesheet" href="style.css?v=a30cba21">
 </head>
 <body>
 
@@ -64,19 +64,19 @@
 
 <div class="side">
 <div class="foot" id="footPanel">
-  <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
+  <div class="rec" id="rec"><div class="rec-empty">「推奨手を計算」を押してください</div></div>
   <div id="execPanel"></div>
   <!-- 状況に応じて「計算する/打った/結果を入力」を切り替える、画面で唯一の主ボタン -->
   <div class="act-row">
     <!-- 直前の「打った」の反映を戻す。戻せる時だけ出す -->
     <button class="sub-btn" id="undoBtn" onclick="undoExec()" style="display:none">取り消す</button>
-    <button class="calc" id="calcBtn" onclick="onPrimary()">次の一手を計算</button>
+    <button class="calc" id="calcBtn" onclick="onPrimary()">推奨手を計算</button>
   </div>
   <div id="calcBar" class="calcbar" style="display:none"><div></div></div>
 </div>
 
 <details class="acc" open>
-  <summary>この先の手順</summary>
+  <summary>推奨手順(目安)</summary>
   <div class="body" id="detail">まだ計算していません</div>
 </details>
 
@@ -165,8 +165,8 @@
   </div>
 </div>
 
-<script src="engine.js?v=6304f0f5"></script>
-<script src="mc-pool.js?v=6304f0f5"></script>
-<script src="ui.js?v=6304f0f5"></script>
+<script src="engine.js?v=a30cba21"></script>
+<script src="mc-pool.js?v=a30cba21"></script>
+<script src="ui.js?v=a30cba21"></script>
 </body>
 </html>
