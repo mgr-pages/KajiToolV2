@@ -402,8 +402,6 @@ function renderDetail(){
           </div>${btn}
         </div>`;
     }).join('') + '</div>';
-    h += '<div class="plist-note">数値を入力しなくても手順は進められます。'
-       + '入力すると次の推奨手の精度が上がります。</div>';
     h += traitNote();
   }
   el.innerHTML = h || '<span style="color:var(--dim)">入力した結果から、推奨手を計算してください</span>';
