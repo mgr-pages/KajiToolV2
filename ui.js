@@ -277,7 +277,10 @@ function renderHeader(){
 
 function renderSkills(){
   const rows = ['<tr><th>技</th><th>ロール</th><th class="cst">消費</th><th class="cst">会心</th></tr>'];
-  const list = SKILLS.filter(s => s.lv <= G.level).map(s => ({ s, r: s.key ? getRollCandidates(s, G.temp, G.trait, false) : null }));
+  // 技の倍率(SKILL_MULT)の小さい順に並べる。同じ倍率は覚えるレベルの順のまま、数値の無い温度操作は最後
+  const order = s => s.key ? SKILL_MULT[s.key] : 99;
+  const list = SKILLS.filter(s => s.lv <= G.level).sort((a, b) => order(a) - order(b))
+    .map(s => ({ s, r: s.key ? getRollCandidates(s, G.temp, G.trait, false) : null }));
   // ロールは1つずつ同じ幅の枠に右そろえで入れ、桁が違っても列がそろうようにする。枠の幅は表の中で一番長い桁数に合わせる
   const digits = Math.max(1, ...list.filter(x => x.r).map(x => String(x.r[x.r.length-1]).length));
   document.getElementById('skTable').style.setProperty('--rvw', digits + 'ch');

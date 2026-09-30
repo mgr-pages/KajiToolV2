@@ -480,14 +480,14 @@ table.sk .cst{text-align:right; font-weight:700;}
 }
 /* 柄はページ全体の地(html)に敷く。body に敷いて background-attachment:fixed にすると、
    iPhone の Safari などで柄が出ないことがあるため、固定もしない(ページと一緒に流れる)。 */
-:root{--css-ver:"d774a890";}
+:root{--css-ver:"7a4f0bab";}
 .ver{margin-top:12px; font-size:10.5px; color:var(--dim); text-align:right;}
 .ver b{color:var(--red);}   /* 表示中の見た目のファイルの版(tools/stamp.py が付け直す) */
 html{
   /* 地は全面同じ色。上部を明るくするグラデーションは、ページの高さで途切れて
      下の方だけ色が変わって見えたためやめた。 */
   background:
-    url("bg-motif.svg?v=d774a890") 0 0 / 900px 900px repeat,
+    url("bg-motif.svg?v=7a4f0bab") 0 0 / 900px 900px repeat,
     var(--bg);
 }
 body{background:transparent;}
@@ -546,8 +546,6 @@ body{background:transparent;}
 
 /* 推奨手: 技名を見出しらしく */
 .rec-skill{font-size:18px; letter-spacing:.02em;}
-.rec-skill::before{content:'推奨手'; display:block; font-size:10px; color:var(--dim);
-  font-weight:700; letter-spacing:.1em; margin-bottom:1px;}
 
 /* 入力画面(下から出る紙): つまみを付けて引き出しらしく */
 .pad{background:linear-gradient(180deg,#fbf3e0,#f4e8cc); box-shadow:0 -6px 20px rgba(0,0,0,.25);}
