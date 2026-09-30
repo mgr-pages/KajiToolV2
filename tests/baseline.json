@@ -135,20 +135,20 @@
         "great": 50,
         "unreached": 0,
         "over": 0,
-        "avgErr": 5,
-        "avgMoves": 27,
-        "avgFocusLeft": 10.5,
-        "fingerprint": "67af3a04"
+        "avgErr": 4.5,
+        "avgMoves": 28,
+        "avgFocusLeft": 5.5,
+        "fingerprint": "3ffdd4f2"
       },
       "greedy": {
         "games": 300,
-        "great": 36.3,
-        "unreached": 6,
-        "over": 2.7,
-        "avgErr": 4.64,
-        "avgMoves": 25.9,
-        "avgFocusLeft": 12.7,
-        "fingerprint": "8a8d39fc"
+        "great": 40,
+        "unreached": 10.7,
+        "over": 4,
+        "avgErr": 6.18,
+        "avgMoves": 26.7,
+        "avgFocusLeft": 8.9,
+        "fingerprint": "2b80d086"
       }
     },
     "orb": {
