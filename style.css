@@ -129,20 +129,18 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 /* ===== 盤面 ===== */
 .board{padding:10px 6px;}
 .brow{display:flex; align-items:stretch; gap:4px; margin-bottom:8px;}
+/* 1列だけの盤(幽紋刀など)。ふつうの盤の左半分と同じ幅にして中央に置き、ゲージの長さをそろえる */
+.brow.half{width:50%; margin-left:auto; margin-right:auto;}
 .bar-wrap{flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:2px;}
 .bar-wrap.left{align-items:flex-end;}
 .zone-lbl{font-size:9.5px; color:var(--green); font-weight:700; font-variant-numeric:tabular-nums;}
 .bar{position:relative; width:100%; height:16px; background:var(--sunk); border:1px solid var(--line);
   border-radius:2px; overflow:hidden;}
 .bar i{position:absolute; display:block;}
-/* 4つの帯を高さで段違いに重ねて、同時に読めるようにする */
-/* 成功ゾーンは最重要なので濃く塗り、両端に境界線を立てて範囲を明示する。
-   本会心ゾーンとは色味も明度も離しておく。 */
+/* 帯を高さで段違いに重ねて、同時に読めるようにする */
+/* 成功ゾーンは最重要なので濃く塗り、両端に境界線を立てて範囲を明示する。 */
 .bar .m-green{top:0; bottom:0; z-index:2; background:rgba(47,138,76,.34);
   border-left:2px solid var(--green); border-right:2px solid var(--green); box-sizing:border-box;}
-.bar .m-pink {top:0; bottom:0; z-index:1; background:rgba(196,26,143,.18);
-  border-left:1px dashed rgba(196,26,143,.75); border-right:1px dashed rgba(196,26,143,.75);
-  box-sizing:border-box;}
 .bar .m-blue {top:2px; z-index:3; height:5px; background:var(--blue); border-radius:2px;}
 .bar .m-red  {bottom:2px; z-index:3; height:5px; background:var(--red);  border-radius:2px;}
 /* 現在値は0からの塗りで表す。線より進捗が掴みやすい。
@@ -211,7 +209,10 @@ table.sk{width:100%; border-collapse:collapse; font-size:11.5px;
 table.sk th{color:var(--dim); font-size:10px; text-align:left; padding:4px 3px;
   border-bottom:1px solid var(--line); font-weight:600;}
 table.sk td{padding:5px 3px; border-bottom:1px solid rgba(198,172,116,.6);}
-table.sk .rolls{color:var(--gold); letter-spacing:-.3px;}
+table.sk .rolls{color:var(--gold); letter-spacing:-.3px; white-space:nowrap;}
+/* ロールの1つずつ。同じ幅で右そろえにして、桁が違っても縦の列がそろうようにする(幅は ui.js が桁数から決める) */
+table.sk .rv{display:inline-block; min-width:var(--rvw, 2ch); text-align:right; margin-right:.45em; font-variant-numeric:tabular-nums;}
+table.sk .rv:last-child{margin-right:0;}
 table.sk .cst{text-align:right; font-weight:700;}
 
 .plan-step{display:flex; gap:7px; padding:3px 0; font-size:12px; align-items:baseline;}
@@ -351,7 +352,6 @@ table.sk .cst{text-align:right; font-weight:700;}
 .legend .lg-blue{background:var(--blue);}
 .legend .lg-red{background:var(--red);}
 .legend .lg-green{background:rgba(47,138,76,.34); border:1.5px solid var(--green);}
-.legend .lg-pink{background:rgba(196,26,143,.18); border:1px dashed rgba(196,26,143,.75);}
 .legend .lg-cur{background:#4a3418; width:3px; flex:0 0 3px; height:13px;}
 @media (min-width:760px){ .legend{font-size:12.5px;} .bar-ctl label{font-size:13px;} }
 
@@ -402,6 +402,8 @@ table.sk .cst{text-align:right; font-weight:700;}
 .zrow.zth .zl{width:auto; flex:0 0 auto;}
 .zrow.zth input{flex:0 1 80px;}
 .zth-note{font-size:11px; color:var(--dim); margin:-2px 0 4px;}
+/* 推奨手順の注意書き。手順を信じ切らないよう、説明文より目立つ色で出す */
+.plan-note{font-size:12px; font-weight:700; color:var(--ember); margin-bottom:6px;}
 /* --- 手動設定パネル --- */
 .zpanel{border:1px solid var(--acc); border-radius:8px; padding:10px; margin-top:10px;}
 .zpanel .zhead{font-size:12.5px; font-weight:600; color:var(--acc); margin-bottom:2px;}
@@ -439,6 +441,8 @@ table.sk .cst{text-align:right; font-weight:700;}
 .zdirty{font-size:11.5px; color:var(--acc); margin-left:8px;}
 .hint-cust{background:var(--acc); color:#fff; font-size:11px; border-radius:4px;
   padding:1px 6px; margin-left:6px;}
+/* 使わないマスの位置(1マスだけ空く所)。並びを崩さないよう場所は取るが、見せない */
+.cell.gap{visibility:hidden;}
 .cell.off{opacity:.3;}
 .cell.off .cur, .cell.off .zn{visibility:hidden;}
 .cell.off .idx::after{content:' 未使用'; font-size:10px; background:none; color:inherit; padding:0; margin:0;}
@@ -453,8 +457,6 @@ table.sk .cst{text-align:right; font-weight:700;}
 @media (min-width:760px){ .acc summary .gear{font-size:12.5px;} }
 /* 凡例は盤面のすぐ下に小さく */
 .legend{margin:2px 4px 0; padding:7px 9px; font-size:10.5px;}
-.legend .lg-num{flex-basis:100%;}
-.legend .c-blue{color:var(--blue);} .legend .c-red{color:var(--red);}
 /* 主ボタンが「打った」を示す時は色を変え、計算とは別の操作だと分かるようにする */
 .calc.done-step{background:linear-gradient(180deg,var(--green),#15592c);}
 .rec:empty{display:none;}
@@ -475,14 +477,14 @@ table.sk .cst{text-align:right; font-weight:700;}
 }
 /* 柄はページ全体の地(html)に敷く。body に敷いて background-attachment:fixed にすると、
    iPhone の Safari などで柄が出ないことがあるため、固定もしない(ページと一緒に流れる)。 */
-:root{--css-ver:"35f058cb";}
+:root{--css-ver:"a0e77fcf";}
 .ver{margin-top:12px; font-size:10.5px; color:var(--dim); text-align:right;}
 .ver b{color:var(--red);}   /* 表示中の見た目のファイルの版(tools/stamp.py が付け直す) */
 html{
   /* 地は全面同じ色。上部を明るくするグラデーションは、ページの高さで途切れて
      下の方だけ色が変わって見えたためやめた。 */
   background:
-    url("bg-motif.svg?v=35f058cb") 0 0 / 900px 900px repeat,
+    url("bg-motif.svg?v=a0e77fcf") 0 0 / 900px 900px repeat,
     var(--bg);
 }
 body{background:transparent;}
@@ -541,7 +543,7 @@ body{background:transparent;}
 
 /* 推奨手: 技名を見出しらしく */
 .rec-skill{font-size:18px; letter-spacing:.02em;}
-.rec-skill::before{content:'次の一手'; display:block; font-size:10px; color:var(--dim);
+.rec-skill::before{content:'推奨手'; display:block; font-size:10px; color:var(--dim);
   font-weight:700; letter-spacing:.1em; margin-bottom:1px;}
 
 /* 入力画面(下から出る紙): つまみを付けて引き出しらしく */

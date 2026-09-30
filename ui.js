@@ -69,19 +69,17 @@ function modoriHint(){
 }
 
 /* ====== 描画 ====== */
-// バーの最大値(全マス共通)。設定で手入力された値があればそれを使い、
-// 無ければ全マスのゾーン上限の最大値に少し余裕を足した値を自動で決める。
+// バーの最大値(全マス共通)。使うマスのゾーン上限の最大値に少し余裕を足した値を自動で決める
+// (手動設定でも、入れたゾーンに合わせて決まる。使わないマスはゾーンが0なので効かない)。
 function barScaleMax(){
-  if(G.barMax && G.barMax > 0) return G.barMax;
   let hi = 0;
   for(const m of G.masses) if(m.zoneHigh > hi) hi = m.zoneHigh;
   return Math.max(50, Math.ceil((hi * 1.15) / 10) * 10);
 }
 
 // そのマスについて、バー上の各マーカー位置を求める。
-// 推奨技の有無にかかわらず常に表示する(基準técは G.barSkill で切り替え)。
+// 推奨技の有無にかかわらず常に表示する(基準の技は推奨手、無ければ たたく)。
 //   緑   = 成功ゾーン
-//   ピンク = ここから狙い打てば、会心時に確実に本会心になる範囲
 //   青   = 選んだ技を通常ロールで打った時の到達範囲(最小〜最大)
 //   赤   = 同じ技で会心(2倍)が出た時の到達範囲(最小〜最大)
 //   白   = 現在値
@@ -98,16 +96,9 @@ function markersFor(m, skill, massIdx){
 
   const out = {
     zone:[pct(lo), pct(hi)], cur:pct(m.current),
-    pink:null, blue:null, red:null,
+    blue:null, red:null,
     raw:{ lo, hi, cur:Math.round(m.current) }
   };
-
-  // 本会心ゾーン:技ごとに成立範囲が違うので、その和をとる
-  const cz = critZoneRange(lo, hi, G.temp, G.level, G.trait, massIdx);
-  if(cz){
-    out.pink = [pct(cz[0]), pct(cz[1])];
-    out.raw.pink = [Math.round(cz[0]), Math.round(cz[1])];
-  }
 
   if(skill && skill.key){
     // 点灯マスは前進量が2倍。共通のロールで描くと、盤面のバーが実際の半分の幅になる
@@ -174,11 +165,25 @@ function renderBoard(){
   const skill = (G.rec && G.rec.sk && G.rec.sk.key) ? G.rec.sk
               : SKILLS.find(s=>s.id==='tataku');
   let html = '';
+  // 使わないマスは出さない(利用者の指示)。段・列が丸ごと使われていなければ詰め、
+  // 1マスだけ空く所は見えない空白にして、ほかのマスの上下左右の並び(技の形)は崩さない。
+  const usedRow = r => !G.masses[2*r].off || !G.masses[2*r+1].off;
+  const usedCol = c => [0,1,2].some(r => !G.masses[2*r+c].off);
+  const anyUsed = G.masses.some(m => !m.off);
+  // 1列だけの盤は、段の幅をふつうの盤の半分にして中央に置く(ゲージが横いっぱいに伸びないように)
+  const oneCol = anyUsed && (usedCol(0) !== usedCol(1));
   for(let row=0; row<3; row++){
-    html += '<div class="brow">';
+    if(anyUsed && !usedRow(row)) continue;
+    html += `<div class="brow${oneCol ? ' half' : ''}">`;
     for(let col=0; col<2; col++){
+      if(anyUsed && !usedCol(col)) continue;
       const i = row*2+col;
       const m = G.masses[i];
+      if(anyUsed && m.off){
+        const gap = `<div class="cell gap" aria-hidden="true"></div>`, bar = `<div class="bar-wrap ${col===0?'left':'right'}"></div>`;
+        html += col===0 ? bar+gap : gap+bar;
+        continue;
+      }
       const mk = markersFor(m, skill, i);
       const flip = (col===0);
       const st = m.off ? ''
@@ -224,9 +229,6 @@ function buildBar(mk, flip){
   };
   const line = (v,cls) => `<i class="${cls}" style="left:${v}%"></i>`;
   let s = '';
-  // 本会心ゾーンを先に敷き、成功ゾーンを上に重ねる。
-  // 成功ゾーンの方が判断上重要なので、重なっても必ず見えるようにする。
-  if(mk.pink) s += band(mk.pink[0], mk.pink[1], 'm-pink');
   if(mk.zone) s += band(mk.zone[0], mk.zone[1], 'm-green');
   if(G.showRange && mk.blue) s += band(mk.blue[0], mk.blue[1], 'm-blue');
   if(G.showRange && mk.red)  s += band(mk.red[0],  mk.red[1],  'm-red');
@@ -275,12 +277,14 @@ function renderHeader(){
 
 function renderSkills(){
   const rows = ['<tr><th>技</th><th>ロール</th><th class="cst">消費</th><th class="cst">会心</th></tr>'];
-  for(const s of SKILLS){
-    if(s.lv>G.level) continue;
-    const r = s.key ? getRollCandidates(s, G.temp, G.trait, false) : null;
+  const list = SKILLS.filter(s => s.lv <= G.level).map(s => ({ s, r: s.key ? getRollCandidates(s, G.temp, G.trait, false) : null }));
+  // ロールは1つずつ同じ幅の枠に右そろえで入れ、桁が違っても列がそろうようにする。枠の幅は表の中で一番長い桁数に合わせる
+  const digits = Math.max(1, ...list.filter(x => x.r).map(x => String(x.r[x.r.length-1]).length));
+  document.getElementById('skTable').style.setProperty('--rvw', digits + 'ch');
+  for(const { s, r } of list){
     const c = actualCostOf(s, G.temp, G.trait);
     const cr = s.key ? computeCritRate(s,G.level,G.hammerId,G.star,G.trait,G.temp) : 0;
-    rows.push(`<tr><td>${s.name}</td><td class="rolls">${r?r.join(' '):'—'}</td>`
+    rows.push(`<tr><td>${s.name}</td><td class="rolls">${r ? r.map(v => `<span class="rv">${v}</span>`).join('') : '—'}</td>`
       + `<td class="cst">${c}</td><td class="cst">${s.key?(cr*100).toFixed(0)+'%':'—'}</td></tr>`);
   }
   // 表は技ごとなのでマス単位の値を出せない。点灯中はその旨を添えて、表の値を鵜呑みにさせない
@@ -301,7 +305,7 @@ function renderRec(){
   const el = document.getElementById('rec');
   if(G.pending.length){ el.innerHTML = ''; return; }
   if(!G.rec){
-    el.innerHTML = '<div class="rec-empty">'+(G.msg||'盤面・温度・集中力を合わせて「次の一手を計算」')+'</div>';
+    el.innerHTML = '<div class="rec-empty">'+(G.msg||'盤面・温度・集中力を合わせて「推奨手を計算」')+'</div>';
     return;
   }
   const r = G.rec;
@@ -335,6 +339,8 @@ function renderDetail(){
   let h = '';
   // 打った手の履歴は出さない。取り消しは「直前の反映を取り消す」で足りる。
   if(G.plan.length){
+    // 2手目以降は、1手目の結果(ロール・会心・戻り・点灯)で変わる。手順を鵜呑みにしないよう常に添える(利用者の指示)
+    h += '<div class="plan-note">※あくまでも目安です。この先の手順は変わり得ます。</div>';
     h += '<div style="color:var(--dim);font-size:11px;margin-bottom:6px">'
        + '何手かまとめて打った時は、打ったところの「ここまで打った」を押してください</div>';
     let f = G.focus;
@@ -400,7 +406,7 @@ function renderDetail(){
        + '入力すると次の推奨手の精度が上がります。</div>';
     h += traitNote();
   }
-  el.innerHTML = h || '<span style="color:var(--dim)">入力した結果から、次の一手を計算してください</span>';
+  el.innerHTML = h || '<span style="color:var(--dim)">入力した結果から、推奨手を計算してください</span>';
 }
 
 function renderAll(){ renderHeader(); renderBoard(); renderSkills(); renderRec();
@@ -426,7 +432,7 @@ function syncCalcButton(){
 //   入力待ち   → 結果の入力を開く(計算はさせない。打つ前の値で計算してしまうため)
 //   点灯待ち   → 押せない(盤面の光ったマスをタップしてもらう)
 //   推奨手あり → 「打った」= 手順の1手目を実行済みとして反映する
-//   それ以外   → 次の一手を計算
+//   それ以外   → 推奨手を計算
 function primaryAction(){
   if(G.pending.length){
     const n = G.pending.length;
@@ -436,13 +442,13 @@ function primaryAction(){
   if(needLitPick()) return { kind:'lit', label:'光ったマスをタップしてください' };
   if(G.rec && G.plan.length){
     return { kind:'exec', label: G.rec.tg.length ? '打った' : '使った',
-             sub: G.rec.tg.length ? '結果の入力へ' : '次の一手を計算',
+             sub: G.rec.tg.length ? '結果の入力へ' : '推奨手を計算',
              run: () => applyExecuted(1) };
   }
   const active = G.masses.filter(m => !m.off);
   // 戻りの地金では超過も取り戻せるので、超過が残る間は続ける(boardDone)
   if(active.length && boardDone(G.masses, G.trait)) return { kind:'end', label:'全マス到達' };
-  return { kind:'calc', label:'次の一手を計算', run: doCalc };
+  return { kind:'calc', label:'推奨手を計算', run: doCalc };
 }
 function onPrimary(){
   if(CALC_BUSY) return;
@@ -645,7 +651,7 @@ async function doCalc(){
     document.getElementById('rec').innerHTML =
       '<div class="rec-empty">計算に失敗しました: '+e.message+'</div>';
   }
-  setCalcProgress(null, '次の一手を計算');
+  setCalcProgress(null, '推奨手を計算');
   CALC_BUSY=false; syncCalcButton();
 }
 
@@ -876,12 +882,6 @@ function applySettings(){
   }
   renderAll(); save();
 }
-// バーの最大値を変更した時。空欄なら自動計算に戻す。
-function onBarMaxChange(){
-  const v = Number(document.getElementById('s-barmax').value);
-  G.barMax = (isFinite(v) && v > 0) ? v : null;
-  renderAll(); save();
-}
 
 // 素材の選択が変わった時。手動設定ならゾーン入力欄を出す。
 function onPresetChange(){
@@ -889,9 +889,7 @@ function onPresetChange(){
   const box = document.getElementById('zoneEdit');
   if(v === 'custom'){
     box.style.display = 'block';
-    // 手動設定は今の盤面(直前の素材のゾーン)を引き継いで始まるので、許容誤差も引き継ぐ。
-    // 切り替えただけで計算の前提が変わらないようにし、入力欄には実際に使う値を出す。
-    G.customThreshold = SUCCESS_THRESHOLD;
+    // 手動設定は今の盤面(直前の素材のゾーン)を引き継いで始まる。許容誤差は使うマスの数で決まる。
     G.preset = 'custom';
     applyThreshold();
     renderZoneRows();
@@ -925,8 +923,6 @@ function renderZoneRows(){
   const el = document.getElementById('zoneRows');
   if(!el) return;
   markZoneDirty(false);
-  const th = document.getElementById('z-th');
-  if(th) th.value = G.customThreshold;
   el.innerHTML = G.masses.map((m,i)=>{
     const on = !m.off;
     // 無効化したマスはゾーンを0にしているので、入力欄には控えを表示する
@@ -942,6 +938,15 @@ function renderZoneRows(){
        <input type="number" id="z-hi-${i}" value="${hi}" min="1" max="999"
               oninput="markZoneDirty()">
      </div>`;}).join('');
+  showZoneThreshold();
+}
+// 許容誤差はチェックの入ったマスの数で決まるので、入切に合わせてその場で出す
+function showZoneThreshold(){
+  const el = document.getElementById('z-th-auto');
+  if(!el) return;
+  let n = 0;
+  for(let i = 0; i < G.masses.length; i++){ const c = document.getElementById('z-on-'+i); if(c ? c.checked : !G.masses[i].off) n++; }
+  el.textContent = thresholdForMasses(n) + ' 以下で大成功(' + n + 'マス)';
 }
 
 // チェックの入切で行の見た目だけ切り替える(反映はボタンで行う)
@@ -949,6 +954,7 @@ function onZoneToggle(i){
   const row = document.getElementById('z-row-'+i);
   const on  = document.getElementById('z-on-'+i).checked;
   if(row) row.classList.toggle('zoff', !on);
+  showZoneThreshold();
   markZoneDirty();
 }
 
@@ -979,13 +985,6 @@ function applyZones(){
               warn.style.display = 'block'; }
     return;
   }
-  const thEl = document.getElementById('z-th');
-  const th = thEl && thEl.value !== '' ? Number(thEl.value) : NaN;
-  if(!isValidThreshold(th)){
-    if(warn){ warn.textContent = '許容誤差は0〜99の整数で入れてください。';
-              warn.style.display = 'block'; }
-    return;
-  }
   if(warn) warn.style.display = 'none';
   for(const x of next){
     const m = G.masses[x.i];
@@ -1009,8 +1008,7 @@ function applyZones(){
   G.pending = G.pending.filter(i => !G.masses[i].off);
   if(Array.isArray(G.obs)) G.masses.forEach((m,i)=>{ if(m.off) G.obs[i] = null; });
   G.preset = 'custom';
-  G.customThreshold = th;
-  applyThreshold();                  // 反映しないと、直前の素材の許容誤差で計算し続ける
+  applyThreshold();                  // 使うマスの数が変わるので、許容誤差も決め直す
   G.rec = null; G.plan = [];
   renderZoneRows(); markZoneDirty(false); renderAll(); save();
 }
@@ -1055,8 +1053,7 @@ const SKEY='kajiAdvisorStateV1';
 function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
-    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, barMax:G.barMax, lit:litMassIndex,
-    customThreshold:G.customThreshold,
+    level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, lit:litMassIndex,
     pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
   })); }catch(e){}
 }
@@ -1074,8 +1071,8 @@ function load(){
     delete G.lit;
     G.masses.forEach(m => { if(m.off === undefined) m.off = false; });
     syncActiveMask();
-    if(!isValidThreshold(G.customThreshold)) G.customThreshold = DEFAULT_THRESHOLD;
-    applyThreshold();                 // 許容誤差は素材で決まる(手動設定は設定値)
+    delete G.customThreshold;          // 以前の版で手入力した許容誤差は使わない(使うマスの数で決まる)
+    applyThreshold();                 // 許容誤差は素材で決まる(手動設定は使うマスの数)
     if(!Array.isArray(G.pending)) G.pending = [];
     if(!Array.isArray(G.hist)) G.hist = [];
     // 廃止した素材が保存データに残っていた場合は既定へ戻す
@@ -1086,10 +1083,7 @@ function load(){
     document.getElementById('s-hammer').value=G.hammerId;
     document.getElementById('s-star').value=G.star;
     document.getElementById('s-trait').value=G.trait;
-    if(G.barMax){
-      const bm = document.getElementById('s-barmax');
-      if(bm) bm.value = G.barMax;
-    }
+    delete G.barMax;                   // 以前の版で手入力したバーの最大値は使わない(自動で決まる)
     if(G.preset){
       const pre = document.getElementById('s-preset');
       if(pre) pre.value = G.preset;
@@ -1120,7 +1114,7 @@ function load(){
   if(!rated.length) return;
   const note = document.createElement('option');
   note.disabled = true;
-  note.textContent = '( )は大成功率の目安 ※推奨どおり・職人Lv80・光のハンマー★3';
+  note.textContent = '( )は大成功率の目安 ※職人Lv80、光★3の場合';
   sel.appendChild(note);
   const show = on => { for(const r of rated) r.op.textContent = on ? r.withRate : r.name; };
   ['focus', 'mousedown', 'touchstart'].forEach(ev => sel.addEventListener(ev, () => show(true), { passive: true }));

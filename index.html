@@ -11,7 +11,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=35f058cb">
+<link rel="stylesheet" href="style.css?v=a0e77fcf">
 </head>
 <body>
 
@@ -56,29 +56,27 @@
   <!-- ゲージの見方。色の意味が画面のどこにも無かったため常に出す -->
   <div class="legend" id="legend">
     <span><i class="lg-green"></i>成功ゾーン</span>
-    <span><i class="lg-pink"></i>本会心を狙える位置</span>
     <span><i class="lg-blue"></i>通常の伸び</span>
     <span><i class="lg-red"></i>会心の伸び</span>
     <span><i class="lg-cur"></i>現在値</span>
-    <span class="lg-num">ゲージ下の数値は伸びた後の値(<b class="c-blue">青</b>=通常・<b class="c-red">赤</b>=会心)</span>
   </div>
 </div>
 
 <div class="side">
 <div class="foot" id="footPanel">
-  <div class="rec" id="rec"><div class="rec-empty">「次の一手を計算」を押してください</div></div>
+  <div class="rec" id="rec"><div class="rec-empty">「推奨手を計算」を押してください</div></div>
   <div id="execPanel"></div>
   <!-- 状況に応じて「計算する/打った/結果を入力」を切り替える、画面で唯一の主ボタン -->
   <div class="act-row">
     <!-- 直前の「打った」の反映を戻す。戻せる時だけ出す -->
     <button class="sub-btn" id="undoBtn" onclick="undoExec()" style="display:none">取り消す</button>
-    <button class="calc" id="calcBtn" onclick="onPrimary()">次の一手を計算</button>
+    <button class="calc" id="calcBtn" onclick="onPrimary()">推奨手を計算</button>
   </div>
   <div id="calcBar" class="calcbar" style="display:none"><div></div></div>
 </div>
 
 <details class="acc" open>
-  <summary>この先の手順</summary>
+  <summary>推奨手順(目安)</summary>
   <div class="body" id="detail">まだ計算していません</div>
 </details>
 
@@ -110,9 +108,6 @@
         <option value="none">なし</option><option value="tataki">たたき変化</option>
         <option value="modori">戻り(メーター減少)</option><option value="kaishin">威力会心率上昇</option>
       </select></div>
-    <div class="set-row"><label>バー最大値</label>
-      <input type="number" id="s-barmax" min="10" max="9999" placeholder="自動"
-             oninput="onBarMaxChange()"></div>
     <div id="zoneEdit" style="display:none">
       <div class="zpanel">
         <div class="zhead">手動設定</div>
@@ -120,16 +115,14 @@
           ① 上の「地金特性」を選ぶ<br>
           ② 使うマスだけチェックを残す(外したマスは盤面から消えます)<br>
           ③ 各マスの成功ゾーンを 下限〜上限 で入れる<br>
-          ④ 大成功の許容誤差(誤差の合計がいくつ以下なら大成功か)を入れる<br>
-          ⑤「ゾーンを反映」を押す
+          ④「ゾーンを反映」を押す(大成功の許容誤差は、使うマスの数で自動で決まります)
         </div>
         <div id="zoneRows"></div>
         <div class="zrow zth">
           <span class="zl">許容誤差</span>
-          <input type="number" id="z-th" min="0" max="99" step="1" oninput="markZoneDirty()">
-          <span class="zs">以下で大成功</span>
+          <span class="zs" id="z-th-auto"></span>
         </div>
-        <div class="zth-note">例: 6マスの練金ツボ・家具は7、盾・アタマは3</div>
+        <div class="zth-note">使うマスの数で決まります: 2マス 0・3マス 2・4マス 3・5マス 5・6マス 7</div>
         <div id="zoneWarn" style="font-size:11.5px;color:#e5534b;margin-top:6px;display:none"></div>
         <div style="display:flex;align-items:center;margin-top:8px">
           <button class="calc" style="flex:0 0 auto" onclick="applyZones()">ゾーンを反映</button>
@@ -169,8 +162,8 @@
   </div>
 </div>
 
-<script src="engine.js?v=35f058cb"></script>
-<script src="mc-pool.js?v=35f058cb"></script>
-<script src="ui.js?v=35f058cb"></script>
+<script src="engine.js?v=a0e77fcf"></script>
+<script src="mc-pool.js?v=a0e77fcf"></script>
+<script src="ui.js?v=a0e77fcf"></script>
 </body>
 </html>
