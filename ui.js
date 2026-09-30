@@ -262,17 +262,15 @@ function renderHeader(){
   document.getElementById('v-temp').textContent = G.temp;
   document.getElementById('v-focus').textContent = G.focus;
   const b = [];
-  const tm = traitMark(G.temp);
-  if(tm) b.push(`<span class="badge ${tm.k}">${tm.l}</span>`);
-  else b.push('<span class="badge off">通常</span>');
-  if(isStartState()) b.push('<span class="badge off">開始直後(特性なし)</span>');
-  // 到達数・誤差・大成功率は見ても打ち方が変わらないので出さない。
-  // 残すのはターン表示(威力2倍/半減)だけ ― 今どの手を打っているかの確認に使う。
+  // 温度の効果(通常・会心率+400% など)と「開始直後」は、見ても分かりにくく打ち方も変わらないので出さない(利用者の指示)。
+  // 残すのは、入力や点灯の選択など、利用者に操作を求める案内だけ。
   if(G.pending.length) b.push(`<span class="badge wait">数値の入力待ち</span>`);
   else if(needLitPick()) b.push(`<span class="badge wait">光ったマスをタップしてください</span>`);
   else if(litMassIndex !== null)
     b.push(`<span class="badge rate">マス${litMassIndex+1}が点灯中${litPickMode()?'(別のマスをタップで選び直し)':''}</span>`);
-  document.getElementById('badges').innerHTML = b.join('');
+  const bx = document.getElementById('badges');
+  bx.innerHTML = b.join('');
+  bx.style.display = b.length ? '' : 'none';
 }
 
 function renderSkills(){
