@@ -279,12 +279,14 @@ function renderHeader(){
 
 function renderSkills(){
   const rows = ['<tr><th>技</th><th>ロール</th><th class="cst">消費</th><th class="cst">会心</th></tr>'];
-  for(const s of SKILLS){
-    if(s.lv>G.level) continue;
-    const r = s.key ? getRollCandidates(s, G.temp, G.trait, false) : null;
+  const list = SKILLS.filter(s => s.lv <= G.level).map(s => ({ s, r: s.key ? getRollCandidates(s, G.temp, G.trait, false) : null }));
+  // ロールは1つずつ同じ幅の枠に右そろえで入れ、桁が違っても列がそろうようにする。枠の幅は表の中で一番長い桁数に合わせる
+  const digits = Math.max(1, ...list.filter(x => x.r).map(x => String(x.r[x.r.length-1]).length));
+  document.getElementById('skTable').style.setProperty('--rvw', digits + 'ch');
+  for(const { s, r } of list){
     const c = actualCostOf(s, G.temp, G.trait);
     const cr = s.key ? computeCritRate(s,G.level,G.hammerId,G.star,G.trait,G.temp) : 0;
-    rows.push(`<tr><td>${s.name}</td><td class="rolls">${r?r.join(' '):'—'}</td>`
+    rows.push(`<tr><td>${s.name}</td><td class="rolls">${r ? r.map(v => `<span class="rv">${v}</span>`).join('') : '—'}</td>`
       + `<td class="cst">${c}</td><td class="cst">${s.key?(cr*100).toFixed(0)+'%':'—'}</td></tr>`);
   }
   // 表は技ごとなのでマス単位の値を出せない。点灯中はその旨を添えて、表の値を鵜呑みにさせない
