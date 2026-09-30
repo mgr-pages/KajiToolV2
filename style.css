@@ -66,6 +66,10 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .cand:active{background:var(--ember); color:#fbf3e0;}
 .cand.crit{border-color:rgba(196,26,143,.5); color:var(--pink);}
 .cand.crit:active{background:var(--pink); color:#fbf3e0;}
+/* 温度の一覧: 1行4つ(行の先頭が200℃の倍数)。数が多いのでマスの候補より詰める */
+.cand-row.temp{grid-template-columns:repeat(4,1fr); margin-bottom:10px;}
+.cand-row.temp .cand{padding:9px 2px; font-size:15px;}
+.cand.cur{border-color:var(--ember); color:var(--ember); box-shadow:inset 0 0 0 1px var(--ember);}
 .cand-more{width:100%; background:transparent; border:1px dashed var(--line);
   color:var(--dim); border-radius:7px; padding:10px; font-size:12.5px; margin:2px 0 10px;}
 /* ===== 推奨手順:各手の右に「ここまで打った」ボタン ===== */
@@ -476,14 +480,14 @@ table.sk .cst{text-align:right; font-weight:700;}
 }
 /* 柄はページ全体の地(html)に敷く。body に敷いて background-attachment:fixed にすると、
    iPhone の Safari などで柄が出ないことがあるため、固定もしない(ページと一緒に流れる)。 */
-:root{--css-ver:"57e5f393";}
+:root{--css-ver:"d774a890";}
 .ver{margin-top:12px; font-size:10.5px; color:var(--dim); text-align:right;}
 .ver b{color:var(--red);}   /* 表示中の見た目のファイルの版(tools/stamp.py が付け直す) */
 html{
   /* 地は全面同じ色。上部を明るくするグラデーションは、ページの高さで途切れて
      下の方だけ色が変わって見えたためやめた。 */
   background:
-    url("bg-motif.svg?v=57e5f393") 0 0 / 900px 900px repeat,
+    url("bg-motif.svg?v=d774a890") 0 0 / 900px 900px repeat,
     var(--bg);
 }
 body{background:transparent;}

@@ -751,7 +751,11 @@ function openPad(kind, idx){
   const keys = document.getElementById('padKeys');
   const cand = (kind === 'mass') ? candidateValues(idx) : null;
   if(box){
-    if(cand){
+    if(kind === 'temp'){
+      box.innerHTML = tempCandHtml();
+      box.style.display = 'block';
+      if(keys) keys.style.display = 'none';
+    } else if(cand){
       const btn = (v,g) => `<button class="cand${g.crit ? ' crit' : ''}${g.red ? ' red' : ''}"`
         + ` onclick="pickValue(${idx},${v},${g.crit},${g.red})">${v}</button>`;
       box.innerHTML =
@@ -768,8 +772,28 @@ function openPad(kind, idx){
   }
   updatePad();
   document.getElementById('modal').classList.add('show');
+  // 温度の一覧は小さい画面だと収まらないので、今の温度が隠れている時だけ見える所まで送る
+  // (中央に送ると、見えていた「閉じる」まで上に隠れてしまう)
+  const curBtn = kind === 'temp' && box && box.querySelector('.cand.cur');
+  if(curBtn) curBtn.scrollIntoView({ block: 'nearest' });
 }
 
+// 温度は技で 50℃ 刻み(−50・−150・−300・+300)にしか動かないので、テンキーで4桁打つ代わりに
+// 50℃ 刻みの値を並べて1回押すだけで入れられるようにする。1行4つにして、行の先頭を200℃の倍数
+// (会心率+400%・消費半減などの温度)にそろえる。上は 2200℃ か、今の温度から火力上げ1回分の高い方まで。
+function tempCandHtml(){
+  const cur = G.temp;
+  const top = Math.max(2200, Math.ceil((cur + 300) / 50) * 50);
+  const vals = []; for(let v = 0; v <= top; v += 50) vals.push(v);
+  return `<div class="cand-q">今の温度はいくつですか</div>`
+    + `<div class="cand-row temp">${vals.map(v =>
+        `<button class="cand${v === cur ? ' cur' : ''}" onclick="pickTemp(${v})">${v}</button>`).join('')}</div>`
+    + `<button class="cand-more" onclick="showKeys()">一覧に無い値を自分で入力する</button>`;
+}
+function pickTemp(v){
+  if(v === G.temp){ closePad(); return; }   // 今と同じ値なら何も変えない(推奨手も消さない)
+  padBuf = String(v); padOp = null; commit();
+}
 function showKeys(){
   const k = document.getElementById('padKeys');
   const b = document.getElementById('padCand');
