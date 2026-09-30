@@ -3,6 +3,8 @@
    ・試行(mcConf().S 回)を Worker の数で分け、各 Worker が返した差の合計を足してから選ぶ。
      差は整数なので、分け方によらず画面側だけで計算した場合と同じ手になる。
    ・推奨手に続く想定手順の試行(buildPlan)も同じように分担する。
+   ・候補選び(mcPrepare)も1つ目の Worker で行う。最後の1マスでは総当たりの表を作るので、
+     画面のスレッドで行うと数秒止まっていた。
    ・計算中も画面のスレッドは空くので、画面が固まらない。
    ・Worker が作れない(ファイルを直接開いた時は多くのブラウザで作れない)、
      または途中で失敗した場合は、engine.js の stratMCAsync(画面側で計算)に切り替える。
@@ -62,7 +64,16 @@ const MCPool = (function(){
     init();
     if(broken) shutdown();
     if(!workers) return stratMCAsync(ms, f, t, P, cfg, onProgress);
-    const prep = mcPrepare(ms, f, t, P, cfg);
+    let prep;
+    try{
+      const r = await job(workers[0], { type: 'prepare', snap: mcSnapshot(), ms, f, t, cfg }, () => {});
+      prep = r.hasMove ? { move: r.move ? moveFromWire(r.move) : null }
+                       : { pool: r.pool.map(moveFromWire), seedBase: r.seedBase };
+    }catch(e){
+      console.warn('候補選びの並列計算に失敗したため、画面側で計算します:', e.message);
+      shutdown();
+      return stratMCAsync(ms, f, t, P, cfg, onProgress);
+    }
     if(prep.move !== undefined) return prep.move;
     const { pool, seedBase } = prep;
     const n = pool.length;
