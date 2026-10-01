@@ -11,7 +11,7 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=fcfc47bb">
+<link rel="stylesheet" href="style.css?v=f86afe4a">
 </head>
 <body>
 
@@ -140,6 +140,21 @@
 </div>
 </div>
 
+<!-- 結果の選択。打ち始めた後のリセット・素材の切り替えの前に必ず選ぶ(記録用) -->
+<div class="modal" id="outcomeModal">
+  <div class="pad">
+    <div class="pad-hd">今回の結果を選んでください</div>
+    <div class="oc-note">結果と手順は、ツールの改善のために匿名で記録されます</div>
+    <div class="oc-row">
+      <button class="cand" onclick="chooseOutcome('大成功')">大成功</button>
+      <button class="cand" onclick="chooseOutcome('成功')">成功</button>
+      <button class="cand" onclick="chooseOutcome('失敗')">失敗</button>
+      <button class="cand" onclick="chooseOutcome('途中でやめた')">途中でやめた</button>
+    </div>
+    <button class="cand-more" onclick="closeOutcome()">戻る(リセットしない)</button>
+  </div>
+</div>
+
 <div class="modal" id="modal" onclick="if(event.target===this)closePad()">
   <div class="pad">
     <button class="pad-close" onclick="closePad()">閉じる</button>
@@ -163,8 +178,9 @@
   </div>
 </div>
 
-<script src="engine.js?v=fcfc47bb"></script>
-<script src="mc-pool.js?v=fcfc47bb"></script>
-<script src="ui.js?v=fcfc47bb"></script>
+<script src="engine.js?v=f86afe4a"></script>
+<script src="mc-pool.js?v=f86afe4a"></script>
+<script src="gamelog.js?v=f86afe4a"></script>
+<script src="ui.js?v=f86afe4a"></script>
 </body>
 </html>

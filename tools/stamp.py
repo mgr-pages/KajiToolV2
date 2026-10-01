@@ -12,7 +12,7 @@ Worker 用のファイルには mc-pool.js が同じ印を引き継ぐ。
 import hashlib, pathlib, re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-ASSETS = ['style.css', 'engine.js', 'mc-pool.js', 'mc-worker.js', 'ui.js', 'bg-motif.svg']
+ASSETS = ['style.css', 'engine.js', 'mc-pool.js', 'mc-worker.js', 'gamelog.js', 'ui.js', 'bg-motif.svg']
 
 def main():
     h = hashlib.sha1()
