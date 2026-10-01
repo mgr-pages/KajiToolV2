@@ -948,6 +948,7 @@ function rollsForMass(skill, temp, trait, i){
   return getRollCandidates(skill, temp, trait, isLitAt(trait, i));
 }
 function critForMass(skill, cfg, temp, i){
+  if(HS === 2 && skill && skill.key) return 1;       // 必殺(ヘパイトスの炎)の後は、次に叩く技が必ず会心
   return computeCritRate(skill, cfg.level, cfg.hammerId, cfg.star, cfg.trait, temp, isLitAt(cfg.trait, i));
 }
 
@@ -1133,6 +1134,7 @@ function traitActive(temp){
   return !isStartState();
 }
 function actualCostOf(sk, temp, trait){
+  if(!sk.cost) return 0;                     // 必殺は集中力を使わない
   if(trait!=='shuchu') return sk.cost;
   if(!traitActive(temp)) return sk.cost;     // 開始直後は特性が乗らない
   if(temp%400===0) return Math.max(1, Math.round(sk.cost*0.5));
@@ -1550,7 +1552,100 @@ function tatakiOpening(ms, f, t, cfg){
   return null;
 }
 
+// ===================== 必殺(ヘパイトスの炎) =====================
+// 鍛冶の途中にランダムで「必殺チャージ」が起き、1回の鍛冶で1回だけ使える。集中力は使わず、温度は −50。
+// 使うと、次に叩く技は当たったマスがすべて会心になる(4連打ちなら4マスとも)。火力上げ・冷やし込みでは消えない。
+// 会心は理想値を越えれば理想値で止まり、理想値以上のマス(ゾーン内・超過)は動かない(miss)ので、
+// 効果中はゾーンに入ったマスを含む形で叩いても悪くならない。
+// HS: 0 = 使えない / 1 = チャージ済み(使える) / 2 = 使った後で、次に叩く技が必ず会心。
+// チャージの確率は公表されていない(光のハンマーは打ち始めにたまに、途中は直前の打撃の威力が大きいと起きやすい)
+// ので、計算ではチャージを起こさない。画面で「チャージが来た」と入力された時だけ使う。
+const HS_SKILL = { id:'hissatsu', name:'ヘパイトスの炎', lv:45, cost:0, key:null, masses:0, shape:'none', tempDelta:-50, hs:true };
+let HS = 0;
+function skillById(id){ return id === HS_SKILL.id ? HS_SKILL : SKILLS.find(s => s.id === id); }
+function skillByName(n){ return n === HS_SKILL.name ? HS_SKILL : SKILLS.find(s => s.name === n); }
+function hsMove(t){ return t - 50 > 0 ? { sk: HS_SKILL, tg: [], c: 0, nt: t - 50, overP: 0 } : null; }
+// マス i を必ず会心で叩いた時の、誤差の見込みの改善。まだ届いていないマスは、ふつうに仕上げた時の誤差
+// P.hsE0 を基準にする(届かなければ 0)。理想値の見込みは G.posts(redoPost)。
+function hsGain(m, i, r, P){
+  const L = m.zoneLow, H = m.zoneHigh;
+  if(H <= 0 || m.current > H) return 0;             // 超過したマスは理想値以上なので動かない
+  const n = H - L + 1, po = redoPost(i, m), e0 = P.hsE0 || 1.2, unr = m.current < L;
+  let g = 0;
+  for(let k = 0; k < n; k++){
+    const w = po ? po[k] : 1 / n; if(w <= 0) continue;
+    const u = L + k, before = unr ? e0 : Math.min(Math.abs(m.current - u), MAX_ERR);
+    let s = 0;
+    for(const x of r){
+      const v = m.current < u ? Math.min(m.current + 2*x, u) : m.current;
+      if(v >= L) s += before - Math.min(Math.abs(v - u), MAX_ERR);
+    }
+    g += w * s / r.length;
+  }
+  return g;
+}
+// 温度 T で必ず会心として叩く手のうち、誤差の見込みを一番減らす手(みだれ打ちは当たるマスが分からないので除く)
+function hsBestHit(ms, f, T, cfg, P){
+  let best = null, bv = -Infinity;
+  for(const sk of SKILLS){
+    if(!sk.key || sk.random || sk.lv > cfg.level) continue;
+    const c = actualCostOf(sk, T, cfg.trait), nt = T + sk.tempDelta;
+    if(c > f || nt <= 0) continue;
+    for(const tg of enumerateTargetSets(sk)){
+      let v = 0, ok = false;
+      for(const i of tg){
+        if(ms[i].zoneHigh <= 0) continue;
+        const r = rollsForMass(sk, T, cfg.trait, i); if(!r) continue;
+        v += hsGain(ms[i], i, r, P); ok = true;
+      }
+      if(!ok) continue;
+      const sc = v - c * (P.hsC || 0.002);
+      if(sc > bv){ bv = sc; best = { mv: { sk, tg: tg.slice(), c, nt, overP: 0 }, v }; }
+    }
+  }
+  return best;
+}
+// 効果中の手。今すぐ叩くか、火力上げ・冷やし込み(効果は消えない)で温度を変えてから叩くかを比べる。
+// 返り値は { mv, v }(v は誤差の見込みの改善。温度を変える手は、変えた後に叩いた見込みから P.hsOpM を引く)
+function hsBuffBest(ms, f, t, cfg, P){
+  const now = hsBestHit(ms, f, t, cfg, P);
+  let best = now ? { mv: now.mv, v: now.v } : null;
+  for(const op of SKILLS){
+    if(op.key || op.masses !== 0 || op.lv > cfg.level) continue;
+    const c = actualCostOf(op, t, cfg.trait), t2 = t + op.tempDelta;
+    if(c > f || t2 <= 0 || t2 > 2400) continue;
+    const h = hsBestHit(ms, f - c, t2, cfg, P);
+    if(h && h.v - (P.hsOpM || 0.3) > (best ? best.v : -Infinity)) best = { mv: { sk: op, tg: [], c, nt: t2, overP: 0 }, v: h.v - (P.hsOpM || 0.3) };
+  }
+  return best && best.v > 0 ? best : null;
+}
+function hsBuffMove(ms, f, t, cfg, P){ const b = hsBuffBest(ms, f, t, cfg, P); return b ? b.mv : null; }
+// チャージ済みの時に今使うか。使った後(−50℃)に一番良い叩き方の見込みが、P.hsFire マス分(1マス = P.hsE0)以上か、
+// まだ届いていないマスを全部仕上げられる見込みなら使う。先読みでは、使う手を候補に足して比べる(mcPrepare)。
+function hsShouldFire(ms, f, t, cfg, P){
+  const hm = hsMove(t); if(!hm) return false;
+  const h = hsBuffBest(ms, f, hm.nt, cfg, P);
+  if(!h) return false;
+  const e0 = P.hsE0 || 1.2;
+  let unr = 0; for(const m of ms) if(m.zoneHigh > 0 && m.current < m.zoneLow) unr++;
+  return h.v >= (P.hsFire || 3) * e0 || (unr > 0 && h.v >= 0.9 * unr * e0);
+}
+
+// 全マスがゾーンに入った後の必殺。理想値の手前で止まったマスは理想値まで進められるので、見込みが上がれば使う
+function hsEndMove(ms, f, t, cfg, P){
+  if(HS === 2) return hsBuffMove(ms, f, t, cfg, P);
+  if(HS === 1){
+    const hm = hsMove(t); if(!hm) return null;
+    const h = hsBuffBest(ms, f, hm.nt, cfg, P);
+    return h && h.v > (P.hsEndM || 0.05) ? hm : null;
+  }
+  return null;
+}
+
 function stratB(ms,f,t,P,cfg){
+  // ---- 必殺: 効果中は必ず会心で叩く手、チャージ済みなら使いどころを判断する ----
+  if(HS === 2){ const b = hsBuffMove(ms, f, t, cfg, P); if(b) return b; }
+  else if(HS === 1 && !P.hsOff && hsShouldFire(ms, f, t, cfg, P)) return hsMove(t);
   // ---- 残り1マスは総当たりの最善で仕上げる(lastDP) ----
   if(P.lastDP > 0 && (P.lastDProll > 0 || !IN_ROLLOUT)){
     const lm = lastMassMove(ms, f, t, P, cfg);
@@ -2269,7 +2364,7 @@ function mcRolloutBody(ms0, f, t, cfg, first){
   const ms = ms0.map((m,i)=>({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
                                ideal: sampleIdeal(i, m) }));
   let fo = f, to = t, mv = first;
-  const saved = simFirstMove, savedLit = litMassIndex;
+  const saved = simFirstMove, savedLit = litMassIndex, savedHS = HS;
   // 試行の中のやり直し(erRoll、既定 0。実験)は、今の局面の未到達のマスが erRollN 個以下の時だけ使う(erRollN が無ければいつも)。
   // 序盤の手の比べ方まで変えないようにするため。
   //   見送り: いつも使う版は、虹色のオーブ・先読みあり(乱数テープ・種900、同じ局どうし29局)で 79.3% → 69.0%
@@ -2284,15 +2379,19 @@ function mcRolloutBody(ms0, f, t, cfg, first){
   for(let s = 0; s < 70; s++){
     // 渡された1手目(仕上げのやり直し)は、全マスがゾーン内でも打つ。
     // 全マスがゾーンに入った後は、試行の中でもやり直しの見込みを計算する(erRoll。戻りの地金だけ)
-    if(!mv && boardDone(ms, cfg.trait)){ if(!redoOK) break; mv = endRedo(ms, fo, to, PARAMS, cfg, rolloutPost); if(!mv || fo < mv.c) break; }
+    if(!mv && boardDone(ms, cfg.trait)){
+      mv = hsEndMove(ms, fo, to, cfg, PARAMS);       // 必殺が残っていれば、ゾーン内の手前のマスを理想値まで進める
+      if(!mv && redoOK) mv = endRedo(ms, fo, to, PARAMS, cfg, rolloutPost);
+      if(!mv || fo < mv.c) break;
+    }
     if(to <= 0) break;
     if(s > 0) rollLit(ms, to, cfg.trait, MC_RNG);   // 現在の手番の点灯は既知なので触らない
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
     // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
     if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
-      // やり直しの手とみだれ打ちだけはゾーン内のマスも打つ
-      if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random) return;
+      // やり直しの手・みだれ打ち・必殺の効果中の手だけはゾーン内のマスも打つ
+      if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random && HS !== 2) return;
       const r  = rollsForMass(mv.sk, to, cfg.trait, i);
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
@@ -2302,12 +2401,13 @@ function mcRolloutBody(ms0, f, t, cfg, first){
       if(MC_RNG() < cr){ if(m.current < m.ideal){ m.current = Math.min(m.current + 2*roll, m.ideal); m.ex = m.current === m.ideal; } else m.le = true; }   // 理想値以上なら会心は miss(動かない)
       else { m.current += roll; m.ex = false; }
     });
+    if(mv.sk.hs) HS = 2; else if(HS === 2 && mv.sk.key) HS = 0;   // 必殺: 使うと効果中、叩くと効果が消える
     fo -= mv.c; to = mv.nt; simFirstMove = false;
     const md = applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
     if(md){ const mm = ms[md.i]; mm.tch = true; mm.ex = false; mm.le = false; }
     mv = null;
   }
-  simFirstMove = saved; litMassIndex = savedLit;
+  simFirstMove = saved; litMassIndex = savedLit; HS = savedHS;
   let e = 0, rc = 0;
   for(const m of ms){
     if(m.current >= m.zoneLow) rc++;
@@ -2335,6 +2435,19 @@ function mcYield(){ return new Promise(r => setTimeout(r, 0)); }
 // 要るなら {pool, seedBase} を返す。
 function mcPrepare(ms, f, t, P, cfg){
   const mc = mcConf();
+  // 必殺がチャージ済みなら、「今使う」を候補に足し、使わない手(使いどころの判断を止めた評価の上位)と先読みで比べる。
+  // 試行の中では、使いどころの判断(hsShouldFire)で使う
+  if(HS === 1){
+    const hm = hsMove(t);
+    if(hm){
+      const P2 = Object.assign({}, P, { hsOff: 1 });
+      const rest = rankedMoves(ms, f, t, P2, cfg, mc.K);
+      const base = rest.length ? rest.slice() : [stratB(ms, f, t, P2, cfg)].filter(Boolean);
+      const pl = base.slice(0, mc.K).concat([hm]);
+      if(pl.length <= 1) return { move: hm };
+      return { pool: pl, seedBase: stateSeed(ms, f, t) };
+    }
+  }
   const pool = rankedMoves(ms, f, t, P, cfg, mc.K);
   const extra = pool.extra || [];
   // 評価関数が過小評価した点灯マスの手があるなら、貪欲が独走していても先読みで比べる
@@ -2400,18 +2513,19 @@ async function stratMCAsync(ms, f, t, P, cfg, onProgress){
 function mcSnapshot(){
   return { G: { trait:G.trait, posts:G.posts, temp:G.temp, focus:G.focus, masses:G.masses, level:G.level,
                 hammerId:G.hammerId, star:G.star, preset:G.preset },
-           lit: litMassIndex, simFirstMove };
+           lit: litMassIndex, simFirstMove, hs: HS };
 }
 function mcRestore(snap){
   Object.assign(G, snap.G);
   litMassIndex = snap.lit;
+  HS = snap.hs || 0;
   simFirstMove = snap.simFirstMove;
   setActiveMask(G.masses.map(m => !m.off));
   applyThreshold();
 }
 function moveToWire(mv){ return { sk: mv.sk.id, tg: mv.tg.slice(), c: mv.c, nt: mv.nt,
                                   overP: mv.overP || 0, cooling: !!mv.cooling, redo: !!mv.redo }; }
-function moveFromWire(w){ const sk = SKILLS.find(s => s.id === w.sk);
+function moveFromWire(w){ const sk = skillById(w.sk);
   const mv = { sk, tg: w.tg, c: w.c, nt: w.nt, overP: w.overP };
   if(w.cooling) mv.cooling = true;
   if(w.redo) mv.redo = true;
@@ -2670,8 +2784,10 @@ function tracedRolloutBody(ms0, f, t, cfg, first, out){
   const ms = ms0.map((m,i)=>({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
                                ideal: sampleIdeal(i, m) }));
   let fo = f, to = t, mv = first;
+  const savedHS = HS;
   for(let s = 0; s < 24; s++){
-    if(!mv && boardDone(ms, cfg.trait)) break;     // 渡された1手目(仕上げのやり直し)は、全マスがゾーン内でも打つ
+    // 渡された1手目(仕上げのやり直し)は、全マスがゾーン内でも打つ。必殺が残っていれば、その手も続ける
+    if(!mv && boardDone(ms, cfg.trait)){ mv = hsEndMove(ms, fo, to, cfg, PARAMS); if(!mv) break; }
     if(to <= 0) break;
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
     out.push({ key: mv.sk.name + '|' + mv.tg.join(','),
@@ -2680,8 +2796,8 @@ function tracedRolloutBody(ms0, f, t, cfg, first, out){
     // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
     if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
-      // やり直しの手とみだれ打ちだけはゾーン内のマスも打つ
-      if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random) return;
+      // やり直しの手・みだれ打ち・必殺の効果中の手だけはゾーン内のマスも打つ
+      if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random && HS !== 2) return;
       const r  = rollsForMass(mv.sk, to, cfg.trait, i);
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
@@ -2689,10 +2805,12 @@ function tracedRolloutBody(ms0, f, t, cfg, first, out){
       if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }   // 理想値以上なら会心は miss(動かない)
       else m.current += roll;
     });
+    if(mv.sk.hs) HS = 2; else if(HS === 2 && mv.sk.key) HS = 0;   // 必殺: 使うと効果中、叩くと効果が消える
     fo -= mv.c; to = mv.nt; simFirstMove = false;
     applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
     mv = null;
   }
+  HS = savedHS;
 }
 
 function buildPlan(ms0, cfg, first){

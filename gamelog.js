@@ -9,7 +9,7 @@
    ・結果を選んだら端末に貯めてすぐリセットし、送信は裏で行う。送れなかった記録は端末に残し、
      次に開いた時や次の対局の終わりに送り直す。
    ===================================================================== */
-const GLOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzDH0cjz-vcg1N2qU9k_CX6ke0fLX48YPByDAbEUe3gumBrmWzxO8RtxoDAjNamYKC0uA/exec';            // Apps Script を「ウェブアプリ」として公開した URL(…/exec)
+const GLOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzPcvujp_u86Y1MDo5YS1UEzIAVKnEZchMJUeb4y-zNjXFqVs0W1kneZfCtB-NefewWzA/exec';            // Apps Script を「ウェブアプリ」として公開した URL(…/exec)
 const GLOG_CUR = 'kajiAdvisorLogCurV1', GLOG_QUEUE = 'kajiAdvisorLogQueueV1', GLOG_DEV = 'kajiAdvisorDeviceV1';
 const GLOG_MAXQ = 50;                // 貯めておく記録の上限(古いものから捨てる)
 

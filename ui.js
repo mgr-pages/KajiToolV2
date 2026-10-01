@@ -262,6 +262,13 @@ function renderHeader(){
     (hm ? hm.name : G.hammerId) + '★' + G.star + ' / Lv' + G.level;
   document.getElementById('v-temp').textContent = G.temp;
   document.getElementById('v-focus').textContent = G.focus;
+  // 必殺: なし → (チャージが来たら押す)チャージ済み → (使う)効果中 → (叩く)使用済み
+  const hsBox = document.getElementById('hsBox'), hsV = document.getElementById('v-hs');
+  if(hsBox && hsV){
+    hsV.textContent = G.hs === 1 ? 'チャージ済み' : G.hs === 2 ? '効果中' : G.hsUsed ? '使用済み' : 'なし';
+    hsBox.classList.toggle('on', G.hs === 1 || G.hs === 2);
+    hsBox.classList.toggle('used', !G.hs && !!G.hsUsed);
+  }
   const b = [];
   // 温度の効果(通常・会心率+400% など)と「開始直後」は、見ても分かりにくく打ち方も変わらないので出さない(利用者の指示)。
   // 残すのは、入力や点灯の選択など、利用者に操作を求める案内だけ。
@@ -317,11 +324,12 @@ function renderRec(){
     return;
   }
   const r = G.rec;
-  const tgt = r.sk.random ? `マス${r.tg.map(i=>i+1).join('・')}のどこかにランダムで4回`
+  const tgt = r.sk.hs ? '必殺: 次に叩く技は当たったマスがすべて会心'
+            : r.sk.random ? `マス${r.tg.map(i=>i+1).join('・')}のどこかにランダムで4回`
             : r.tg.length ? r.tg.map(i=>'マス'+(i+1)).join('・') : '温度操作';
   const cr = r.sk.key ? computeCritRate(r.sk,G.level,G.hammerId,G.star,G.trait,G.temp) : 0;
   // 点灯マスを含む手は、そのマスだけ会心率が違う。1つの数字に丸めると誤解を招くので分けて出す
-  let critTxt = r.sk.key ? ' / 会心'+(cr*100).toFixed(0)+'%' : '';
+  let critTxt = r.sk.key ? (G.hs === 2 ? ' / 必ず会心(必殺)' : ' / 会心'+(cr*100).toFixed(0)+'%') : '';
   if(r.sk.key && G.trait === 'kaishin' && litMassIndex !== null && r.tg.includes(litMassIndex)){
     const crL = critForMass(r.sk, cfgOf(), G.temp, litMassIndex);
     const others = r.tg.filter(i => i !== litMassIndex);
@@ -366,7 +374,7 @@ function renderDetail(){
     const cnt = {};                                   // まとめた中で叩いた回数
     const info = []; let cutAt = -1;
     G.plan.forEach((st,i)=>{
-      const sk = SKILLS.find(k => k.name === st.name);
+      const sk = skillByName(st.name);
       const rr = (sk && sk.key) ? getRollCandidates(sk, st.temp, G.trait, false) : null;
       let lost = false;
       if(rr){
@@ -492,7 +500,7 @@ function applyExecuted(k){
   const litNow = (G.trait === 'kaishin') ? litMassIndex : null;
   // やり直せるように、変更前の状態を控える
   ensurePosts();
-  G.undoSnap = { temp:G.temp, focus:G.focus, lit:litMassIndex,
+  G.undoSnap = { temp:G.temp, focus:G.focus, lit:litMassIndex, hs:G.hs, hsUsed:G.hsUsed,
     masses:G.masses.map(m=>({...m})), pending:G.pending.slice(), histLen:G.hist.length,
     posts:G.posts.map(p=>p.slice()), obs:(G.obs||[]).slice() };
   steps.forEach((st, k) => G.hist.push({name:st.name, tg:st.tg.slice(), tempAfter:st.tempAfter,
@@ -510,14 +518,19 @@ function applyExecuted(k){
   // そのマスの推定は諦めて分布を一様に戻す。
   // みだれ打ちはどのマスに何回当たったか分からないので、分解できない扱いにする
   const cnt = {};
-  const isRandom = st => { const sk = SKILLS.find(x => x.name === st.name); return !!(sk && sk.random); };
+  const isRandom = st => { const sk = skillByName(st.name); return !!(sk && sk.random); };
   steps.forEach(st => st.tg.forEach(i => { cnt[i] = (cnt[i]||0) + (isRandom(st) ? 2 : 1); }));
   ensurePosts();
   if(!G.obs) G.obs = new Array(G.masses.length).fill(null);
   let t2 = G.undoSnap.temp;
   const firstOf = {};
+  // 必殺: 使った後の最初の打撃は、当たったマスがすべて会心(会心率 1)。打つと効果が消える
+  let hsNow = G.hs || 0;
   steps.forEach((st, k) => {
-    const sk = SKILLS.find(x => x.name === st.name);
+    const sk = skillByName(st.name);
+    const sure = hsNow === 2 && !!(sk && sk.key);
+    if(sk && sk.hs){ hsNow = 2; G.hsUsed = true; }
+    else if(sure) hsNow = 0;
     st.tg.forEach(i => {
       if(firstOf[i] === undefined && sk && sk.key){
         // その手の時点の特性状態を再現してから求める。
@@ -528,13 +541,14 @@ function applyExecuted(k){
         const lit = (k === 0 && litNow !== null && i === litNow);
         firstOf[i] = { before: G.masses[i].current,
                        rolls: getRollCandidates(sk, st.temp, G.trait, lit),
-                       cr: computeCritRate(sk, G.level, G.hammerId, G.star, G.trait, st.temp, lit),
+                       cr: sure ? 1 : computeCritRate(sk, G.level, G.hammerId, G.star, G.trait, st.temp, lit),
                        name: st.name, key: sk.key, temp: st.temp, lit,
                        mult: getPowerMultiplier(G.trait, st.temp, lit) };
         simFirstMove = saved;
       }
     });
   });
+  G.hs = hsNow;
   const hit = new Set(G.pending);
   steps.forEach(st => st.tg.forEach(i => hit.add(i)));
   for(const i of hit){
@@ -601,6 +615,7 @@ function undoExec(){
   const u = G.undoSnap;
   G.temp = u.temp; G.focus = u.focus;
   litMassIndex = (typeof u.lit === 'number') ? u.lit : null;
+  G.hs = u.hs || 0; G.hsUsed = !!u.hsUsed;
   G.masses = u.masses.map(m=>({...m}));
   G.pending = u.pending.slice();
   if(typeof u.histLen === 'number') G.hist.length = u.histLen;
@@ -640,9 +655,12 @@ async function doCalc(){
   await new Promise(r=>setTimeout(r, 20));
   try{
     const cfg = cfgOf();
+    HS = G.hs || 0;                   // 必殺の状態(先読みの Worker には mcSnapshot で渡る)
     const ms = G.masses.map(m=>({current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh}));
     // 戻りの地金では、全マスがゾーンに入った後も、もう一度ねらった方が大成功の見込みが上がる時はその手を出す
-    const redo = boardDone(ms, G.trait) && G.temp > 0 ? endRedo(ms, G.focus, G.temp, PARAMS, cfg) : null;
+    // 必殺が残っていれば先に使う(必ず会心なので、やり直しより確実)
+    const done = boardDone(ms, G.trait) && G.temp > 0;
+    const redo = done ? (hsEndMove(ms, G.focus, G.temp, cfg, PARAMS) || endRedo(ms, G.focus, G.temp, PARAMS, cfg)) : null;
     if(redo){
       G.rec = redo; G.msg = null;
       await MCPool.plan(ms, cfg, G.rec);
@@ -696,6 +714,7 @@ function candidateValues(idx){
   if(!ob.rolls) return null;
   // 会心が理想値ちょうどで止まる場合も「会心が出た」に含める(値はゾーン内の任意の位置になりうる)
   const o = hitOutcomes(ob.before, ob.rolls, m.zoneLow, m.zoneHigh);
+  if(ob.cr >= 1) o.normal = [];       // 必殺の効果中は必ず会心なので、会心でない値は出さない
   // 戻りの対象になる/ならない時に実際に起こりうる値だけに絞る(戻りの規則で決まるため)
   const only = (arr, allow) => allow ? arr.filter(v => allow.includes(v)) : arr;
   if(ob.modori !== 'yes'){
@@ -1097,6 +1116,7 @@ function resetAll(){
   G.focus = cap + (HAMMERS[G.hammerId]?HAMMERS[G.hammerId].focusBonus:0);
   G.rec=null; G.plan=[];
   G.pending=[]; G.undoSnap=null; G.msg=null; G.hist=[]; G.posts=null; G.obs=null;
+  G.hs = 0; G.hsUsed = false;
   renderZoneRows();
   renderAll(); save();
 }
@@ -1107,7 +1127,7 @@ function save(){
   try{ localStorage.setItem(SKEY, JSON.stringify({
     temp:G.temp, focus:G.focus, masses:G.masses,
     level:G.level, hammerId:G.hammerId, star:G.star, trait:G.trait, preset:G.preset, lit:litMassIndex,
-    pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs
+    pending:G.pending, showRange:G.showRange, hist:G.hist, posts:G.posts, obs:G.obs, hs:G.hs, hsUsed:G.hsUsed
   })); }catch(e){}
 }
 function load(){
@@ -1128,6 +1148,8 @@ function load(){
     applyThreshold();                 // 許容誤差は素材で決まる(手動設定は使うマスの数)
     if(!Array.isArray(G.pending)) G.pending = [];
     if(!Array.isArray(G.hist)) G.hist = [];
+    if(G.hs !== 1 && G.hs !== 2) G.hs = 0;
+    G.hsUsed = !!G.hsUsed;
     // 廃止した素材が保存データに残っていた場合は既定へ戻す
     if(G.preset !== 'custom' && !PRESETS[G.preset]) G.preset = 'kagayaki';
     if(typeof G.showRange !== 'boolean') G.showRange = true;
@@ -1182,6 +1204,16 @@ GameLog.restore();
 
 /* ====== 結果の選択(記録用) ====== */
 let OUTCOME_NEXT = null;
+// 必殺のチャージが来たら押す(もう一度押すと取り消し)。効果中・使用済みの時は何もしない
+// (使った手・叩いた手の取り消しは「直前の反映を取り消す」で戻る)
+function toggleHS(){
+  if(G.hs === 2 || (G.hsUsed && !G.hs)) return;
+  G.hs = G.hs === 1 ? 0 : 1;
+  GameLog.ev('hs', { state: G.hs });
+  G.rec = null; G.plan = []; G.msg = null;
+  renderAll(); save();
+  if(!G.pending.length && !CALC_BUSY) doCalc();
+}
 function askOutcome(next){ OUTCOME_NEXT = next; document.getElementById('outcomeModal').classList.add('show'); }
 function closeOutcome(){ OUTCOME_NEXT = null; document.getElementById('outcomeModal').classList.remove('show'); }
 function chooseOutcome(o){
