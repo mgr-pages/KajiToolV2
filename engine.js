@@ -719,6 +719,25 @@ function finishedErrDist(ms, i, th, i2){
   }
   return dist;
 }
+// 表の混ぜ合わせ(mix)で手 x を打った時の価値。火力上げ・冷やし込みは、次の手で反対の温度操作を打たない前提で求める
+// (表の値は打てる前提なので、そのまま使うと「火力上げ → 冷やし込み×2」のような遠回りを選び、次の手番でそれを
+// 禁じると悪い局面に入ってしまう)。打てない手は -1。
+function ldpQNoUndo(mix, x, ti, p, F, cfg){
+  const act = mix[0].tb.acts[x];
+  const plain = () => { let q = 0; for(const e of mix){ const v = ldpQ(e.tb, e.tb.acts[x], ti, p, F); if(v < 0) return -1; q += e.w * v; } return q; };
+  if(act.sk.key || cfg.trait === 'modori' || cfg.trait === 'kaishin') return plain();
+  const row = act.rows[ti];
+  if(row.skip || row.c > F || row.nti < 0) return -1;
+  const F2 = F - row.c, opp = act.sk.id === 'karyoku' ? 'hiyashikomi' : act.sk.id === 'hiyashikomi' ? 'karyoku' : null;
+  let best = -1;
+  for(let y = 0; y < mix[0].tb.acts.length; y++){
+    if(mix[0].tb.acts[y].sk.id === opp) continue;
+    let q = 0, ok = true;
+    for(const e of mix){ const v = ldpQ(e.tb, e.tb.acts[y], row.nti, p, F2); if(v < 0){ ok = false; break; } q += e.w * v; }
+    if(ok && q > best) best = q;
+  }
+  return best < 0 ? 0 : best;
+}
 function lastMassMove(ms, f, t, P, cfg){
   if(isStartState()) return null;
   const mod = cfg.trait === 'modori';
@@ -758,8 +777,11 @@ function lastMassMove(ms, f, t, P, cfg){
   ldpTrim(mix.map(e => e.tb));
   let best = null, bq = 0;
   for(let x = 0; x < mix[0].tb.acts.length; x++){
+    if(undoesPrev(mix[0].tb.acts[x].sk, cfg)) continue;
     let q = 0, ok = true;
-    for(const e of mix){ const v = mod ? ldpQM(e.tb, e.tb.acts[x], ti, p, F) : ldpQ(e.tb, e.tb.acts[x], ti, p, F); if(v < 0){ ok = false; break; } q += e.w * v; }
+    if(!mod) q = ldpQNoUndo(mix, x, ti, p, F, cfg);
+    if(q < 0) ok = false;
+    else if(mod) for(const e of mix){ const v = ldpQM(e.tb, e.tb.acts[x], ti, p, F); if(v < 0){ ok = false; break; } q += e.w * v; }
     if(ok && q > bq){ bq = q; best = mix[0].tb.acts[x].sk; }
   }
   if(!best) return null;
@@ -903,8 +925,11 @@ function twoMassMove(ms, f, t, P, cfg){
   ldpTrim(mix.map(e => e.tb));
   let best = null, bq = 0;
   for(let x = 0; x < mix[0].tb.acts.length; x++){
+    if(undoesPrev(mix[0].tb.acts[x].sk, cfg)) continue;
     let q = 0, ok = true;
-    for(const e of mix){ const v = mod ? ldpQM(e.tb, e.tb.acts[x], ti, p, F) : ldpQ(e.tb, e.tb.acts[x], ti, p, F); if(v < 0){ ok = false; break; } q += e.w * v; }
+    if(!mod) q = ldpQNoUndo(mix, x, ti, p, F, cfg);
+    if(q < 0) ok = false;
+    else if(mod) for(const e of mix){ const v = ldpQM(e.tb, e.tb.acts[x], ti, p, F); if(v < 0){ ok = false; break; } q += e.w * v; }
     if(ok && q > bq){ bq = q; best = mix[0].tb.acts[x].sk; }
   }
   if(!best) return null;
@@ -1567,6 +1592,13 @@ function tatakiOpening(ms, f, t, cfg){
 // ので、計算ではチャージを起こさない。画面で「チャージが来た」と入力された時だけ使う。
 const HS_SKILL = { id:'hissatsu', name:'ヘパイトスの炎', lv:45, cost:0, key:null, masses:0, shape:'none', tempDelta:-50, hs:true };
 let HS = 0;
+// 直前に打った手の技(id)。火力上げの直後の冷やし込み(とその逆)は温度が元に戻るだけで集中力を失うので選ばない
+// (利用者の指摘)。戻り(200の倍数に止まり直して戻りを起こす)と威力会心率上昇(点灯の引き直し)は意味があるので除く。
+let PREV_SK = null;
+function undoesPrev(sk, cfg){
+  if(cfg.trait === 'modori' || cfg.trait === 'kaishin') return false;
+  return (PREV_SK === 'karyoku' && sk.id === 'hiyashikomi') || (PREV_SK === 'hiyashikomi' && sk.id === 'karyoku');
+}
 function skillById(id){ return id === HS_SKILL.id ? HS_SKILL : SKILLS.find(s => s.id === id); }
 function skillByName(n){ return n === HS_SKILL.name ? HS_SKILL : SKILLS.find(s => s.name === n); }
 function hsMove(t){ return t - 50 > 0 ? { sk: HS_SKILL, tg: [], c: 0, nt: t - 50, overP: 0 } : null; }
@@ -2481,7 +2513,7 @@ function mcRolloutBody(ms0, f, t, cfg, first){
   const ms = ms0.map((m,i)=>({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
                                ideal: sampleIdeal(i, m) }));
   let fo = f, to = t, mv = first;
-  const saved = simFirstMove, savedLit = litMassIndex, savedHS = HS;
+  const saved = simFirstMove, savedLit = litMassIndex, savedHS = HS, savedPrev = PREV_SK;
   // 試行の中のやり直し(erRoll、既定 0。実験)は、今の局面の未到達のマスが erRollN 個以下の時だけ使う(erRollN が無ければいつも)。
   // 序盤の手の比べ方まで変えないようにするため。
   //   見送り: いつも使う版は、虹色のオーブ・先読みあり(乱数テープ・種900、同じ局どうし29局)で 79.3% → 69.0%
@@ -2519,12 +2551,13 @@ function mcRolloutBody(ms0, f, t, cfg, first){
       else { m.current += roll; m.ex = false; }
     });
     if(mv.sk.hs) HS = 2; else if(HS === 2 && mv.sk.key) HS = 0;   // 必殺: 使うと効果中、叩くと効果が消える
+    PREV_SK = mv.sk.id;
     fo -= mv.c; to = mv.nt; simFirstMove = false;
     const md = applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
     if(md){ const mm = ms[md.i]; mm.tch = true; mm.ex = false; mm.le = false; }
     mv = null;
   }
-  simFirstMove = saved; litMassIndex = savedLit; HS = savedHS;
+  simFirstMove = saved; litMassIndex = savedLit; HS = savedHS; PREV_SK = savedPrev;
   let e = 0, rc = 0;
   for(const m of ms){
     if(m.current >= m.zoneLow) rc++;
@@ -2634,12 +2667,13 @@ async function stratMCAsync(ms, f, t, P, cfg, onProgress){
 function mcSnapshot(){
   return { G: { trait:G.trait, posts:G.posts, temp:G.temp, focus:G.focus, masses:G.masses, level:G.level,
                 hammerId:G.hammerId, star:G.star, preset:G.preset },
-           lit: litMassIndex, simFirstMove, hs: HS };
+           lit: litMassIndex, simFirstMove, hs: HS, prev: PREV_SK };
 }
 function mcRestore(snap){
   Object.assign(G, snap.G);
   litMassIndex = snap.lit;
   HS = snap.hs || 0;
+  PREV_SK = snap.prev || null;
   simFirstMove = snap.simFirstMove;
   setActiveMask(G.masses.map(m => !m.off));
   applyThreshold();
@@ -2905,7 +2939,7 @@ function tracedRolloutBody(ms0, f, t, cfg, first, out){
   const ms = ms0.map((m,i)=>({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh,
                                ideal: sampleIdeal(i, m) }));
   let fo = f, to = t, mv = first;
-  const savedHS = HS;
+  const savedHS = HS, savedPrev = PREV_SK;
   for(let s = 0; s < 24; s++){
     // 渡された1手目(仕上げのやり直し)は、全マスがゾーン内でも打つ。必殺が残っていれば、その手も続ける
     if(!mv && boardDone(ms, cfg.trait)){ mv = hsEndMove(ms, fo, to, cfg, PARAMS); if(!mv) break; }
@@ -2927,11 +2961,12 @@ function tracedRolloutBody(ms0, f, t, cfg, first, out){
       else m.current += roll;
     });
     if(mv.sk.hs) HS = 2; else if(HS === 2 && mv.sk.key) HS = 0;   // 必殺: 使うと効果中、叩くと効果が消える
+    PREV_SK = mv.sk.id;
     fo -= mv.c; to = mv.nt; simFirstMove = false;
     applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
     mv = null;
   }
-  HS = savedHS;
+  HS = savedHS; PREV_SK = savedPrev;
 }
 
 function buildPlan(ms0, cfg, first){
