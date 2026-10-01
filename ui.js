@@ -1176,6 +1176,22 @@ function load(){
 }
 
 /* ====== 起動 ====== */
+// 商材の選択欄を、engine.js の CRAFT_ITEMS の並び(サイトと同じ順)から「職人・種類」ごとにまとめて作る。手動設定は最後
+(function(){
+  const sel = document.getElementById('s-preset');
+  if(!sel || typeof PRESET_ORDER === 'undefined') return;
+  const custom = sel.querySelector('option[value="custom"]');
+  const groups = new Map();
+  for(const k of PRESET_ORDER){
+    const p = PRESETS[k], label = p.job + '鍛冶・' + p.grp;
+    if(!groups.has(label)){ const g = document.createElement('optgroup'); g.label = label; groups.set(label, g); }
+    const op = document.createElement('option'); op.value = k; op.textContent = p.name;
+    groups.get(label).appendChild(op);
+  }
+  for(const g of groups.values()) sel.insertBefore(g, custom);
+  sel.value = 'kagayaki';
+})();
+
 // 商材の選択欄に、このツールの推奨どおりに打った時の大成功率の目安(PRESETS の rate)を添える。
 // 目安は選ぶ時だけ出す(一覧を開く直前に「名前(約80%)」へ替え、選び終わる・閉じると名前だけに戻す)。
 // 選択欄は標準の部品なので、見出しに出る文字と一覧の文字を別々にはできないため、この形にしている。

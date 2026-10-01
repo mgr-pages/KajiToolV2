@@ -11,28 +11,14 @@
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=24e67de1">
+<link rel="stylesheet" href="style.css?v=be9c2c66">
 </head>
 <body>
 
 <div class="hdr">
   <div class="hdr-title">
     <select class="mat-sel" id="s-preset" onchange="onPresetChange()">
-      <optgroup label="道具鍛冶">
-        <option value="orb">虹色のオーブ</option>
-        <option value="hidane">超ようせいのひだね</option>
-        <option value="amatsuyu">超あまつゆのいと</option>
-        <option value="kagayaki" selected>超かがやきの樹液</option>
-        <option value="kajihammer">光の鍛冶ハンマー</option>
-        <option value="maoulamp">まおうの錬金ランプ</option>
-      </optgroup>
-      <optgroup label="防具鍛冶">
-        <option value="bloom">ブルームシールド</option>
-        <option value="kimonsho">輝紋章の盾</option>
-      </optgroup>
-      <optgroup label="武器鍛冶">
-        <option value="yumon">幽紋刀</option>
-      </optgroup>
+      <!-- 商材は engine.js の CRAFT_ITEMS から、職人・種類ごとにまとめて ui.js が並べる -->
       <option value="custom">手動設定</option>
     </select>
     <span class="hint-cust" id="v-cust" style="display:none">要設定</span>
@@ -181,9 +167,9 @@
   </div>
 </div>
 
-<script src="engine.js?v=24e67de1"></script>
-<script src="mc-pool.js?v=24e67de1"></script>
-<script src="gamelog.js?v=24e67de1"></script>
-<script src="ui.js?v=24e67de1"></script>
+<script src="engine.js?v=be9c2c66"></script>
+<script src="mc-pool.js?v=be9c2c66"></script>
+<script src="gamelog.js?v=be9c2c66"></script>
+<script src="ui.js?v=be9c2c66"></script>
 </body>
 </html>
