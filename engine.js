@@ -770,27 +770,66 @@ function lastMassMove(ms, f, t, P, cfg){
 //   ・やめた場合: マス i の理想値の見込み(G.posts)と、ほかのマスの誤差の分布(finishedErrDist)から求める。
 //   ・打った場合: 会心・ロールごとに結果を求める。ゾーン内に止まれば上と同じ求め方。超過したら、
 //     残り1マスの総当たりの表(戻りの地金の版)で、その後の仕上げの見込みを求める(理想値はゾーン内で一様とみなす)。
-function endRedo(ms, f, t, P, cfg){
-  if(cfg.trait !== 'modori' || !(P.er > 0) || IN_ROLLOUT > 0 || isStartState()) return null;
+// 理想値の見込み(実際の局面は G.posts)。先読みの試行の中では、試行の中で分かったことを重ねたものを渡す(postOf)
+function redoPost(i, m){
+  const n = m.zoneHigh - m.zoneLow + 1;
+  return (G.posts && G.posts[i] && G.posts[i].length === n) ? G.posts[i] : null;
+}
+// 先読みの試行の中の理想値の見込み。試行の中で動いていないマスは G.posts のまま。
+// 会心で理想値に止まったマスは確定(ex)、会心で動かなかったマスは「理想値は今の値以下」(le)。
+function rolloutPost(i, m){
+  const base = redoPost(i, m);
+  if(!m.tch) return base;
+  const n = m.zoneHigh - m.zoneLow + 1;
+  if(m.ex && m.current >= m.zoneLow && m.current <= m.zoneHigh){ const a = new Array(n).fill(0); a[m.current - m.zoneLow] = 1; return a; }
+  if(m.le && m.current >= m.zoneLow){
+    const a = new Array(n).fill(0); let s = 0;
+    for(let k = 0; k < n && m.zoneLow + k <= m.current; k++){ a[k] = base ? base[k] : 1; s += a[k]; }
+    if(s > 0) return a.map(x => x / s);
+  }
+  return base;
+}
+function endRedo(ms, f, t, P, cfg, postOf){
+  const roll = IN_ROLLOUT > 0;
+  if(cfg.trait !== 'modori' || !(P.er > 0) || isStartState()) return null;
+  if(roll && !(P.erRoll > 0)) return null;
   if(!boardDone(ms, cfg.trait)) return null;
   if(t % 50 !== 0 || t < 50 || t > LDP_TMAX) return null;
-  const th = SUCCESS_THRESHOLD, ti = t / 50 - 1, F0 = Math.min(f, P.ldpF || 120);
+  postOf = postOf || redoPost;
+  const th = SUCCESS_THRESHOLD, ti = t / 50 - 1, F0 = Math.min(f, roll ? (P.ldpFR || 80) : (P.ldpF || 120));
+  const errAt = (v, u) => Math.min(Math.abs(v - u), MAX_ERR);
+  // マスごとの誤差の分布(0〜MAX_ERR)
+  const ed = ms.map((m, j) => {
+    if(m.zoneHigh <= 0) return null;
+    const n = m.zoneHigh - m.zoneLow + 1, p = postOf(j, m), e = new Array(MAX_ERR + 1).fill(0);
+    for(let k = 0; k < n; k++) e[errAt(m.current, m.zoneLow + k)] += p ? p[k] : 1 / n;
+    return e;
+  });
   let best = null, bg = P.erM || 0;
   for(let i = 0; i < ms.length; i++){
     const m = ms[i]; if(m.zoneHigh <= 0) continue;
     const L = m.zoneLow, H = m.zoneHigh, n = H - L + 1, cur = m.current;
-    const po = (G.posts && G.posts[i] && G.posts[i].length === n) ? G.posts[i] : null;
+    const po = postOf(i, m);
     const pu = k => po ? po[k] : 1 / n;
-    const dist = finishedErrDist(ms, i, th);
-    if(!dist) continue;
-    const D = []; let acc = 0; for(let k = 0; k <= th; k++){ acc += dist[k]; D.push(acc); }
+    // ほかのマスの誤差の合計の分布(許容誤差を超える分は捨てる)
+    let dist = [1];
+    for(let j = 0; j < ms.length; j++){
+      if(j === i || !ed[j]) continue;
+      const nd = new Array(th + 1).fill(0);
+      for(let x = 0; x < dist.length; x++) for(let y = 0; y <= MAX_ERR; y++) if(x + y <= th) nd[x + y] += dist[x] * ed[j][y];
+      dist = nd;
+    }
+    const D = []; let acc = 0; for(let k = 0; k <= th; k++){ acc += dist[k] || 0; D.push(acc); }
     const Dx = x => x < 0 ? 0 : D[Math.min(x, th)];
-    const errAt = (v, u) => Math.min(Math.abs(v - u), MAX_ERR);
     let pStop = 0; for(let k = 0; k < n; k++) pStop += pu(k) * Dx(th - errAt(cur, L + k));
     if(pStop > 1 - 1e-9) continue;
+    // 超過した後の仕上げの見込みに使う表。先読みの中は一番ありそうな許容誤差の表1枚だけにする
     const mix = [];
-    for(let k = 0; k <= th; k++){
-      if(dist[k] <= 1e-6) continue;
+    if(roll){
+      let kb = -1; for(let k = 0; k <= th; k++) if((dist[k] || 0) > 1e-6 && (kb < 0 || dist[k] > dist[kb])) kb = k;
+      if(kb >= 0){ const tb = ldpTable(L, H, Math.min(th - kb, MAX_ERR), cfg); ldpEnsureM(tb, F0); mix.push({ w: D[th], tb }); }
+    } else for(let k = 0; k <= th; k++){
+      if((dist[k] || 0) <= 1e-6) continue;
       const tb = ldpTable(L, H, Math.min(th - k, MAX_ERR), cfg);
       ldpEnsureM(tb, F0); mix.push({ w: dist[k], tb });
     }
@@ -2232,7 +2271,9 @@ function mcRolloutBody(ms0, f, t, cfg, first){
   let fo = f, to = t, mv = first;
   const saved = simFirstMove, savedLit = litMassIndex;
   for(let s = 0; s < 70; s++){
-    if(!mv && boardDone(ms, cfg.trait)) break;     // 渡された1手目(仕上げのやり直し)は、全マスがゾーン内でも打つ
+    // 渡された1手目(仕上げのやり直し)は、全マスがゾーン内でも打つ。
+    // 全マスがゾーンに入った後は、試行の中でもやり直しの見込みを計算する(erRoll。戻りの地金だけ)
+    if(!mv && boardDone(ms, cfg.trait)){ mv = endRedo(ms, fo, to, PARAMS, cfg, rolloutPost); if(!mv || fo < mv.c) break; }
     if(to <= 0) break;
     if(s > 0) rollLit(ms, to, cfg.trait, MC_RNG);   // 現在の手番の点灯は既知なので触らない
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
@@ -2245,11 +2286,14 @@ function mcRolloutBody(ms0, f, t, cfg, first){
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
       const roll = r[(MC_RNG()*r.length)|0];
-      if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }   // 理想値以上なら会心は miss(動かない)
-      else m.current += roll;
+      // 試行の中で分かったこと(rolloutPost): 会心で理想値に止まった(ex)・会心で動かなかった(le)
+      m.tch = true;
+      if(MC_RNG() < cr){ if(m.current < m.ideal){ m.current = Math.min(m.current + 2*roll, m.ideal); m.ex = m.current === m.ideal; } else m.le = true; }   // 理想値以上なら会心は miss(動かない)
+      else { m.current += roll; m.ex = false; }
     });
     fo -= mv.c; to = mv.nt; simFirstMove = false;
-    applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
+    const md = applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
+    if(md){ const mm = ms[md.i]; mm.tch = true; mm.ex = false; mm.le = false; }
     mv = null;
   }
   simFirstMove = saved; litMassIndex = savedLit;
