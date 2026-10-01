@@ -143,13 +143,13 @@
       },
       "greedy": {
         "games": 300,
-        "great": 40,
-        "unreached": 10.7,
-        "over": 4,
-        "avgErr": 6.18,
-        "avgMoves": 26.7,
-        "avgFocusLeft": 8.9,
-        "fingerprint": "2b80d086"
+        "great": 43.7,
+        "unreached": 8.3,
+        "over": 7,
+        "avgErr": 5.15,
+        "avgMoves": 26.9,
+        "avgFocusLeft": 7,
+        "fingerprint": "887ea08f"
       }
     },
     "orb": {
@@ -165,13 +165,13 @@
       },
       "greedy": {
         "games": 300,
-        "great": 68.3,
-        "unreached": 1.3,
-        "over": 1.3,
-        "avgErr": 6.33,
-        "avgMoves": 16.9,
-        "avgFocusLeft": 22.1,
-        "fingerprint": "bc86cd88"
+        "great": 69.7,
+        "unreached": 0.7,
+        "over": 5.3,
+        "avgErr": 6.37,
+        "avgMoves": 17.1,
+        "avgFocusLeft": 18.3,
+        "fingerprint": "ef0e3cf5"
       }
     },
     "kajihammer": {

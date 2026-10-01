@@ -142,6 +142,10 @@ const PRESETS = {
     //     選ぶのに使っていない種202・303・404 の計15000局で 37.1% → 36.9%(z=-0.54)。探索の種に合っただけ。
     //   ・ゾーン内の外れたマスをわざと超過させて戻りでやり直す(redo): 期待誤差2.0以上で −0.7pt(z=-2.6)、
     //     2.5以上で ±0(種303、5000局)。やり直すとゾーンの12〜16手前に戻り、集中力も足りなくなる。
+    // 仕上げのやり直し(er、既定 1、endRedo): 全マスがゾーンに入った後、やり直した方が大成功の見込みが上がる時は
+    //   ゾーン内のマスにもう一度ねらい打ちする。貪欲(乱数テープ・種303、同じ局どうし3000局)で 39.2% → 40.6%
+    //   (片方だけ大成功 31局対74局、z=4.20)。やり直しを始める差の基準(erM)を 0.005〜0.05 にしても変わらなかった。
+    //   先読みあり(乱数テープ・種950、同じ局どうし100局)で 37.0% → 39.0%(片方だけ大成功 1局対3局)。
     params: { tcost:0.017, cap:12, rush:0.9, heat:8, midare:1, midareW:1.5, mdc:0.5, ldp2:1, ldp2R:0.15, ldp2C:15, ldp2B:1 },
     mc: { gate: 0, S: 1280 },
     zones: [[500,508],[0,0],[300,308],[0,0],[405,413],[0,0]]
@@ -158,6 +162,10 @@ const PRESETS = {
     trait: 'modori',
     threshold: 7,
     modori: { min: 12, max: 16 },
+    // 仕上げのやり直し(er、既定 1、endRedo): 全マスがゾーンに入った後、やり直した方が大成功の見込みが上がる時は
+    //   ゾーン内のマスにもう一度ねらい打ちする(理想値以上なら会心は miss で動かないので、会心なら損をしない)。
+    //   貪欲(乱数テープ・種303、同じ局どうし1000局)で 64.5% → 66.3%(片方だけ大成功 17局対35局、z=2.50)。
+    //   先読みあり(乱数テープ・種900、同じ局どうし100局)で 73.0% → 77.0%(片方だけ大成功 0局対4局、z=2.00)。
     params: { cap:18, heat:10, ov:8 },
     // 先読み: 独走局面でも省かず毎回先読みする(gate 0)。同じ局どうし(乱数テープ・種900)97局で
     //   既定 64.9% → 72.2%(新だけ大成功12局 / 既定だけ5局、z=1.70)。ブルームシールド・まおうの錬金ランプと合わせて入れた。
@@ -207,15 +215,17 @@ const PRESETS = {
 // 職人Lv80・光のハンマー★3。tools/analyze.js --mode mc で今のエンジンの設定のまま打った局の割合(括弧内は局数と95%の範囲)。
 //   超かがやきの樹液 75.0%(100局 67〜83%) / 超あまつゆのいと 68.0%(100局 59〜77%)
 //   超ようせいのひだね 86.0%(50局 76〜96%) / 輝紋章の盾 76.0%(50局 64〜88%)
-//   ブルームシールド 66.7%(78局 56〜77%、先読みを毎回する設定を決めた比較の局) / 虹色のオーブ 72.2%(97局 63〜81%、同じ)
-//   幽紋刀 45.1%(144局 37〜53%) / 光の鍛冶ハンマー 83.3%(96局 76〜91%)
+//   ブルームシールド 66.7%(78局 56〜77%、先読みを毎回する設定を決めた比較の局)
+//   虹色のオーブ 77.0%(100局 69〜85%、仕上げのやり直し(er)を入れた後。入れる前は同じ局で 73.0%)
+//   幽紋刀 39.0%(100局 29〜49%、仕上げのやり直し(er)を入れた後。入れる前は同じ局で 37.0%) / 光の鍛冶ハンマー 83.3%(96局 76〜91%)
 //   まおうの錬金ランプ 70.6%(143局 63〜78%、先読みを毎回する設定を決めた比較の局)
 // 樹液・あまつゆ・ひだね・ブルーム・輝紋章の盾・光の鍛冶ハンマーは、残り1マスを総当たりの最善で仕上げる設定
 // (lastDP・lastDProll)を入れた後の値。ブルームシールド・虹色のオーブ・まおうの錬金ランプは、先読みを毎回する設定にした後の値。
-// 幽紋刀は lastDP を入れる前の値(その後の先読みありの測定は 85局で 44.7%、95%の範囲 34〜55%)。
+// 幽紋刀は、以前の測定(lastDP を入れる前 144局で 45.1%、その後 85局で 44.7%)より低く出たが、どれも95%の範囲が重なる。
+// 選択欄には一番新しい測定(種950)を使う。
 // 過去の検証の記録は、今のエンジンで打ち直して手順と結果が一致することを確かめてから使った。
 // 打ち方を変えたら測り直すこと。
-const PRESET_RATES = { kagayaki:75, amatsuyu:70, hidane:85, kimonsho:75, bloom:65, orb:70, yumon:45, kajihammer:85, maoulamp:70 };
+const PRESET_RATES = { kagayaki:75, amatsuyu:70, hidane:85, kimonsho:75, bloom:65, orb:75, yumon:40, kajihammer:85, maoulamp:70 };
 for(const k of Object.keys(PRESET_RATES)) if(PRESETS[k]) PRESETS[k].rate = PRESET_RATES[k];
 
 /* ===================== 演算エンジン ===================== */
@@ -368,11 +378,14 @@ function applyModori(ms, temp, trait, rnd){
 // 1マスを打った直後に取りうる値(通常・会心)。
 // 会心は理想値を通り越すと理想値で止まるので、ゾーンの上限を超えることは無い。
 // 会心の値は「理想値の手前で止まった 前の値+2×ロール(ゾーン未満)」か「ゾーン内の値」。
+// 既にゾーンに入っている(超えている)マスは、理想値以上なら会心でも動かない(ゲームでは miss と出る。
+// 攻略記事: まさとるてぃあ「虹色のオーブ打ち方手順例」の必殺の検証、日替わりゲーミング本部「虹色のオーブ」その5)。
 function hitOutcomes(before, rolls, zoneLow, zoneHigh){
   const normal = new Set(), crit = new Set();
   for(const r of rolls){ normal.add(before + r); if(before + 2*r < zoneLow) crit.add(before + 2*r); }
   const top = before + 2*rolls[rolls.length-1];
   for(let v = Math.max(zoneLow, before + 1); v <= zoneHigh && v <= top; v++) crit.add(v);
+  if(before >= zoneLow) crit.add(before);
   return { normal: [...normal].sort((a,b)=>a-b), crit: [...crit].sort((a,b)=>a-b) };
 }
 // 打った結果の全ての組み合わせについて戻りの対象を求める。
@@ -749,6 +762,110 @@ function lastMassMove(ms, f, t, P, cfg){
   return { sk: best, tg: best.masses ? [i] : [], c: actualCostOf(best, t, cfg.trait), nt: Math.max(0, t + best.tempDelta), overP: 0, ldp: bq };
 }
 
+// ---- 戻りの地金: 全マスがゾーンに入った後のやり直し(er、既定 1) ----
+// 理想値以上のマスに会心が出ても動かない(miss)ので、ゾーン内のマスにねらい打ちをしても、会心なら
+// 「理想値で止まる」か「動かない」かのどちらかで、悪くならない。会心でなければ超過しうるが、戻りで取り戻せる。
+// そこで、やめた場合と、マス i に狙い系の1マス技をもう1回打った場合の大成功の確率を比べ、
+// 上がる見込みが P.erM を超える時だけ打つ。
+//   ・やめた場合: マス i の理想値の見込み(G.posts)と、ほかのマスの誤差の分布(finishedErrDist)から求める。
+//   ・打った場合: 会心・ロールごとに結果を求める。ゾーン内に止まれば上と同じ求め方。超過したら、
+//     残り1マスの総当たりの表(戻りの地金の版)で、その後の仕上げの見込みを求める(理想値はゾーン内で一様とみなす)。
+// 理想値の見込み(実際の局面は G.posts)。先読みの試行の中では、試行の中で分かったことを重ねたものを渡す(postOf)
+function redoPost(i, m){
+  const n = m.zoneHigh - m.zoneLow + 1;
+  return (G.posts && G.posts[i] && G.posts[i].length === n) ? G.posts[i] : null;
+}
+// 先読みの試行の中の理想値の見込み。試行の中で動いていないマスは G.posts のまま。
+// 会心で理想値に止まったマスは確定(ex)、会心で動かなかったマスは「理想値は今の値以下」(le)。
+function rolloutPost(i, m){
+  const base = redoPost(i, m);
+  if(!m.tch) return base;
+  const n = m.zoneHigh - m.zoneLow + 1;
+  if(m.ex && m.current >= m.zoneLow && m.current <= m.zoneHigh){ const a = new Array(n).fill(0); a[m.current - m.zoneLow] = 1; return a; }
+  if(m.le && m.current >= m.zoneLow){
+    const a = new Array(n).fill(0); let s = 0;
+    for(let k = 0; k < n && m.zoneLow + k <= m.current; k++){ a[k] = base ? base[k] : 1; s += a[k]; }
+    if(s > 0) return a.map(x => x / s);
+  }
+  return base;
+}
+function endRedo(ms, f, t, P, cfg, postOf){
+  const roll = IN_ROLLOUT > 0;
+  if(cfg.trait !== 'modori' || !(P.er > 0) || isStartState()) return null;
+  if(roll && !(P.erRoll > 0)) return null;
+  if(!boardDone(ms, cfg.trait)) return null;
+  if(t % 50 !== 0 || t < 50 || t > LDP_TMAX) return null;
+  postOf = postOf || redoPost;
+  const th = SUCCESS_THRESHOLD, ti = t / 50 - 1, F0 = Math.min(f, roll ? (P.ldpFR || 80) : (P.ldpF || 120));
+  const errAt = (v, u) => Math.min(Math.abs(v - u), MAX_ERR);
+  // マスごとの誤差の分布(0〜MAX_ERR)
+  const ed = ms.map((m, j) => {
+    if(m.zoneHigh <= 0) return null;
+    const n = m.zoneHigh - m.zoneLow + 1, p = postOf(j, m), e = new Array(MAX_ERR + 1).fill(0);
+    for(let k = 0; k < n; k++) e[errAt(m.current, m.zoneLow + k)] += p ? p[k] : 1 / n;
+    return e;
+  });
+  let best = null, bg = P.erM || 0;
+  for(let i = 0; i < ms.length; i++){
+    const m = ms[i]; if(m.zoneHigh <= 0) continue;
+    const L = m.zoneLow, H = m.zoneHigh, n = H - L + 1, cur = m.current;
+    const po = postOf(i, m);
+    const pu = k => po ? po[k] : 1 / n;
+    // ほかのマスの誤差の合計の分布(許容誤差を超える分は捨てる)
+    let dist = [1];
+    for(let j = 0; j < ms.length; j++){
+      if(j === i || !ed[j]) continue;
+      const nd = new Array(th + 1).fill(0);
+      for(let x = 0; x < dist.length; x++) for(let y = 0; y <= MAX_ERR; y++) if(x + y <= th) nd[x + y] += dist[x] * ed[j][y];
+      dist = nd;
+    }
+    const D = []; let acc = 0; for(let k = 0; k <= th; k++){ acc += dist[k] || 0; D.push(acc); }
+    const Dx = x => x < 0 ? 0 : D[Math.min(x, th)];
+    let pStop = 0; for(let k = 0; k < n; k++) pStop += pu(k) * Dx(th - errAt(cur, L + k));
+    if(pStop > 1 - 1e-9) continue;
+    // 超過した後の仕上げの見込みに使う表。先読みの中は一番ありそうな許容誤差の表1枚だけにする
+    const mix = [];
+    if(roll){
+      let kb = -1; for(let k = 0; k <= th; k++) if((dist[k] || 0) > 1e-6 && (kb < 0 || dist[k] > dist[kb])) kb = k;
+      if(kb >= 0){ const tb = ldpTable(L, H, Math.min(th - kb, MAX_ERR), cfg); ldpEnsureM(tb, F0); mix.push({ w: D[th], tb }); }
+    } else for(let k = 0; k <= th; k++){
+      if((dist[k] || 0) <= 1e-6) continue;
+      const tb = ldpTable(L, H, Math.min(th - k, MAX_ERR), cfg);
+      ldpEnsureM(tb, F0); mix.push({ w: dist[k], tb });
+    }
+    if(!mix.length) continue;
+    ldpTrim(mix.map(e => e.tb));
+    for(const act of mix[0].tb.acts){
+      if(!act.sk.crit || act.sk.masses !== 1) continue;
+      const row = act.rows[ti];
+      if(row.skip || row.c > f || !row.r) continue;
+      const F2 = Math.min(f - row.c, F0), nti = row.nti, md = nti >= 0 && (nti + 1) % 4 === 0;
+      const r = row.r, cr = row.cr;
+      let q = 0;
+      for(let k = 0; k < n; k++){
+        const w = pu(k); if(w <= 0) continue;
+        const u = L + k;
+        let s = 0;
+        for(const x of r){
+          // 会心: 理想値が上なら理想値で止まる(届かなければ手前のゾーン内)、理想値以上なら動かない
+          const vc = u > cur ? Math.min(cur + 2*x, u) : cur;
+          const qc = Dx(th - errAt(vc, u));
+          // 会心でない: ゾーン内ならそこで終わり。超過したら表で仕上げの見込みを引く
+          const vn = cur + x;
+          let qn;
+          if(vn <= H) qn = Dx(th - errAt(vn, u));
+          else { qn = 0; for(const e of mix) qn += e.w * ldpAfterM(e.tb, e.tb.V[F2], nti, md, vn); }
+          s += cr * qc + (1 - cr) * qn;
+        }
+        q += w * s / r.length;
+      }
+      const g = q - pStop;
+      if(g > bg){ bg = g; best = { sk: act.sk, tg: [i], c: row.c, nt: Math.max(0, t + act.sk.tempDelta), overP: 1, redo: true, er: q, erStop: pStop }; }
+    }
+  }
+  return best;
+}
+
 // ---- 2マス残り: ゾーンに近い方を総当たりの最善で仕上げる(ldp2、既定 0。実験) ----
 // もう1マスのために集中力を ldp2R × そのマスの残り距離 + ldp2C だけ残し、残りの集中力で計算する。
 // このマスに許す誤差は、仕上がったマスの誤差を引いた残りから、もう1マスの分 ldp2B を差し引いたもの。
@@ -922,6 +1039,8 @@ function massError(current, ideal, zoneLow, zoneHigh){
 //   litReady : 点灯の抽選(200の倍数)に、点灯したら仕上げられる位置で臨む度合い(威力会心率上昇のみ)
 //   lastDP / lastDProll : 残り1マスを総当たりの最善で仕上げる / 先読みの中の打ち手でも使う(1で使う。全商材・手動設定の既定)
 //   ldpF / ldpFR : その計算で見る集中力の上限(既定 120 / 先読みの中 80)
+//   er   : 戻りの地金で、全マスがゾーンに入った後もやり直しの見込みを計算する(endRedo。1で使う。全商材・手動設定の既定。
+//          戻り以外の地金では何もしない)
 /* 評価パラメータ。素材ごとの効き方は検証済み(0にした時に結果が変わる対局の割合)。
    両方       cap adv land heat ov pr tmax te center far mpm slack effK slackMax
               rush wideAim pairSnipe
@@ -930,7 +1049,7 @@ function massError(current, ideal, zoneLow, zoneHigh){
    ※ 樹液=超かがやきの樹液(集中力変化) / いと=超あまつゆのいと(たたき変化) */
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
                  te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24, x2turn:10, aimNow:1, aimRes:2.2,
-                 lastDP:1, lastDProll:1 };
+                 lastDP:1, lastDProll:1, er:1 };
 // 既定の重み。素材ごとの上書き(PRESETS の params)は applyThreshold が重ねる。
 const BASE_PARAMS = Object.freeze(Object.assign({}, PARAMS));
 
@@ -2152,7 +2271,9 @@ function mcRolloutBody(ms0, f, t, cfg, first){
   let fo = f, to = t, mv = first;
   const saved = simFirstMove, savedLit = litMassIndex;
   for(let s = 0; s < 70; s++){
-    if(boardDone(ms, cfg.trait)) break;
+    // 渡された1手目(仕上げのやり直し)は、全マスがゾーン内でも打つ。
+    // 全マスがゾーンに入った後は、試行の中でもやり直しの見込みを計算する(erRoll。戻りの地金だけ)
+    if(!mv && boardDone(ms, cfg.trait)){ mv = endRedo(ms, fo, to, PARAMS, cfg, rolloutPost); if(!mv || fo < mv.c) break; }
     if(to <= 0) break;
     if(s > 0) rollLit(ms, to, cfg.trait, MC_RNG);   // 現在の手番の点灯は既知なので触らない
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
@@ -2165,11 +2286,14 @@ function mcRolloutBody(ms0, f, t, cfg, first){
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
       const roll = r[(MC_RNG()*r.length)|0];
-      if(MC_RNG() < cr){ m.current = m.current < m.ideal ? Math.min(m.current + 2*roll, m.ideal) : m.current + 2*roll; }
-      else m.current += roll;
+      // 試行の中で分かったこと(rolloutPost): 会心で理想値に止まった(ex)・会心で動かなかった(le)
+      m.tch = true;
+      if(MC_RNG() < cr){ if(m.current < m.ideal){ m.current = Math.min(m.current + 2*roll, m.ideal); m.ex = m.current === m.ideal; } else m.le = true; }   // 理想値以上なら会心は miss(動かない)
+      else { m.current += roll; m.ex = false; }
     });
     fo -= mv.c; to = mv.nt; simFirstMove = false;
-    applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
+    const md = applyModori(ms, to, cfg.trait, MC_RNG);        // 温度が200の倍数になれば戻り
+    if(md){ const mm = ms[md.i]; mm.tch = true; mm.ex = false; mm.le = false; }
     mv = null;
   }
   simFirstMove = saved; litMassIndex = savedLit;
@@ -2334,7 +2458,7 @@ function updatePost(i, before, rolls, critRate, after, wasCrit, red){
       let n1 = 0, n2 = 0;
       for(const r of rolls){
         if(before + r === hitAfter) n1++;
-        if(Math.min(before + 2*r, v) === hitAfter) n2++;
+        if((before < v ? Math.min(before + 2*r, v) : before) === hitAfter) n2++;   // 理想値以上なら会心は miss
       }
       if(wasCrit === true)       L += n2 / rolls.length;
       else if(wasCrit === false) L += n1 / rolls.length;
@@ -2536,7 +2660,7 @@ function tracedRolloutBody(ms0, f, t, cfg, first, out){
                                ideal: sampleIdeal(i, m) }));
   let fo = f, to = t, mv = first;
   for(let s = 0; s < 24; s++){
-    if(boardDone(ms, cfg.trait)) break;
+    if(!mv && boardDone(ms, cfg.trait)) break;     // 渡された1手目(仕上げのやり直し)は、全マスがゾーン内でも打つ
     if(to <= 0) break;
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
     out.push({ key: mv.sk.name + '|' + mv.tg.join(','),
@@ -2551,7 +2675,7 @@ function tracedRolloutBody(ms0, f, t, cfg, first, out){
       const cr = critForMass(mv.sk, cfg, to, i);
       if(!r) return;
       const roll = r[(MC_RNG()*r.length)|0];
-      if(MC_RNG() < cr){ m.current = m.current < m.ideal ? Math.min(m.current + 2*roll, m.ideal) : m.current + 2*roll; }
+      if(MC_RNG() < cr){ if(m.current < m.ideal) m.current = Math.min(m.current + 2*roll, m.ideal); }   // 理想値以上なら会心は miss(動かない)
       else m.current += roll;
     });
     fo -= mv.c; to = mv.nt; simFirstMove = false;
