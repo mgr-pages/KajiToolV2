@@ -31,6 +31,7 @@ function pickLit(i){
   const m = G.masses[i];
   if(!m || m.off || m.current >= m.zoneLow) return;
   litMassIndex = i;
+  GameLog.ev('lit', { mass: i + 1 });
   G.rec = null; G.plan = [];                  // 点灯が決まると推奨手が変わる
   G.msg = null;                               // 「タップしてください」の案内を消す
   renderAll(); save();
@@ -490,6 +491,8 @@ function applyExecuted(k){
     posts:G.posts.map(p=>p.slice()), obs:(G.obs||[]).slice() };
   steps.forEach((st, k) => G.hist.push({name:st.name, tg:st.tg.slice(), tempAfter:st.tempAfter,
                                         lit: k === 0 ? litNow : null}));
+  GameLog.ev('exec', { steps: steps.map(st => ({ sk: st.name, tg: st.tg.map(i => i + 1), tempAfter: st.tempAfter })),
+                       cost, lit: litNow === null ? null : litNow + 1 });
 
   G.focus -= cost;
   G.temp   = steps[steps.length-1].tempAfter;
@@ -588,6 +591,7 @@ function applyExecuted(k){
 
 function undoExec(){
   if(!G.undoSnap) return;
+  GameLog.ev('undo');
   const u = G.undoSnap;
   G.temp = u.temp; G.focus = u.focus;
   litMassIndex = (typeof u.lit === 'number') ? u.lit : null;
@@ -644,6 +648,7 @@ async function doCalc(){
       setCalcProgress(1, '手順を組み立て中…');
       await new Promise(r=>setTimeout(r, 0));
       await MCPool.plan(ms, cfg, G.rec);
+      if(G.rec) GameLog.ev('rec', { sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1) });
     }
     renderAll();
   }catch(e){
@@ -708,6 +713,7 @@ function markFx(idx, before, after){
 // red: 戻りで減った後の値を選んだ(減る前の値は範囲内のどれか)
 function pickValue(idx, val, wasCrit, red){
   if(!Number.isFinite(val)) return;      // 想定外の値では状態を壊さない
+  GameLog.ev('val', { mass: idx + 1, before: G.masses[idx].current, val, crit: !!wasCrit, red: !!red });
   const ob = G.obs && G.obs[idx];
   // 打っていないマスの戻りは理想値と無関係なので、推定は更新しない
   if(ob && ob.rolls && !ob.modoriOnly) updatePost(idx, ob.before, ob.rolls, ob.cr, val, wasCrit, red ? ob.range : undefined);
@@ -844,6 +850,7 @@ function commit(){
   else if(padOp==='minus') v = cur - n;
   else v = padBuf==='' ? cur : n;    // 何も入力していなければ現状維持
   v = Math.max(0, v);
+  GameLog.ev('edit', { target: padTarget, mass: padTarget === 'mass' ? padIdx + 1 : null, val: v });
   let lastInput = false;                     // この入力で入力待ちが全て埋まったか
   let wasPendingMass = false;                // 入力待ちのマスを入れたか(続けて次を開くため)
   if(padTarget==='mass'){
@@ -922,6 +929,12 @@ function onPresetChange(){
     renderAll(); save();
     return;
   }
+  // 打ち始めた後は、結果を選んでから切り替える(選ばなければ切り替えない)
+  if(GameLog.active()){
+    document.getElementById('s-preset').value = G.preset;
+    askOutcome(() => { document.getElementById('s-preset').value = v; switchPreset(v); });
+    return;
+  }
   const started = G.hist.length > 0 || G.masses.some(m=>m.current > 0);
   if(started && !confirm('素材を変えると盤面と履歴が最初に戻ります。よろしいですか?')){
     // キャンセル時は選択も表示も元に戻す。
@@ -930,7 +943,10 @@ function onPresetChange(){
     if(G.preset === 'custom'){ box.style.display = 'block'; renderZoneRows(); }
     return;
   }
-  box.style.display = 'none';
+  switchPreset(v);
+}
+function switchPreset(v){
+  document.getElementById('zoneEdit').style.display = 'none';
   G.preset = v;
   // 素材ごとに地金特性が決まっているので、選択と同時に切り替える
   const p = PRESETS[v];
@@ -1042,6 +1058,8 @@ function syncActiveMask(){
 }
 
 function confirmReset(){
+  // 打ち始めた後は、結果(大成功/成功/失敗/途中でやめた)を選ばないとリセットできない
+  if(GameLog.active()){ askOutcome(resetAll); return; }
   const started = G.hist.length > 0 || G.masses.some(m=>m.current > 0);
   if(started && !confirm('盤面・集中力・履歴をすべて初期状態に戻します。よろしいですか?')) return;
   resetAll();
@@ -1148,6 +1166,17 @@ function load(){
 });
 
 if(!load()) resetAll();
+GameLog.restore();
+
+/* ====== 結果の選択(記録用) ====== */
+let OUTCOME_NEXT = null;
+function askOutcome(next){ OUTCOME_NEXT = next; document.getElementById('outcomeModal').classList.add('show'); }
+function closeOutcome(){ OUTCOME_NEXT = null; document.getElementById('outcomeModal').classList.remove('show'); }
+async function chooseOutcome(o){
+  const next = OUTCOME_NEXT; closeOutcome();
+  await GameLog.finish(o);
+  if(next) next();
+}
 renderAll();
 
 // 設定欄の一番下に、届いている版を出す。画面(ui.js)と見た目(style.css)の版が違えば、
