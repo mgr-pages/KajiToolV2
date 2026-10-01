@@ -1630,6 +1630,78 @@ function hsShouldFire(ms, f, t, cfg, P){
   let unr = 0; for(const m of ms) if(m.zoneHigh > 0 && m.current < m.zoneLow) unr++;
   return h.v >= (P.hsFire || 3) * e0 || (unr > 0 && h.v >= 0.9 * unr * e0);
 }
+// ---- 下ごしらえ(hsSetup、利用者の情報): チャージ済みの間は、超4連打ちの形の4マスを「使った後の温度で、
+// 超4連打ちの会心なら必ず理想値に届く」位置(ゾーン上限 − 2×最小ロール 以上、ゾーン下限未満)まで寄せ、
+// 揃ったら使う(使う → 超4連打ち)。ゾーンに入ってしまう打ち方は避ける(入ると必ず理想値に、ができなくなる)。
+// 集中力が残り少ない時は、1マスでも本会心にできるなら使う(どちらが良いかは先読みが「今使う」と比べて決める)。
+function hsSquareSkill(cfg){
+  return SKILLS.find(s => s.id === 'chouyonren' && s.lv <= cfg.level) || SKILLS.find(s => s.id === 'yonren' && s.lv <= cfg.level) || null;
+}
+// 温度 T で超4連打ちの会心が必ず理想値に届く、一番低い値
+function hsWindowLow(m, i, sq, T, cfg){ const r = rollsForMass(sq, T, cfg.trait, i); return r ? m.zoneHigh - 2*r[0] : Infinity; }
+// まだゾーンに入っていないマスが一番多い(ゾーンの幅の合計が一番大きい)形
+function hsPickSquare(ms, cfg){
+  const sq = hsSquareSkill(cfg); if(!sq) return null;
+  let best = null, bs = 0;
+  for(const tg of enumerateTargetSets(sq)){
+    let sc = 0;
+    for(const i of tg){ const m = ms[i]; if(m.zoneHigh > 0 && m.current < m.zoneLow) sc += m.zoneHigh - m.zoneLow + 1; }
+    if(sc > bs){ bs = sc; best = tg; }
+  }
+  return best ? { sq, tg: best } : null;
+}
+// 寄せる手。形のうち揃っていないマスが窓に近づく量(ロールの平均)から、ゾーンに入ってしまう割合の分を引き、
+// 消費を引いた点が一番高い手。形の外のマスは、ふつうの前進として少しだけ数える。超過しうる手は使わない。
+function hsSetupMove(ms, f, t, cfg, P, ps){
+  const inSq = new Set(ps.tg);
+  let best = null, bv = 0;
+  for(const mv of moves(ms, f, t, cfg)){
+    if(!mv.tg.length || mv.sk.random || mv.overP > 0) continue;
+    const Tf = mv.nt - 50;                                   // この手の直後に使った時の、超4連打ちの温度
+    if(Tf <= 0 || f - mv.c < actualCostOf(ps.sq, Tf, cfg.trait)) continue;
+    let sc = 0;
+    for(const i of mv.tg){
+      const m = ms[i], r = rollsForMass(mv.sk, t, cfg.trait, i);
+      if(!r || m.zoneHigh <= 0) continue;
+      if(inSq.has(i)){
+        const lo = hsWindowLow(m, i, ps.sq, Tf, cfg), gap = v => Math.max(0, lo - v);
+        let prog = 0, enter = 0;
+        for(const x of r){ prog += gap(m.current) - gap(m.current + x); if(m.current + x >= m.zoneLow) enter++; }
+        sc += prog / r.length - (P.hsSetPen || 40) * enter / r.length;
+      } else {
+        let prog = 0; for(const x of r) prog += Math.min(x, Math.max(0, m.zoneLow - m.current));
+        sc += (P.hsOut || 0.2) * prog / r.length;
+      }
+    }
+    sc -= (P.hsSetC || 0.5) * mv.c;
+    if(sc > bv){ bv = sc; best = mv; }
+  }
+  return best;
+}
+// チャージ済みの時の判断。'fire'(今使う)/ 寄せる手 / null(ふつうに打つ)
+function hsDecide(ms, f, t, cfg, P){
+  const hm = hsMove(t); if(!hm) return null;
+  if(P.hsSetup > 0){
+    const ps = hsPickSquare(ms, cfg);
+    if(ps){
+      let unr = 0, unready = 0;
+      for(const i of ps.tg){
+        const m = ms[i]; if(m.zoneHigh <= 0 || m.current >= m.zoneLow) continue;
+        unr++; if(m.current < hsWindowLow(m, i, ps.sq, hm.nt, cfg)) unready++;
+      }
+      if(unr > 0){
+        const h = hsBuffBest(ms, f, hm.nt, cfg, P), e0 = P.hsE0 || 1.2;
+        if(!h) return null;
+        if(unready === 0) return 'fire';                                         // 揃った
+        if(f - actualCostOf(ps.sq, hm.nt, cfg.trait) < (P.hsMinF || 25)) return h.v >= e0 ? 'fire' : null;   // 集中力が少ない
+        const sm = hsSetupMove(ms, f, t, cfg, P, ps);
+        if(sm) return sm;
+        return h.v >= unr * e0 * 0.5 ? 'fire' : null;                             // もう寄せられない
+      }
+    }
+  }
+  return hsShouldFire(ms, f, t, cfg, P) ? 'fire' : null;
+}
 
 // 全マスがゾーンに入った後の必殺。理想値の手前で止まったマスは理想値まで進められるので、見込みが上がれば使う
 function hsEndMove(ms, f, t, cfg, P){
@@ -1645,7 +1717,11 @@ function hsEndMove(ms, f, t, cfg, P){
 function stratB(ms,f,t,P,cfg){
   // ---- 必殺: 効果中は必ず会心で叩く手、チャージ済みなら使いどころを判断する ----
   if(HS === 2){ const b = hsBuffMove(ms, f, t, cfg, P); if(b) return b; }
-  else if(HS === 1 && !P.hsOff && hsShouldFire(ms, f, t, cfg, P)) return hsMove(t);
+  else if(HS === 1 && !P.hsOff){
+    const d = hsDecide(ms, f, t, cfg, P);
+    if(d === 'fire') return hsMove(t);
+    if(d) return d;
+  }
   // ---- 残り1マスは総当たりの最善で仕上げる(lastDP) ----
   if(P.lastDP > 0 && (P.lastDProll > 0 || !IN_ROLLOUT)){
     const lm = lastMassMove(ms, f, t, P, cfg);
