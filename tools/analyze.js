@@ -26,12 +26,12 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 function args(){
-  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, tape:0, log:null, summary:null, from:0 };
+  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, tape:0, log:null, summary:null, from:0, fork:0 };
   const a = process.argv.slice(2);
   for(let i = 0; i < a.length; i++){
     const k = a[i].replace(/^--/, ''), v = a[++i];
     if(!(k in o)){ console.error('不明な引数: ' + a[i-1]); process.exit(2); }
-    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck','tape','from'].includes(k) ? Number(v) : v);
+    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck','tape','from','fork'].includes(k) ? Number(v) : v);
   }
   return o;
 }
@@ -73,9 +73,19 @@ async function playGame(E, o, g){
   const ideal = G.masses.map((m, i) => m.zoneLow + Math.floor(R('i', 0, i) * (m.zoneHigh - m.zoneLow + 1)));
   const fin = [];                     // 各マスの最後の一打の分類
   const modori = [];                  // 起きた戻り
-  let moves = 0;
+  let moves = 0, redoN = 0, forkBase = null;
+  if(o.fork) P.er = 0;                // --fork: 全マスがゾーンに入るまでは今の設定で打つ
   for(let s = 0; s < 70; s++){
-    if(E('boardDone')(G.masses, G.trait) || G.temp <= 0) break;
+    if(G.temp <= 0) break;
+    // 全マスがゾーンに入った後も、やり直しの見込み(endRedo、戻りの地金・P.er)があれば続ける
+    let mvEnd = null;
+    if(E('boardDone')(G.masses, G.trait)){
+      // --fork: 全マスがゾーンに入った時点の結果を「やり直し無し」として控え、ここからやり直しを入れて続ける
+      if(o.fork && !forkBase){ forkBase = result(); P.er = 1; }
+      mvEnd = E('endRedo')(G.masses.map(m => ({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh })), G.focus, G.temp, P, cfg);
+      if(!mvEnd) break;
+      redoN++;
+    }
     // 点灯(威力会心率上昇): 200℃の倍数で未到達マスから1つ(開始直後は特性が乗らない)
     let lit = null;
     if(G.trait === 'kaishin' && !E('isStartState')() && G.temp % 200 === 0){
@@ -84,7 +94,7 @@ async function playGame(E, o, g){
     }
     E(`litMassIndex = ${lit === null ? 'null' : lit};`);
     const ms = G.masses.map(m => ({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh }));
-    const mv = o.mode === 'mc' ? await E('stratMCAsync')(ms, G.focus, G.temp, P, cfg, null)
+    const mv = mvEnd ? mvEnd : o.mode === 'mc' ? await E('stratMCAsync')(ms, G.focus, G.temp, P, cfg, null)
                                : E('stratB')(ms, G.focus, G.temp, P, cfg);
     if(!mv || mv.c > G.focus) break;
     const seen = [];                    // この手で打ったマス(理想値の推定は戻りの後にまとめて更新)
@@ -96,8 +106,8 @@ async function playGame(E, o, g){
       const rolls = E('rollsForMass')(mv.sk, G.temp, G.trait, i), cr = E('critForMass')(mv.sk, cfg, G.temp, i);
       if(!rolls) continue;
       const roll = rolls[Math.floor(R('r', s, k) * rolls.length)], crit = R('c', s, k) < cr, before = m.current;
-      // 会心は理想値を通り越す時だけ理想値で止まる(既に理想値より上なら、そのまま2倍進む)
-      m.current = crit ? (before < ideal[i] ? Math.min(before + 2*roll, ideal[i]) : before + 2*roll) : before + roll;
+      // 会心は理想値を通り越す時だけ理想値で止まる。既に理想値以上なら動かない(ゲームでは miss と出る)
+      m.current = crit ? (before < ideal[i] ? Math.min(before + 2*roll, ideal[i]) : before) : before + roll;
       if(m.current >= m.zoneLow){
         const boost = E('isBoostTurn')(G.temp) || (lit === i);
         const pink = before + rolls[rolls.length-1] <= m.zoneHigh && before + 2*rolls[0] >= m.zoneHigh;
@@ -114,12 +124,17 @@ async function playGame(E, o, g){
                                          md && md.i === o.i ? E('modoriRange')() : undefined);
   }
   E('litMassIndex = null;');
+  const res = result();
+  if(o.fork){ res.base = forkBase || { great: res.great, err: res.err, reached: res.reached, over: res.over }; P.er = 0; }
+  return res;
+  function result(){
   const errs = G.masses.map((m,i) => m.off ? null : E('massError')(m.current, ideal[i], m.zoneLow, m.zoneHigh));
   const reached = G.masses.every(m => m.current >= m.zoneLow);
   const over = G.masses.some(m => m.current > m.zoneHigh);
   const err = errs.reduce((a,e) => a + (e || 0), 0);
   return { g, great: reached && err <= E('SUCCESS_THRESHOLD'), reached, over, err, errs,
-           overBy: G.masses.map(m => m.current > m.zoneHigh), focusLeft: G.focus, moves, fin, modori };
+           overBy: G.masses.map(m => m.current > m.zoneHigh), focusLeft: G.focus, moves, fin: fin.slice(), modori: modori.slice(), redoN };
+  }
 }
 
 function summarize(rows, label){
@@ -144,6 +159,8 @@ function summarize(rows, label){
   console.log(`  平均残り集中力 ${(rows.reduce((a,r)=>a+r.focusLeft,0)/n).toFixed(1)} / 平均手数 ${(rows.reduce((a,r)=>a+r.moves,0)/n).toFixed(1)}`);
   const md = rows.reduce((a,r)=>a+((r.modori||[]).length),0);
   if(md) console.log(`  戻り ${(md/n).toFixed(2)}回/局`);
+  const rdn = rows.reduce((a, r) => a + (r.redoN || 0), 0);
+  if(rdn) console.log(`  仕上げのやり直し ${(rdn/n).toFixed(2)}回/局`);
   const cls = {};
   // 戻りで未到達に戻ったマスは打ち直すので、マスごとに最後の記録だけを数える
   rows.forEach(r => r.fin.filter((f, k) => !r.fin.slice(k + 1).some(g => g.i === f.i)).forEach(f => {

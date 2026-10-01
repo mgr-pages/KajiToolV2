@@ -303,6 +303,12 @@ function modoriLine(){
   const names = [...t].sort((a,b)=>a-b).map(i => 'マス' + (i+1));
   return `<div class="rec-sub mdr-line">↩ このあと戻り: ${names.length ? names.join('か') + 'が減る見込み' : '減るマスなし'}</div>`;
 }
+// 全マスがゾーンに入った後のやり直し(endRedo)。やめた場合と比べた大成功の見込みを添える
+function redoLine(r){
+  if(!r.redo || typeof r.er !== 'number') return '';
+  const pc = x => Math.round(x * 100) + '%';
+  return `<div class="rec-sub">ゾーン内からもう一度ねらう: 大成功の見込み ${pc(r.erStop)} → ${pc(r.er)}</div>`;
+}
 function renderRec(){
   const el = document.getElementById('rec');
   if(G.pending.length){ el.innerHTML = ''; return; }
@@ -330,7 +336,7 @@ function renderRec(){
   el.innerHTML = `<div class="rec-main">
       <div class="rec-skill">${r.sk.name}</div>
       <div class="rec-sub">${tgt} / 消費${r.c}${critTxt}</div>
-      <div class="rec-sub">実行後 → <b${warn}>集中力 ${leftF}</b> / ${r.nt}℃</div>${modoriLine()}
+      <div class="rec-sub">実行後 → <b${warn}>集中力 ${leftF}</b> / ${r.nt}℃</div>${modoriLine()}${redoLine(r)}
     </div>`;
   // 1手ずつ進める時は下の主ボタン(打った)、まとめて打った時は手順の「ここまで打った」を使う。
 }
@@ -635,7 +641,13 @@ async function doCalc(){
   try{
     const cfg = cfgOf();
     const ms = G.masses.map(m=>({current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh}));
-    if(boardDone(ms, G.trait)){
+    // 戻りの地金では、全マスがゾーンに入った後も、もう一度ねらった方が大成功の見込みが上がる時はその手を出す
+    const redo = boardDone(ms, G.trait) && G.temp > 0 ? endRedo(ms, G.focus, G.temp, PARAMS, cfg) : null;
+    if(redo){
+      G.rec = redo; G.msg = null;
+      await MCPool.plan(ms, cfg, G.rec);
+      GameLog.ev('rec', { sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1), redo: true });
+    } else if(boardDone(ms, G.trait)){
       G.rec=null; G.plan=[]; G.msg='<span style="color:var(--green)">全マス到達 — 仕上げてください</span>';
     } else if(G.temp<=0){
       G.rec=null; G.plan=[]; G.msg='温度切れ';

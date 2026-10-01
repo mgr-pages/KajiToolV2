@@ -112,7 +112,13 @@ async function playGame(E, preset, rng, useMC){
   const ideal = G.masses.map(m => m.zoneLow + Math.floor(rng() * (m.zoneHigh - m.zoneLow + 1)));
   const trace = [];
   for(let step = 0; step < 70; step++){
-    if(E('boardDone')(G.masses, G.trait) || G.temp <= 0) break;
+    if(G.temp <= 0) break;
+    // 全マスがゾーンに入った後も、やり直しの見込み(endRedo、戻りの地金)があれば続ける
+    let mvEnd = null;
+    if(E('boardDone')(G.masses, G.trait)){
+      mvEnd = E('endRedo')(G.masses.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh })), G.focus, G.temp, PARAMS, cfg);
+      if(!mvEnd) break;
+    }
     // 点灯: 200℃の倍数で未到達マスから1つ(開始直後は特性が乗らない)
     let lit = null;
     if(G.trait === 'kaishin' && !isStartState() && G.temp % 200 === 0){
@@ -121,7 +127,7 @@ async function playGame(E, preset, rng, useMC){
     }
     E(`litMassIndex = ${lit === null ? 'null' : lit};`);
     const ms = G.masses.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh }));
-    const mv = useMC ? await stratMCAsync(ms, G.focus, G.temp, PARAMS, cfg, null)
+    const mv = mvEnd ? mvEnd : useMC ? await stratMCAsync(ms, G.focus, G.temp, PARAMS, cfg, null)
                      : stratB(ms, G.focus, G.temp, PARAMS, cfg);
     if(!mv || mv.c > G.focus) break;
     trace.push(mv.sk.id + ':' + mv.tg.join(''));
@@ -129,14 +135,14 @@ async function playGame(E, preset, rng, useMC){
     // みだれ打ちは使うマスからランダムに4回(ゾーン内のマスにも当たる)
     if(mv.sk.key) for(const i of hitSeq(mv, rng)){
       const m = G.masses[i];
-      if(m.current >= m.zoneLow && !mv.sk.random) continue;
+      if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random) continue;   // やり直しの手はゾーン内も打つ
       const rolls = rollsForMass(mv.sk, G.temp, G.trait, i);
       const cr = critForMass(mv.sk, cfg, G.temp, i);
       if(!rolls) continue;
       const roll = rolls[Math.floor(rng() * rolls.length)];
       const crit = rng() < cr;
       const before = m.current;
-      m.current = crit ? Math.min(before + 2 * roll, ideal[i]) : before + roll;
+      m.current = crit ? (before < ideal[i] ? Math.min(before + 2 * roll, ideal[i]) : before) : before + roll;   // 理想値以上なら会心は miss
       if(!mv.sk.random) seen.push({ i, before, rolls, cr, crit });   // みだれ打ちは理想値の推定に使わない
     }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id);

@@ -54,7 +54,7 @@ if(process.argv[2] === '--worker'){
           const rolls = E('rollsForMass')(mv.sk, G.temp, G.trait, i), cr = E('critForMass')(mv.sk, cfg, G.temp, i);
           if(!rolls) continue;
           const roll = rolls[Math.floor(rng()*rolls.length)], crit = rng() < cr, before = m.current;
-          m.current = crit ? Math.min(before + 2*roll, ideal[i]) : before + roll;
+          m.current = crit ? (before < ideal[i] ? Math.min(before + 2*roll, ideal[i]) : before) : before + roll;
           if(!mv.sk.random) seen.push({ i, before, rolls, cr, crit });
         }
         G.focus -= mv.c; G.temp = mv.nt; G.hist.push(1);
