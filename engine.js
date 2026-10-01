@@ -1042,6 +1042,7 @@ function massError(current, ideal, zoneLow, zoneHigh){
 //   ldpF / ldpFR : その計算で見る集中力の上限(既定 120 / 先読みの中 80)
 //   er   : 戻りの地金で、全マスがゾーンに入った後もやり直しの見込みを計算する(endRedo。1で使う。全商材・手動設定の既定。
 //          戻り以外の地金では何もしない)
+//   hsSetup : 必殺がチャージ済みの間、超4連打ちの形の4マスを詰めてから使う(hsDecide。1で使う。全商材・手動設定の既定)
 /* 評価パラメータ。素材ごとの効き方は検証済み(0にした時に結果が変わる対局の割合)。
    両方       cap adv land heat ov pr tmax te center far mpm slack effK slackMax
               rush wideAim pairSnipe
@@ -1050,7 +1051,7 @@ function massError(current, ideal, zoneLow, zoneHigh){
    ※ 樹液=超かがやきの樹液(集中力変化) / いと=超あまつゆのいと(たたき変化) */
 const PARAMS = { cap:12, adv:0.75, land:3, heat:4, ov:4, pr:0.8, tmax:2200,
                  te:5, rush:0.6, save:25, turn:5, tatakiFit:1.5, boostPlan:1, center:3, opening:1, wideAim:2, pairSnipe:1, far:5, mpm:16, slack:1, effK:4, slackMax:2, saveCap:0.7, boostAim:0.7, boostRes:24, x2turn:10, aimNow:1, aimRes:2.2,
-                 lastDP:1, lastDProll:1, er:1 };
+                 lastDP:1, lastDProll:1, er:1, hsSetup:1 };
 // 既定の重み。素材ごとの上書き(PRESETS の params)は applyThreshold が重ねる。
 const BASE_PARAMS = Object.freeze(Object.assign({}, PARAMS));
 
@@ -1634,6 +1635,13 @@ function hsShouldFire(ms, f, t, cfg, P){
 // 超4連打ちの会心なら必ず理想値に届く」位置(ゾーン上限 − 2×最小ロール 以上、ゾーン下限未満)まで寄せ、
 // 揃ったら使う(使う → 超4連打ち)。ゾーンに入ってしまう打ち方は避ける(入ると必ず理想値に、ができなくなる)。
 // 集中力が残り少ない時は、1マスでも本会心にできるなら使う(どちらが良いかは先読みが「今使う」と比べて決める)。
+// 貪欲・乱数テープ・種505・同じ局どうし(左: 使った後の見込みだけで決める前の判断 → 右: 詰めてから使う)。
+//   打ち始めにチャージ: ブルーム 91.6 → 99.9% / ランプ 93.2 → 100.0% / 樹液 97.0 → 99.1% / 輝紋章 87.6 → 99.4%
+//     ひだね 96.3 → 99.2% / 幽紋刀 68.4 → 78.6% / あまつゆ 97.5 → 97.3%(差なし) / 光の鍛冶ハンマー 95.3 → 100.0%(300局)
+//     オーブ 98.1 → 99.0%(210局)。ほかは各1000局。必殺なしは同じ局で 39〜79%(商材による)。
+//   叩いた後に10%でチャージ: ブルーム 82.9 → 87.1% / ランプ 85.2 → 88.6% / 樹液 90.4 → 91.6% / 輝紋章 83.4 → 90.2%
+//     ひだね 92.1 → 94.0% / 幽紋刀 64.4 → 74.5% / あまつゆ 89.6 → 90.3% / 光の鍛冶ハンマー 91.0 → 94.7%(300局)。
+//   チャージが来たらすぐ使うのは、ほぼ効かない(マスがまだ遠く、会心でも理想値に届かない。あまつゆは 52.1 → 21.8% と悪化)。
 function hsSquareSkill(cfg){
   return SKILLS.find(s => s.id === 'chouyonren' && s.lv <= cfg.level) || SKILLS.find(s => s.id === 'yonren' && s.lv <= cfg.level) || null;
 }
