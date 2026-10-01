@@ -169,11 +169,12 @@ function renderBoard(){
   // 使わないマスは出さない(利用者の指示)。段・列が丸ごと使われていなければ詰め、
   // 1マスだけ空く所は見えない空白にして、ほかのマスの上下左右の並び(技の形)は崩さない。
   const usedRow = r => !G.masses[2*r].off || !G.masses[2*r+1].off;
-  const usedCol = c => [0,1,2].some(r => !G.masses[2*r+c].off);
+  const rows = Math.ceil(G.masses.length / 2);          // 縦3行(6マス)か4行(8マス)
+  const usedCol = c => Array.from({ length: rows }, (_, r) => r).some(r => !G.masses[2*r+c].off);
   const anyUsed = G.masses.some(m => !m.off);
   // 1列だけの盤は、段の幅をふつうの盤の半分にして中央に置く(ゲージが横いっぱいに伸びないように)
   const oneCol = anyUsed && (usedCol(0) !== usedCol(1));
-  for(let row=0; row<3; row++){
+  for(let row=0; row<rows; row++){
     if(anyUsed && !usedRow(row)) continue;
     html += `<div class="brow${oneCol ? ' half' : ''}">`;
     for(let col=0; col<2; col++){
@@ -1136,7 +1137,7 @@ function save(){
 function load(){
   try{
     const s=JSON.parse(localStorage.getItem(SKEY));
-    if(!s||!s.masses||s.masses.length!==6) return false;
+    if(!s||!s.masses||(s.masses.length!==6 && s.masses.length!==8)) return false;
     Object.assign(G,s);
     delete G.mc;                      // 旧版で保存された切り替え設定は使わない
     // 保存データの点灯が今の盤面で成立するか確かめてから戻す

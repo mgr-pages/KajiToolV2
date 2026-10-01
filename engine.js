@@ -220,7 +220,11 @@ const PRESETS = {
 // [職人, 種類, 名前, 盤面(行を / で区切り、左,右の順。- は使わないマス), 地金特性, 職人レベル]
 // 地金特性はサイトの表記 集中力変化 = shuchu / 倍半 = tataki / 戻り = modori / 光 = kaishin。
 // 上の PRESETS にある9商材は、その設定(重み・先読み)を使う(盤面・特性はこの表と一致することを確かめた)。
-// それ以外は既定の重みで、許容誤差は使うマスの数で決める(手動設定と同じ。2マス=0・3マス=2・4マス=3・5マス=5・6マス=7)。
+// それ以外は既定の重み。盤面は縦3行(6マス)、4行目を使う商材(7〜8マスなど)は縦4行(8マス)。
+// 許容誤差(大成功になる誤差の合計の上限)は種類ごとの表(CRAFT_TOL。出典: 公式ガイドブック「氷の領界+職人の極意編
+// Ver3.2[後期]」の種別ごとの表を載せた記事 mi-mi-dqx.blazeworks.jp/archives/4728)。マスの数だけでは決まらない
+// (ヤリとツメは同じ4マスで 4 と 3)。表に無い種類(鎌・素材)は、使うマスの数で決める(2マス=0・3マス=2・4マス=3・
+// 5マス=5・6マス=7・7マス=9・8マス=10。7マスはフライパン・ムチ、8マスは両手剣・からだ下の値。鎌は未確認)。
 const CRAFT_ITEMS = [
   ["道具","鍛冶ハンマー","奇跡の鍛冶ハンマー","150-156,160-170/80-86,130-139/120-129,-","modori",34],
   ["道具","鍛冶ハンマー","光の鍛冶ハンマー","120-126,180-186/236-245,140-149/160-170,-","kaishin",40],
@@ -393,8 +397,11 @@ const CRAFT_ITEMS = [
   ["武器","鎌","輝天の鎌","265-275,265-275/170-178,-/100-107,-/100-107,-","modori",65],
 ];
 const PRESET_ORDER = [];            // 選択欄の並び(サイトと同じ順)
+const CRAFT_TOL = { 片手剣:2, 両手剣:10, 短剣:0, ヤリ:4, オノ:7, ツメ:3, ムチ:9, ハンマー:7, ブーメラン:6,
+                    小盾:3, 大盾:3, アタマ:3, からだ上:7, からだ下:10, ウデ:2, 足:4,
+                    鍛冶ハンマー:5, 木工刀:2, さいほう針:0, フライパン:9, 錬金ランプ:3, 錬金ツボ:7, ルアー:2, 家具:7 };
 (function(){
-  const TH = [0, 0, 0, 2, 3, 5, 7];
+  const TH = [0, 0, 0, 2, 3, 5, 7, 9, 10];
   for(const [job, grp, name, grid, trait, craft] of CRAFT_ITEMS){
     let key = Object.keys(PRESETS).find(k => PRESETS[k].name === name);
     if(!key){
@@ -403,9 +410,11 @@ const PRESET_ORDER = [];            // 選択欄の並び(サイトと同じ順)
         const i = r * 2 + k;
         if(c === '-'){ zones[i] = [0, 0]; off.push(i); } else zones[i] = c.split('-').map(Number);
       }));
-      for(let i = 0; i < 6; i++) if(!zones[i]){ zones[i] = [0, 0]; off.push(i); }
+      const n = Math.max(6, grid.split('/').length * 2);
+      for(let i = 0; i < n; i++) if(!zones[i]){ zones[i] = [0, 0]; off.push(i); }
       key = name;
-      PRESETS[key] = { name, trait, threshold: TH[6 - off.length], off: off.sort((a, b) => a - b), zones };
+      const tol = grp in CRAFT_TOL ? CRAFT_TOL[grp] : TH[n - off.length];
+      PRESETS[key] = { name, trait, threshold: tol, off: off.sort((a, b) => a - b), zones };
     }
     Object.assign(PRESETS[key], { job, grp, craft });
     PRESET_ORDER.push(key);
@@ -1212,7 +1221,9 @@ function tempNum(temp){ return 1000 + Math.max(50, Math.min(2000, temp)); }
 function scaleUp(base, temp){ return Math.ceil(base * tempNum(temp) / 2000); }
 function baseValues(key){ return BASE_N[key] || null; }
 
-const GRID_ROWS = 3, GRID_COLS = 2; // 縦3×横2(超かがやきの樹液)
+// 盤面は横2列。縦は3行(6マス)が基本で、7〜8マスの商材(両手剣・ムチ・からだ下など)は4行。setActiveMask で商材ごとに決まる
+let GRID_ROWS = 3;
+const GRID_COLS = 2;
 // 大成功の許容誤差(誤差合計)。商材の盤面の形で決まるため、素材を切り替えるたびに設定し直す。
 // 出典: 公式ガイドブックを元にした種別ごとの表(6マスの練金ツボ・家具=7、盾・アタマ=3 など)。
 // 手動設定では、使うマスの数で決める(利用者の指示。2マス=0・3マス=2・4マス=3・5マス=5・6マス=7。
@@ -1293,6 +1304,7 @@ function rcToIdx(r,c){
 //   (引き継ぎ資料 v116)。ゾーンに到達済みのマスを含む形は、盤面上に存在するので打てる。
 let ACTIVE = null;                       // null = 全マス有効
 function setActiveMask(list){
+  if(Array.isArray(list)) GRID_ROWS = Math.max(3, Math.ceil(list.length / GRID_COLS));
   ACTIVE = (Array.isArray(list) && list.some(v => !v)) ? list.slice() : null;
 }
 function isActive(i){ return !ACTIVE || ACTIVE[i]; }
@@ -2759,7 +2771,7 @@ function mcRolloutBody(ms0, f, t, cfg, first){
     if(m.current >= m.zoneLow) rc++;
     e += massError(m.current, m.ideal, m.zoneLow, m.zoneHigh);
   }
-  return (rc === GRID_ROWS*GRID_COLS && e <= SUCCESS_THRESHOLD) ? 1 : 0;
+  return (rc === ms.length && e <= SUCCESS_THRESHOLD) ? 1 : 0;
 }
 // 同じ盤面で計算し直すと違う手が出る(実測87.5%)のは助言として不安定なので、
 // 乱数の種を盤面・温度・集中力から決めて、同じ局面には同じ答えを返す。
