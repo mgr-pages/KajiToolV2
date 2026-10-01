@@ -2270,10 +2270,19 @@ function mcRolloutBody(ms0, f, t, cfg, first){
                                ideal: sampleIdeal(i, m) }));
   let fo = f, to = t, mv = first;
   const saved = simFirstMove, savedLit = litMassIndex;
+  // 試行の中のやり直し(erRoll、既定 0。実験)は、今の局面の未到達のマスが erRollN 個以下の時だけ使う(erRollN が無ければいつも)。
+  // 序盤の手の比べ方まで変えないようにするため。
+  //   見送り: いつも使う版は、虹色のオーブ・先読みあり(乱数テープ・種900、同じ局どうし29局)で 79.3% → 69.0%
+  //   (片方だけ大成功 4局対1局)。狙いの「終盤に集中力を残す」も起きず、残り集中力は 17.4 → 15.6 だった。
+  let redoOK = PARAMS.erRoll > 0;
+  if(redoOK && PARAMS.erRollN > 0){
+    let open = 0; for(const m of ms0) if(m.zoneHigh > 0 && m.current < m.zoneLow) open++;
+    redoOK = open <= PARAMS.erRollN;
+  }
   for(let s = 0; s < 70; s++){
     // 渡された1手目(仕上げのやり直し)は、全マスがゾーン内でも打つ。
     // 全マスがゾーンに入った後は、試行の中でもやり直しの見込みを計算する(erRoll。戻りの地金だけ)
-    if(!mv && boardDone(ms, cfg.trait)){ mv = endRedo(ms, fo, to, PARAMS, cfg, rolloutPost); if(!mv || fo < mv.c) break; }
+    if(!mv && boardDone(ms, cfg.trait)){ if(!redoOK) break; mv = endRedo(ms, fo, to, PARAMS, cfg, rolloutPost); if(!mv || fo < mv.c) break; }
     if(to <= 0) break;
     if(s > 0) rollLit(ms, to, cfg.trait, MC_RNG);   // 現在の手番の点灯は既知なので触らない
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
