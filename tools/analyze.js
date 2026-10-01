@@ -173,6 +173,9 @@ function summarize(rows, label){
   console.log(`  平均残り集中力 ${(rows.reduce((a,r)=>a+r.focusLeft,0)/n).toFixed(1)} / 平均手数 ${(rows.reduce((a,r)=>a+r.moves,0)/n).toFixed(1)}`);
   const md = rows.reduce((a,r)=>a+((r.modori||[]).length),0);
   if(md) console.log(`  戻り ${(md/n).toFixed(2)}回/局`);
+  const hsC = rows.filter(r => r.hsAt >= 0), hsF = rows.filter(r => r.hsFire >= 0);
+  if(hsC.length) console.log(`  必殺: チャージ ${hsC.length}局 / 使用 ${hsF.length}局(使った手番の平均 ${(hsF.reduce((a,r)=>a+r.hsFire,0)/Math.max(1,hsF.length)).toFixed(1)})`
+    + ` / チャージした局の大成功 ${(hsC.filter(r=>r.great).length/hsC.length*100).toFixed(1)}%`);
   const rdn = rows.reduce((a, r) => a + (r.redoN || 0), 0);
   if(rdn) console.log(`  仕上げのやり直し ${(rdn/n).toFixed(2)}回/局`);
   const cls = {};
