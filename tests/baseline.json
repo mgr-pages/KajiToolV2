@@ -89,13 +89,13 @@
     "bloom": {
       "mc": {
         "games": 2,
-        "great": 50,
+        "great": 100,
         "unreached": 0,
         "over": 0,
-        "avgErr": 2.5,
-        "avgMoves": 21.5,
-        "avgFocusLeft": 3.5,
-        "fingerprint": "537e0312"
+        "avgErr": 0,
+        "avgMoves": 22.5,
+        "avgFocusLeft": 5,
+        "fingerprint": "e486e29e"
       },
       "greedy": {
         "games": 300,
@@ -158,10 +158,10 @@
         "great": 100,
         "unreached": 0,
         "over": 0,
-        "avgErr": 1,
-        "avgMoves": 15,
-        "avgFocusLeft": 41.5,
-        "fingerprint": "c0a61349"
+        "avgErr": 3.5,
+        "avgMoves": 14,
+        "avgFocusLeft": 56,
+        "fingerprint": "8b15f984"
       },
       "greedy": {
         "games": 300,
