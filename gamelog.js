@@ -8,7 +8,7 @@
    ・名前やログインは使わない。端末ごとにランダムな番号(匿名)だけを付ける。
    ・送れなかった記録は端末に残し、次に開いた時や次の対局の終わりに送り直す。
    ===================================================================== */
-const GLOG_ENDPOINT = '';            // Apps Script を「ウェブアプリ」として公開した URL(…/exec)
+const GLOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzZnqB3HDc4JvjbLA-DMG_AJ2Kboc33Sl7prlHqlRSQc38ZRHyCbL5hvCFaUCq7GV2wbQ/exec';            // Apps Script を「ウェブアプリ」として公開した URL(…/exec)
 const GLOG_CUR = 'kajiAdvisorLogCurV1', GLOG_QUEUE = 'kajiAdvisorLogQueueV1', GLOG_DEV = 'kajiAdvisorDeviceV1';
 const GLOG_MAXQ = 50;                // 貯めておく記録の上限(古いものから捨てる)
 
@@ -49,9 +49,11 @@ const GameLog = (function(){
   async function send(rec){
     if(!GLOG_ENDPOINT) return false;
     try{
-      // 応答は読めない(no-cors)ので、通信が通れば送れたものとする
-      await fetch(GLOG_ENDPOINT, { method: 'POST', mode: 'no-cors', keepalive: true,
-                                   headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(rec) });
+      // 応答は読めない(no-cors)ので、通信が通れば送れたものとする。
+      // keepalive(画面を閉じても送り切る)はブラウザの上限が 64KB なので、長い記録には付けない
+      const body = JSON.stringify(rec);
+      await fetch(GLOG_ENDPOINT, { method: 'POST', mode: 'no-cors', keepalive: body.length < 60000,
+                                   headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
       return true;
     }catch(e){ return false; }
   }
