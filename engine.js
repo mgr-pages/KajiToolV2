@@ -2274,6 +2274,8 @@ function mcRolloutBody(ms0, f, t, cfg, first){
   // 序盤の手の比べ方まで変えないようにするため。
   //   見送り: いつも使う版は、虹色のオーブ・先読みあり(乱数テープ・種900、同じ局どうし29局)で 79.3% → 69.0%
   //   (片方だけ大成功 4局対1局)。狙いの「終盤に集中力を残す」も起きず、残り集中力は 17.4 → 15.6 だった。
+  //   見送り: 未到達のマスが2つ以下の時だけ使う版(erRollN 2)は、同じ100局で 77.0% → 77.0%(片方だけ大成功 2局対2局)。
+  //   残り集中力は 16.2 → 17.4 と少し増えたが、大成功には結びつかなかった。
   let redoOK = PARAMS.erRoll > 0;
   if(redoOK && PARAMS.erRollN > 0){
     let open = 0; for(const m of ms0) if(m.zoneHigh > 0 && m.current < m.zoneLow) open++;
