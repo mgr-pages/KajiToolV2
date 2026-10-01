@@ -8,7 +8,7 @@
    ・名前やログインは使わない。端末ごとにランダムな番号(匿名)だけを付ける。
    ・送れなかった記録は端末に残し、次に開いた時や次の対局の終わりに送り直す。
    ===================================================================== */
-const GLOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzZnqB3HDc4JvjbLA-DMG_AJ2Kboc33Sl7prlHqlRSQc38ZRHyCbL5hvCFaUCq7GV2wbQ/exec';            // Apps Script を「ウェブアプリ」として公開した URL(…/exec)
+const GLOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzDH0cjz-vcg1N2qU9k_CX6ke0fLX48YPByDAbEUe3gumBrmWzxO8RtxoDAjNamYKC0uA/exec';            // Apps Script を「ウェブアプリ」として公開した URL(…/exec)
 const GLOG_CUR = 'kajiAdvisorLogCurV1', GLOG_QUEUE = 'kajiAdvisorLogQueueV1', GLOG_DEV = 'kajiAdvisorDeviceV1';
 const GLOG_MAXQ = 50;                // 貯めておく記録の上限(古いものから捨てる)
 
