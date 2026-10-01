@@ -115,6 +115,10 @@ const PRESETS = {
     trait: 'shuchu',
     threshold: 3,
     off: [4, 5],
+    // 大成功率を上げる検討(貪欲、種202、同じ局どうし3000局、既定 60.7%)。失敗の 36.7% はずれの合計の超過で、
+    //   ずれが残ったマスの45%は「ふつうのターン(会心率約43%)に、本会心が取れる位置からねらい打ちして外れた」もの。
+    //   見送り(差なし、または悪化): turn 10/15・boostAim 0.5/0.9・boostPlan 1・save 25・cap 30・land 8・center 1/3/6・
+    //   te 10・pr 0・adv 0.6・far 0・mpm 24・2マス残りの総当たり(ldp2、−10.4〜+0.9pt)・会心ターンへ温度を移す(bop)。
     params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0 },
     mc: { gate: 0 },
     zones: [[200,208],[250,256],[250,256],[200,208],[0,0],[0,0]]
@@ -1724,7 +1728,34 @@ function hsEndMove(ms, f, t, cfg, P){
   return null;
 }
 
+// ---- 会心ターンへ温度を移してからねらう(bop、既定 0。実験) ----
+// 集中力変化の地金で、本会心が取れる位置のマスを、ふつうのターンでねらい打ちしようとした時、
+// 火力上げ・冷やし込みで会心ターン(200の倍数で400の倍数でない)に移せて、移した後も本会心が取れる位置なら、
+// 先に温度を移す。移した後のねらい打ち(消費1.5倍)と、残りのマスの分(1マス P.bopR)の集中力が残る時だけ。
+//   見送り: まおうの錬金ランプ・貪欲(種202、同じ局どうし3000局)で bopR 8/16/24 とも −0.2〜−0.3pt(差なし)。
+//   ±300℃動かすと威力も変わり、本会心が取れる位置から外れるため、出番がほとんど無い。
+function boostOpMove(mv, ms, f, t, P, cfg){
+  if(!mv || cfg.trait !== 'shuchu' || !mv.sk.crit || mv.tg.length !== 1 || isBoostTurn(t)) return null;
+  const i = mv.tg[0], m = ms[i];
+  if(m.current >= m.zoneLow) return null;
+  let open = 0; for(const x of ms) if(x.zoneHigh > 0 && x.current < x.zoneLow) open++;
+  for(const op of SKILLS){
+    if(op.key || op.masses !== 0 || op.lv > cfg.level) continue;
+    const t2 = t + op.tempDelta; if(t2 <= 0 || t2 > 2000 || !isBoostTurn(t2)) continue;
+    const c1 = actualCostOf(op, t, cfg.trait), c2 = actualCostOf(mv.sk, t2, cfg.trait);
+    if(f - c1 - c2 < (open - 1) * (P.bopR || 16)) continue;
+    const r = rollsForMass(mv.sk, t2, cfg.trait, i); if(!r) continue;
+    if(m.current + r[r.length-1] > m.zoneHigh || m.current + 2*r[0] < m.zoneHigh) continue;   // 移した後も本会心が取れる位置
+    return { sk: op, tg: [], c: c1, nt: t2, overP: 0 };
+  }
+  return null;
+}
 function stratB(ms,f,t,P,cfg){
+  const mv = stratB0(ms,f,t,P,cfg);
+  if(P.bop > 0 && !RANK){ const b = boostOpMove(mv, ms, f, t, P, cfg); if(b) return b; }
+  return mv;
+}
+function stratB0(ms,f,t,P,cfg){
   // ---- 必殺: 効果中は必ず会心で叩く手、チャージ済みなら使いどころを判断する ----
   if(HS === 2){ const b = hsBuffMove(ms, f, t, cfg, P); if(b) return b; }
   else if(HS === 1 && !P.hsOff){
