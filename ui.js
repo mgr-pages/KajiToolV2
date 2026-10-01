@@ -1184,9 +1184,9 @@ GameLog.restore();
 let OUTCOME_NEXT = null;
 function askOutcome(next){ OUTCOME_NEXT = next; document.getElementById('outcomeModal').classList.add('show'); }
 function closeOutcome(){ OUTCOME_NEXT = null; document.getElementById('outcomeModal').classList.remove('show'); }
-async function chooseOutcome(o){
+function chooseOutcome(o){
   const next = OUTCOME_NEXT; closeOutcome();
-  await GameLog.finish(o);
+  GameLog.finish(o);                 // 端末に貯めて送信は裏で行うので、すぐにリセットへ進む
   if(next) next();
 }
 renderAll();
