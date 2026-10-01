@@ -1664,7 +1664,8 @@ function hsSetupMove(ms, f, t, cfg, P, ps){
   const inSq = new Set(ps.tg);
   let best = null, bv = 0;
   for(const mv of moves(ms, f, t, cfg)){
-    if(!mv.tg.length || mv.sk.random || mv.overP > 0) continue;
+    // ねらい打ち系は使わない(会心でゾーンに入ると、必殺で必ず理想値に、ができなくなる。必殺の方が確実な会心)
+    if(!mv.tg.length || mv.sk.random || mv.sk.crit || mv.overP > 0) continue;
     const Tf = mv.nt - 50;                                   // この手の直後に使った時の、超4連打ちの温度
     if(Tf <= 0 || f - mv.c < actualCostOf(ps.sq, Tf, cfg.trait)) continue;
     let sc = 0;
@@ -1675,7 +1676,8 @@ function hsSetupMove(ms, f, t, cfg, P, ps){
         const lo = hsWindowLow(m, i, ps.sq, Tf, cfg), gap = v => Math.max(0, lo - v);
         let prog = 0, enter = 0;
         for(const x of r){ prog += gap(m.current) - gap(m.current + x); if(m.current + x >= m.zoneLow) enter++; }
-        sc += prog / r.length - (P.hsSetPen || 40) * enter / r.length;
+        if(enter > 0){ sc = -Infinity; break; }        // 会心でなくてもゾーンに入りうる手は使わない
+        sc += prog / r.length;
       } else {
         let prog = 0; for(const x of r) prog += Math.min(x, Math.max(0, m.zoneLow - m.current));
         sc += (P.hsOut || 0.2) * prog / r.length;
@@ -1704,7 +1706,7 @@ function hsDecide(ms, f, t, cfg, P){
         if(f - actualCostOf(ps.sq, hm.nt, cfg.trait) < (P.hsMinF || 25)) return h.v >= e0 ? 'fire' : null;   // 集中力が少ない
         const sm = hsSetupMove(ms, f, t, cfg, P, ps);
         if(sm) return sm;
-        return h.v >= unr * e0 * 0.5 ? 'fire' : null;                             // もう寄せられない
+        return 'fire';            // もう寄せられない。ふつうに打つとマスをゾーンに入れてしまうので、ここで使う
       }
     }
   }
@@ -2519,11 +2521,15 @@ function mcYield(){ return new Promise(r => setTimeout(r, 0)); }
 // 要るなら {pool, seedBase} を返す。
 function mcPrepare(ms, f, t, P, cfg){
   const mc = mcConf();
-  // 必殺がチャージ済みなら、「今使う」を候補に足し、使わない手(使いどころの判断を止めた評価の上位)と先読みで比べる。
-  // 試行の中では、使いどころの判断(hsShouldFire)で使う
+  // 必殺がチャージ済みの時。試行の中も、同じ判断(hsDecide)で使う
   if(HS === 1){
     const hm = hsMove(t);
     if(hm){
+      // 4マスを詰める手・揃った時に使うのは決め打ち(利用者の情報。先読みの候補に任せると、ふつうの手で
+      // マスをゾーンに入れてしまうことがあった)。決めきれない時(集中力が少ない・もう寄せられない)だけ比べる
+      const d = hsDecide(ms, f, t, cfg, P);
+      if(d === 'fire') return { move: hm };
+      if(d) return { move: d };
       const P2 = Object.assign({}, P, { hsOff: 1 });
       const rest = rankedMoves(ms, f, t, P2, cfg, mc.K);
       const base = rest.length ? rest.slice() : [stratB(ms, f, t, P2, cfg)].filter(Boolean);

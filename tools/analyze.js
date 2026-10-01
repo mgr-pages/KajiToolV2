@@ -77,7 +77,7 @@ async function playGame(E, o, g){
   const ideal = G.masses.map((m, i) => m.zoneLow + Math.floor(R('i', 0, i) * (m.zoneHigh - m.zoneLow + 1)));
   const fin = [];                     // 各マスの最後の一打の分類
   const modori = [];                  // 起きた戻り
-  let moves = 0, redoN = 0, forkBase = null, hsUsed = false, hsAt = -1, hsFire = -1;
+  let moves = 0, redoN = 0, forkBase = null, hsUsed = false, hsAt = -1, hsFire = -1, hsZone = -1, hsZoneBad = -1;
   if(o.fork) P.er = 0;                // --fork: 全マスがゾーンに入るまでは今の設定で打つ
   E('HS = 0;');
   if(o.hs0 > 0 && R('H', 0, 0) < o.hs0){ E('HS = 1;'); hsAt = 0; }
@@ -127,7 +127,7 @@ async function playGame(E, o, g){
       if(!mv.sk.random) seen.push({ i, before, rolls, cr, crit });
     }
     // 必殺: 使うと効果中、叩くと効果が消える。叩いた後、まだなら確率でチャージする
-    if(mv.sk.hs){ E('HS = 2;'); hsUsed = true; hsFire = s; }
+    if(mv.sk.hs){ E('HS = 2;'); hsUsed = true; hsFire = s; hsZone = G.masses.filter(m => !m.off && m.current >= m.zoneLow).length; hsZoneBad = G.masses.filter((m, j) => !m.off && m.current >= m.zoneLow && m.current !== ideal[j]).length; }
     else if(E('HS') === 2 && mv.sk.key) E('HS = 0;');
     else if(mv.sk.key && !hsUsed && E('HS') === 0 && o.hsp > 0 && R('H', s, 1) < o.hsp){ E('HS = 1;'); hsAt = s + 1; }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id); moves++;
@@ -147,7 +147,7 @@ async function playGame(E, o, g){
   const over = G.masses.some(m => m.current > m.zoneHigh);
   const err = errs.reduce((a,e) => a + (e || 0), 0);
   return { g, great: reached && err <= E('SUCCESS_THRESHOLD'), reached, over, err, errs,
-           overBy: G.masses.map(m => m.current > m.zoneHigh), focusLeft: G.focus, moves, fin: fin.slice(), modori: modori.slice(), redoN, hsAt, hsFire };
+           overBy: G.masses.map(m => m.current > m.zoneHigh), focusLeft: G.focus, moves, fin: fin.slice(), modori: modori.slice(), redoN, hsAt, hsFire, hsZone, hsZoneBad };
   }
 }
 
