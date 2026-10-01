@@ -656,6 +656,9 @@ async function doCalc(){
   try{
     const cfg = cfgOf();
     HS = G.hs || 0;                   // 必殺の状態(先読みの Worker には mcSnapshot で渡る)
+    // 直前に打った手(火力上げの直後に冷やし込み、のような打ち消し合う温度操作を選ばないため)
+    const lastH = G.hist.length ? G.hist[G.hist.length - 1] : null, lastSk = lastH ? skillByName(lastH.name) : null;
+    PREV_SK = lastSk ? lastSk.id : null;
     const ms = G.masses.map(m=>({current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh}));
     // 戻りの地金では、全マスがゾーンに入った後も、もう一度ねらった方が大成功の見込みが上がる時はその手を出す
     // 必殺が残っていれば先に使う(必ず会心なので、やり直しより確実)
