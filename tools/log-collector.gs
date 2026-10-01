@@ -15,7 +15,8 @@ const SPREADSHEET_ID = '';           // 空ならスクリプトを作ったス�
 const SHEET = '記録';
 const HEAD = ['受け取った日時', '記録の番号', '端末の番号(匿名)', '版', '素材', '地金特性', '職人Lv',
               'ハンマー', 'できのよさ', '許容誤差', '結果', '全マス到達', '残り集中力', '最後の温度',
-              '最後の値(使うマス)', '手数(打った回数)', '取り消し', '始めた日時', '終えた日時', '手順(JSON)'];
+              '最後の値(使うマス)', '手数(打った回数)', '取り消し', '始めた日時', '終えた日時', '手順(JSON)',
+              'ブラウザ', 'OS'];
 
 function doPost(e){
   const lock = LockService.getScriptLock();
@@ -25,12 +26,15 @@ function doPost(e){
     const ss = SPREADSHEET_ID ? SpreadsheetApp.openById(SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
     let sh = ss.getSheetByName(SHEET);
     if(!sh){ sh = ss.insertSheet(SHEET); sh.appendRow(HEAD); sh.setFrozenRows(1); }
+    // 列を足した版に入れ替えた時は、見出しの行も足りない分を書き直す(これまでの行の並びは変えない)
+    else if(sh.getLastColumn() < HEAD.length) sh.getRange(1, 1, 1, HEAD.length).setValues([HEAD]);
     const steps = Array.isArray(d.steps) ? d.steps : [];
     const fin = d.final || {};
     sh.appendRow([new Date(), d.id, d.device, d.version, d.preset, d.trait, d.level, d.hammer, d.star,
                   d.threshold, d.outcome, d.reached, fin.focus, fin.temp, (fin.masses || []).join(' / '),
                   steps.filter(s => s.t === 'exec').length, steps.filter(s => s.t === 'undo').length,
-                  d.started, d.finished, JSON.stringify({ zones: d.zones, steps })]);
+                  d.started, d.finished, JSON.stringify({ zones: d.zones, steps }),
+                  (d.env || {}).browser || '', (d.env || {}).os || '']);
     return ContentService.createTextOutput('ok');
   } finally {
     lock.releaseLock();
