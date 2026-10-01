@@ -19,6 +19,10 @@
      --log FILE         1局ごとの結果を追記する。同じ FILE で再実行すると、記録済みの局は飛ばす
                         (途中で止まっても続きから再開できる)
      --summary FILE     記録済みの FILE を集計して表示するだけ
+     --hs0 P            必殺(ヘパイトスの炎)が打ち始めにチャージされる確率(既定 0)
+     --hsp P            叩く手の後に必殺がチャージされる確率(まだチャージも使用もしていない時。既定 0)
+     --hsAt N           N 手目の前に必ずチャージする(既定 -1 = しない)
+     --hsNow 1          チャージされたら、すぐに使う(エンジンの判断と比べる用)
      --from N           局 N から打つ(既定 0)。局の結果は seed と局の番号だけで決まるので、
                         --from と --games で範囲を分けて並べて回しても、通しで打った時と同じ局になる
    ===================================================================== */
@@ -26,12 +30,12 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 function args(){
-  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, tape:0, log:null, summary:null, from:0, fork:0 };
+  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, tape:0, log:null, summary:null, from:0, fork:0, hs0:0, hsp:0, hsAt:-1, hsNow:0 };
   const a = process.argv.slice(2);
   for(let i = 0; i < a.length; i++){
     const k = a[i].replace(/^--/, ''), v = a[++i];
     if(!(k in o)){ console.error('不明な引数: ' + a[i-1]); process.exit(2); }
-    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck','tape','from','fork'].includes(k) ? Number(v) : v);
+    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck','tape','from','fork','hs0','hsp','hsAt','hsNow'].includes(k) ? Number(v) : v);
   }
   return o;
 }
@@ -73,18 +77,22 @@ async function playGame(E, o, g){
   const ideal = G.masses.map((m, i) => m.zoneLow + Math.floor(R('i', 0, i) * (m.zoneHigh - m.zoneLow + 1)));
   const fin = [];                     // 各マスの最後の一打の分類
   const modori = [];                  // 起きた戻り
-  let moves = 0, redoN = 0, forkBase = null;
+  let moves = 0, redoN = 0, forkBase = null, hsUsed = false, hsAt = -1, hsFire = -1;
   if(o.fork) P.er = 0;                // --fork: 全マスがゾーンに入るまでは今の設定で打つ
+  E('HS = 0;');
+  if(o.hs0 > 0 && R('H', 0, 0) < o.hs0){ E('HS = 1;'); hsAt = 0; }
   for(let s = 0; s < 70; s++){
     if(G.temp <= 0) break;
+    if(o.hsAt === s && !hsUsed && E('HS') === 0){ E('HS = 1;'); hsAt = s; }
     // 全マスがゾーンに入った後も、やり直しの見込み(endRedo、戻りの地金・P.er)があれば続ける
     let mvEnd = null;
     if(E('boardDone')(G.masses, G.trait)){
       // --fork: 全マスがゾーンに入った時点の結果を「やり直し無し」として控え、ここからやり直しを入れて続ける
       if(o.fork && !forkBase){ forkBase = result(); P.er = 1; }
-      mvEnd = E('endRedo')(G.masses.map(m => ({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh })), G.focus, G.temp, P, cfg);
+      const msE = G.masses.map(m => ({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh }));
+      mvEnd = E('hsEndMove')(msE, G.focus, G.temp, cfg, P);   // 必殺が残っていれば先に使う
+      if(!mvEnd){ mvEnd = E('endRedo')(msE, G.focus, G.temp, P, cfg); if(mvEnd) redoN++; }
       if(!mvEnd) break;
-      redoN++;
     }
     // 点灯(威力会心率上昇): 200℃の倍数で未到達マスから1つ(開始直後は特性が乗らない)
     let lit = null;
@@ -94,7 +102,8 @@ async function playGame(E, o, g){
     }
     E(`litMassIndex = ${lit === null ? 'null' : lit};`);
     const ms = G.masses.map(m => ({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh }));
-    const mv = mvEnd ? mvEnd : o.mode === 'mc' ? await E('stratMCAsync')(ms, G.focus, G.temp, P, cfg, null)
+    const hsN = o.hsNow && E('HS') === 1 ? E('hsMove')(G.temp) : null;   // --hsNow: チャージされたらすぐ使う
+    const mv = mvEnd ? mvEnd : hsN ? hsN : o.mode === 'mc' ? await E('stratMCAsync')(ms, G.focus, G.temp, P, cfg, null)
                                : E('stratB')(ms, G.focus, G.temp, P, cfg);
     if(!mv || mv.c > G.focus) break;
     const seen = [];                    // この手で打ったマス(理想値の推定は戻りの後にまとめて更新)
@@ -102,7 +111,8 @@ async function playGame(E, o, g){
     const hits = mv.sk.random ? [0,1,2,3].map(h => ({ i: mv.tg[Math.floor(R('h', s, h) * mv.tg.length)], k: 100 + h }))
                               : mv.tg.map(i => ({ i, k: i }));
     if(mv.sk.key) for(const { i, k } of hits){
-      const m = G.masses[i]; if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random) continue;   // やり直しの手はゾーン内も打つ
+      // やり直しの手・必殺の効果中の手はゾーン内も打つ
+      const m = G.masses[i]; if(m.current >= m.zoneLow && !mv.redo && !mv.sk.random && E('HS') !== 2) continue;
       const rolls = E('rollsForMass')(mv.sk, G.temp, G.trait, i), cr = E('critForMass')(mv.sk, cfg, G.temp, i);
       if(!rolls) continue;
       const roll = rolls[Math.floor(R('r', s, k) * rolls.length)], crit = R('c', s, k) < cr, before = m.current;
@@ -116,6 +126,10 @@ async function playGame(E, o, g){
       // みだれ打ちは画面で打つ前と後の値だけを入れるので、理想値の推定には使わない
       if(!mv.sk.random) seen.push({ i, before, rolls, cr, crit });
     }
+    // 必殺: 使うと効果中、叩くと効果が消える。叩いた後、まだなら確率でチャージする
+    if(mv.sk.hs){ E('HS = 2;'); hsUsed = true; hsFire = s; }
+    else if(E('HS') === 2 && mv.sk.key) E('HS = 0;');
+    else if(mv.sk.key && !hsUsed && E('HS') === 0 && o.hsp > 0 && R('H', s, 1) < o.hsp){ E('HS = 1;'); hsAt = s + 1; }
     G.focus -= mv.c; G.temp = mv.nt; G.hist.push(mv.sk.id); moves++;
     const md = E('applyModori')(G.masses, G.temp, G.trait, () => R('m', s, 0));   // 戻り
     if(md) modori.push(md);
@@ -133,7 +147,7 @@ async function playGame(E, o, g){
   const over = G.masses.some(m => m.current > m.zoneHigh);
   const err = errs.reduce((a,e) => a + (e || 0), 0);
   return { g, great: reached && err <= E('SUCCESS_THRESHOLD'), reached, over, err, errs,
-           overBy: G.masses.map(m => m.current > m.zoneHigh), focusLeft: G.focus, moves, fin: fin.slice(), modori: modori.slice(), redoN };
+           overBy: G.masses.map(m => m.current > m.zoneHigh), focusLeft: G.focus, moves, fin: fin.slice(), modori: modori.slice(), redoN, hsAt, hsFire };
   }
 }
 
@@ -159,6 +173,9 @@ function summarize(rows, label){
   console.log(`  平均残り集中力 ${(rows.reduce((a,r)=>a+r.focusLeft,0)/n).toFixed(1)} / 平均手数 ${(rows.reduce((a,r)=>a+r.moves,0)/n).toFixed(1)}`);
   const md = rows.reduce((a,r)=>a+((r.modori||[]).length),0);
   if(md) console.log(`  戻り ${(md/n).toFixed(2)}回/局`);
+  const hsC = rows.filter(r => r.hsAt >= 0), hsF = rows.filter(r => r.hsFire >= 0);
+  if(hsC.length) console.log(`  必殺: チャージ ${hsC.length}局 / 使用 ${hsF.length}局(使った手番の平均 ${(hsF.reduce((a,r)=>a+r.hsFire,0)/Math.max(1,hsF.length)).toFixed(1)})`
+    + ` / チャージした局の大成功 ${(hsC.filter(r=>r.great).length/hsC.length*100).toFixed(1)}%`);
   const rdn = rows.reduce((a, r) => a + (r.redoN || 0), 0);
   if(rdn) console.log(`  仕上げのやり直し ${(rdn/n).toFixed(2)}回/局`);
   const cls = {};

@@ -5,13 +5,36 @@
      選ばないと先へ進めない(ui.js の askOutcome)。選ぶと記録を端末に貯めて、すぐにリセットする。
    ・送り先は Google スプレッドシートの Apps Script(tools/log-collector.gs)。GLOG_ENDPOINT に
      公開した URL を入れる。空なら送らずに端末に貯めておき、URL が入った版で送る。
-   ・名前やログインは使わない。端末ごとにランダムな番号(匿名)だけを付ける。
+   ・名前やログインは使わない。端末ごとにランダムな番号と、ブラウザ・OS の大まかな分類(glogEnv)を付ける。
    ・結果を選んだら端末に貯めてすぐリセットし、送信は裏で行う。送れなかった記録は端末に残し、
      次に開いた時や次の対局の終わりに送り直す。
    ===================================================================== */
-const GLOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzDH0cjz-vcg1N2qU9k_CX6ke0fLX48YPByDAbEUe3gumBrmWzxO8RtxoDAjNamYKC0uA/exec';            // Apps Script を「ウェブアプリ」として公開した URL(…/exec)
+const GLOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzPcvujp_u86Y1MDo5YS1UEzIAVKnEZchMJUeb4y-zNjXFqVs0W1kneZfCtB-NefewWzA/exec';            // Apps Script を「ウェブアプリ」として公開した URL(…/exec)
 const GLOG_CUR = 'kajiAdvisorLogCurV1', GLOG_QUEUE = 'kajiAdvisorLogQueueV1', GLOG_DEV = 'kajiAdvisorDeviceV1';
 const GLOG_MAXQ = 50;                // 貯めておく記録の上限(古いものから捨てる)
+
+// 端末のブラウザと OS を大まかに分類する(バージョンの番号などは送らない)。
+// iPad の Safari はパソコンの Mac と同じ名乗りをするので、画面に触れる Mac は iPadOS とみなす。
+function glogEnv(ua, touch){
+  ua = ua || ''; touch = touch || 0;
+  let os = 'その他';
+  if(/iPhone|iPod/.test(ua)) os = 'iOS';
+  else if(/iPad/.test(ua) || (/Macintosh/.test(ua) && touch > 1)) os = 'iPadOS';
+  else if(/Android/.test(ua)) os = 'Android';
+  else if(/CrOS/.test(ua)) os = 'ChromeOS';
+  else if(/Windows/.test(ua)) os = 'Windows';
+  else if(/Macintosh|Mac OS X/.test(ua)) os = 'macOS';
+  else if(/Linux/.test(ua)) os = 'Linux';
+  let browser = 'その他';
+  if(/ Line\//.test(ua)) browser = 'LINE';
+  else if(/EdgA?\/|EdgiOS\/|Edg\//.test(ua)) browser = 'Edge';
+  else if(/SamsungBrowser\//.test(ua)) browser = 'Samsung Internet';
+  else if(/OPR\/|OPiOS\//.test(ua)) browser = 'Opera';
+  else if(/FxiOS\/|Firefox\//.test(ua)) browser = 'Firefox';
+  else if(/CriOS\/|Chrome\//.test(ua)) browser = 'Chrome';
+  else if(/Safari\//.test(ua)) browser = 'Safari';
+  return { browser, os };
+}
 
 const GameLog = (function(){
   let cur = null;
@@ -37,6 +60,7 @@ const GameLog = (function(){
             version: (document.getElementById('v-ver') || {}).textContent || '',
             preset: G.preset, trait: G.trait, level: G.level, hammer: G.hammerId, star: G.star,
             threshold: SUCCESS_THRESHOLD,
+            env: (typeof navigator !== 'undefined') ? glogEnv(navigator.userAgent, navigator.maxTouchPoints) : null,
             zones: G.masses.map((m, i) => m.off ? null : [i + 1, m.zoneLow, m.zoneHigh]).filter(Boolean),
             steps: [] };
     return cur;

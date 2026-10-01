@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>鍛冶アドバイザーV1.01</title>
+<title>鍛冶アドバイザーV1.10</title>
 <!-- アプリのアイコン。PNG は icon.svg から node tools/make-icons.js で作る -->
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=82b46e60">
+<link rel="stylesheet" href="style.css?v=181dc6b2">
 </head>
 <body>
 
@@ -46,6 +46,10 @@
     <div class="stat tap" onclick="openPad('focus')">
       <span class="lbl">集中力</span><span class="val" id="v-focus">253</span>
       <span class="edit" aria-hidden="true">✎</span>
+    </div>
+    <!-- 必殺(ヘパイトスの炎)。チャージが来たら押す。使った後は効果中・使用済みを出す -->
+    <div class="stat tap hs" id="hsBox" onclick="toggleHS()">
+      <span class="lbl">必殺</span><span class="val" id="v-hs">なし</span>
     </div>
   </div>
   <div class="badges" id="badges"></div>
@@ -177,9 +181,9 @@
   </div>
 </div>
 
-<script src="engine.js?v=82b46e60"></script>
-<script src="mc-pool.js?v=82b46e60"></script>
-<script src="gamelog.js?v=82b46e60"></script>
-<script src="ui.js?v=82b46e60"></script>
+<script src="engine.js?v=181dc6b2"></script>
+<script src="mc-pool.js?v=181dc6b2"></script>
+<script src="gamelog.js?v=181dc6b2"></script>
+<script src="ui.js?v=181dc6b2"></script>
 </body>
 </html>

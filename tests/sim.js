@@ -116,7 +116,8 @@ async function playGame(E, preset, rng, useMC){
     // 全マスがゾーンに入った後も、やり直しの見込み(endRedo、戻りの地金)があれば続ける
     let mvEnd = null;
     if(E('boardDone')(G.masses, G.trait)){
-      mvEnd = E('endRedo')(G.masses.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh })), G.focus, G.temp, PARAMS, cfg);
+      const msE = G.masses.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh }));
+      mvEnd = E('hsEndMove')(msE, G.focus, G.temp, cfg, PARAMS) || E('endRedo')(msE, G.focus, G.temp, PARAMS, cfg);
       if(!mvEnd) break;
     }
     // 点灯: 200℃の倍数で未到達マスから1つ(開始直後は特性が乗らない)
