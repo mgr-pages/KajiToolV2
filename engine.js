@@ -225,6 +225,10 @@ const PRESETS = {
 // Ver3.2[後期]」の種別ごとの表を載せた記事 mi-mi-dqx.blazeworks.jp/archives/4728)。マスの数だけでは決まらない
 // (ヤリとツメは同じ4マスで 4 と 3)。表に無い種類(鎌・素材)は、使うマスの数で決める(2マス=0・3マス=2・4マス=3・
 // 5マス=5・6マス=7・7マス=9・8マス=10。7マスはフライパン・ムチ、8マスは両手剣・からだ下の値。鎌は未確認)。
+// 鎌(Ver5.0 で追加。表の Ver3.2 より後)の値は、攻略サイト・冒険者の広場・meluce.jp でも見つからなかった
+// (2026-10-02 に調べた。docs/メタリオンサイズの調査.md)。表では、同じマスの数でも盤面が広がった形は1多い
+// (4マス: 正方形の盾・ツメ・ランプ 3 / 縦長・L字のヤリ・足 4、5マス: 鍛冶ハンマー 5 / 穴のあるブーメラン 6)ので、
+// 縦4行に広がった鎌は6の可能性もあるが、3マスでは形による差が無く確かではない。少ない方(5)で打つ。
 const CRAFT_ITEMS = [
   ["道具","鍛冶ハンマー","奇跡の鍛冶ハンマー","150-156,160-170/80-86,130-139/120-129,-","modori",34],
   ["道具","鍛冶ハンマー","光の鍛冶ハンマー","120-126,180-186/236-245,140-149/160-170,-","kaishin",40],
@@ -423,10 +427,26 @@ const CRAFT_TOL = { 片手剣:2, 両手剣:10, 短剣:0, ヤリ:4, オノ:7, ツ
 //     (farT は2回目の比較。残りの50%未満の66商材で種22を比べ、z≥2 だったこの2商材を種33で確かめた)
 //   種33で差が出ず入れなかった商材: みずがめの大盾・トゲトゲルアー・マデュライトルアー・コスモスヘルム・聖域のこて・
 //     奇跡の鍛冶ハンマー・ゴシックブーツ・プラチナルアー(z=1.8)。
+//   ・farM(メタリオンサイズ向け): farT に、乱数テープ・同じ局どうしの比較で探した重みを足した組。
+//     盤面は上段2マス+左の列3マス(c 370〜379・e 300〜308 が列にあり、2マス技か1マス技でしか打てない)、
+//     集中力変化。既定では集中力が尽きて届かない局が半分あった。
+//     ・farT は100局の比較では差が見えなかったが、2000局(種22)では 24.4% → 33.5%(片方だけ 333局対514局、z=6.22)。
+//     ・そこから tools/tune.js(種7・3000局)で cap 6・adv 1.125・heat 2・pr 0.4・te 2.5(1巡で 32.1% → 39.7%)。
+//     ・boostEff 4(会心ターンの狙い打ちの前に、残り距離 ÷ 4 の集中力を残す): 遠いマスが残っているのに
+//       高い狙い打ち(会心ターンは消費24〜38)を撃ち、終盤に尽きる局を減らす。同じ局どうしで
+//       種22 1000局 36.2% → 38.1%(69局対88局)、種33 3000局 36.3% → 38.3%(216局対275局、z=2.66)。
+//     ・選ぶのに使っていない種55・3000局(tools/analyze.js、乱数テープ): 既定 24.8% → 40.1%
+//       (片方だけ 411局対870局、z=12.82。未到達 50.0% → 2.7%)。farT 31.0% と比べても z=7.47。
+//     ・効かなかった案(同じ局どうし1000局、z<1): 2マス残りの総当たり(ldp2)、会心ターンに着く手の減点、
+//       火力上げの基準を変える(超過が3%→11%に増える)、余裕の判定に残り距離を使う、熟練者の序盤の決め打ち
+//       (1600℃の半減で超4連打ちなど5通り。到達が上がる手順もあるが、大成功は同じか悪化)。
+//     ・許容誤差は鎌の値が未確認のため5(下の CRAFT_TOL)。本当が6なら、同じ打ち方で種55 49.0%。
+//       5のつもりで打っても6のつもりで打っても、6で数えた率はほぼ同じ(種22 1000局 45.5% / 45.7%)。
 const ITEM_PARAMS = {
   far:   { tcost:0.017, midare:1, midareW:1.5 },
   farB:  { tcost:0.017, cap:12, rush:0.9, heat:8, midare:1, midareW:1.5, mdc:0.5 },
   farT:  { tcost:0.017, midare:1, midareW:1.5, turn:0, land:0 },
+  farM:  { tcost:0.017, midare:1, midareW:1.5, turn:0, land:0, cap:6, adv:1.125, heat:2, pr:0.4, te:2.5, boostEff:4 },
   tight: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0 },
 };
 const ITEM_PARAM_OF = {
@@ -435,6 +455,7 @@ const ITEM_PARAM_OF = {
   ミカヅチのやり:'farT', カプリコルランス:'farT',
   セーラスエッジ:'tight', レーザーエッジ:'tight', トライドグローブ:'tight', 超フライパン:'tight',
   メタリオンシールド:'tight', 魔除けの鎌:'tight',
+  メタリオンサイズ:'farM',
 };
 (function(){
   const TH = [0, 0, 0, 2, 3, 5, 7, 9, 10];
@@ -1316,6 +1337,8 @@ function massError(current, ideal, zoneLow, zoneHigh){
 //   er   : 戻りの地金で、全マスがゾーンに入った後もやり直しの見込みを計算する(endRedo。1で使う。全商材・手動設定の既定。
 //          戻り以外の地金では何もしない)
 //   hsSetup : 必殺がチャージ済みの間、超4連打ちの形の4マスを詰めてから使う(hsDecide。1で使う。全商材・手動設定の既定)
+//   boostEff : 会心ターンの狙い打ち(boostAim)の前に、残るマスの残り距離の合計 ÷ boostEff の集中力を残す(既定 0 = 見ない)
+//   psEff : 2マス同時の本会心(pairSnipe)の前に、残るマスの残り距離の合計 ÷ psEff の集中力を残す(既定 0 = 見ない)
 /* 評価パラメータ。素材ごとの効き方は検証済み(0にした時に結果が変わる対局の割合)。
    両方       cap adv land heat ov pr tmax te center far mpm slack effK slackMax
               rush wideAim pairSnipe
@@ -1665,7 +1688,7 @@ let P_OPEN_TH = 0.65;
 
 // 上下ねらい打ちは2マス同時に本会心を狙える唯一の技。
 // 消費25で2マス分なので、単発のねらい打ち(16×2=32)より安い。
-function pairSnipe(ms, f, t, cfg){
+function pairSnipe(ms, f, t, cfg, P){
   const jn = SKILLS.find(s => s.id === 'jouge_nerai' && s.lv <= cfg.level);
   if(!jn) return null;
   const c = actualCostOf(jn, t, cfg.trait);
@@ -1680,7 +1703,14 @@ function pairSnipe(ms, f, t, cfg){
       const rI = rollsForMass(jn, t, cfg.trait, i) || r;
       return m.current + rI[rI.length-1] <= m.zoneHigh && m.current + 2*rI[0] >= m.zoneHigh;
     });
-    if(ok) return { sk: jn, tg, c, nt: Math.max(0, t + jn.tempDelta), overP: 0 };
+    if(!ok) continue;
+    // psEff: 残るマスの残り距離の合計 ÷ psEff の集中力を残せる時だけ撃つ(既定 0 = 見ない)
+    if(P && P.psEff > 0){
+      let ra = 0;
+      for(let j = 0; j < ms.length; j++){ if(tg.includes(j)) continue; const d = ms[j].zoneLow - ms[j].current; if(d > 0) ra += d; }
+      if(f - c < ra / P.psEff) continue;
+    }
+    return { sk: jn, tg, c, nt: Math.max(0, t + jn.tempDelta), overP: 0 };
   }
   return null;
 }
@@ -2061,7 +2091,7 @@ function stratB0(ms,f,t,P,cfg){
   }
   // ---- 2マス同時の本会心を最優先 ----
   if(P.pairSnipe > 0){
-    const ps = pairSnipe(ms, f, t, cfg);
+    const ps = pairSnipe(ms, f, t, cfg, P);
     if(ps) return ps;
   }
 
@@ -2095,6 +2125,13 @@ function stratB0(ms,f,t,P,cfg){
       // 残るマスを仕上げる集中力を確保できる時だけ撃つ
       const rest = ms.filter(m => m.current < m.zoneLow).length - tg.length;
       if(f - x.c < rest * (P.boostRes === undefined ? 24 : P.boostRes)) continue;
+      // boostEff: 残るマスの残り距離の合計 ÷ boostEff も残せる時だけ撃つ(既定 0 = 見ない)。
+      //   マスの数だけで測ると、遠いマスが残っていても高い狙い打ちを撃ち、終盤に集中力が尽きる。
+      if(P.boostEff > 0){
+        let ra = 0;
+        for(let j = 0; j < ms.length; j++){ if(tg.includes(j)) continue; const d = ms[j].zoneLow - ms[j].current; if(d > 0) ra += d; }
+        if(f - x.c < ra / P.boostEff) continue;
+      }
       const cr = tg.reduce((a,i)=>a+critForMass(x.sk, cfg, t, i), 0) / tg.length;
       const v = sum * cr / x.c;
       if(v > bV){ bV = v; bA = x; }
