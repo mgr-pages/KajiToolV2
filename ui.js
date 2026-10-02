@@ -246,8 +246,10 @@ function traitLabel(t){ return TRAIT_LABEL[t] || t; }
 
 function renderHeader(){
   // 複数商材を扱うので、今どれを打っているかを最上段に常時出す
-  const sel = document.getElementById('s-preset');
-  if(sel && sel.value !== G.preset) sel.value = G.preset;
+  const pp = PRESETS[G.preset];
+  const nm = document.getElementById('v-name'), gp = document.getElementById('v-grp');
+  if(nm) nm.textContent = G.preset === 'custom' ? '手動設定' : (pp ? pp.name : '');
+  if(gp) gp.textContent = G.preset !== 'custom' && pp && pp.grp ? pp.grp : '';
   // 手動設定のときだけ、使用中のマス数と地金特性をヘッダに出す
   const chip = document.getElementById('v-cust');
   if(chip){
@@ -948,9 +950,8 @@ function applySettings(){
   renderAll(); save();
 }
 
-// 素材の選択が変わった時。手動設定ならゾーン入力欄を出す。
-function onPresetChange(){
-  const v = document.getElementById('s-preset').value;
+// 素材の選択が変わった時(v は選んだ商材のキー)。手動設定ならゾーン入力欄を出す。
+function onPresetChange(v){
   const box = document.getElementById('zoneEdit');
   if(v === 'custom'){
     box.style.display = 'block';
@@ -965,19 +966,10 @@ function onPresetChange(){
     return;
   }
   // 打ち始めた後は、結果を選んでから切り替える(選ばなければ切り替えない)
-  if(GameLog.active()){
-    document.getElementById('s-preset').value = G.preset;
-    askOutcome(() => { document.getElementById('s-preset').value = v; switchPreset(v); });
-    return;
-  }
+  if(GameLog.active()){ askOutcome(() => switchPreset(v)); return; }
   const started = G.hist.length > 0 || G.masses.some(m=>m.current > 0);
-  if(started && !confirm('素材を変えると盤面と履歴が最初に戻ります。よろしいですか?')){
-    // キャンセル時は選択も表示も元に戻す。
-    // 先に display='none' にしてしまうと、手動設定のまま入力欄だけ消える。
-    document.getElementById('s-preset').value = G.preset;
-    if(G.preset === 'custom'){ box.style.display = 'block'; renderZoneRows(); }
-    return;
-  }
+  // キャンセル時は G.preset を変えないので、見出しの商材名も入力欄もそのまま
+  if(started && !confirm('素材を変えると盤面と履歴が最初に戻ります。よろしいですか?')) return;
   switchPreset(v);
 }
 function switchPreset(v){
@@ -1102,8 +1094,7 @@ function confirmReset(){
 
 function resetAll(){
   readSettings();
-  const pre = document.getElementById('s-preset');
-  const kind = pre ? pre.value : 'kagayaki';
+  const kind = G.preset || 'kagayaki';
   // 手動設定なら現在のゾーンを保持し、数値だけ戻す
   // 手動設定はやり直しても、入力したゾーンと使用マスの設定を引き継ぐ
   const keep = (kind === 'custom' && G.masses.length === 6)
@@ -1163,58 +1154,86 @@ function load(){
     document.getElementById('s-star').value=G.star;
     document.getElementById('s-trait').value=G.trait;
     delete G.barMax;                   // 以前の版で手入力したバーの最大値は使わない(自動で決まる)
-    if(G.preset){
-      const pre = document.getElementById('s-preset');
-      if(pre) pre.value = G.preset;
-      if(G.preset === 'custom'){
-        const box = document.getElementById('zoneEdit');
-        if(box) box.style.display = 'block';
-        renderZoneRows();
-      }
+    if(G.preset === 'custom'){
+      const box = document.getElementById('zoneEdit');
+      if(box) box.style.display = 'block';
+      renderZoneRows();
     }
     return true;
   }catch(e){ return false; }
 }
 
 /* ====== 起動 ====== */
-// 商材の選択欄を、engine.js の CRAFT_ITEMS の並び(サイトと同じ順)から「職人・種類」ごとにまとめて作る。手動設定は最後
-(function(){
-  const sel = document.getElementById('s-preset');
-  if(!sel || typeof PRESET_ORDER === 'undefined') return;
-  const custom = sel.querySelector('option[value="custom"]');
-  const groups = new Map();
-  for(const k of PRESET_ORDER){
-    const p = PRESETS[k], label = p.job + '鍛冶・' + p.grp;
-    if(!groups.has(label)){ const g = document.createElement('optgroup'); g.label = label; groups.set(label, g); }
-    const op = document.createElement('option'); op.value = k; op.textContent = p.name;
-    groups.get(label).appendChild(op);
+// 商材の選択。169商材を1つの一覧から探すのは長すぎるので、職人(武器・防具・道具鍛冶) ▶ 種類 ▶ 商材 の順にたどる。
+// 並びは engine.js の CRAFT_ITEMS(サイトと同じ順)。開いた時は今の商材の種類の一覧から始め、上の道しるべで前の段に戻る。
+// 大成功率の目安(PRESETS の rate)がある商材は、名前の横に出す。
+const PICK_TREE = new Map();          // 職人 → 種類 → 商材のキーの並び
+for(const k of PRESET_ORDER){
+  const p = PRESETS[k];
+  if(!PICK_TREE.has(p.job)) PICK_TREE.set(p.job, new Map());
+  const g = PICK_TREE.get(p.job);
+  if(!g.has(p.grp)) g.set(p.grp, []);
+  g.get(p.grp).push(k);
+}
+let PICK = { job: null, grp: null };
+function openPicker(){
+  const p = PRESETS[G.preset];
+  PICK = (G.preset !== 'custom' && p && p.job) ? { job: p.job, grp: p.grp } : { job: null, grp: null };
+  renderPicker();
+  document.getElementById('pickModal').classList.add('show');
+}
+function closePicker(){ document.getElementById('pickModal').classList.remove('show'); }
+function renderPicker(){
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const cur = PRESETS[G.preset];
+  const crumbs = ['<button class="pk-crumb" data-nav="">職人</button>'];
+  if(PICK.job) crumbs.push(`<button class="pk-crumb" data-nav="job">${esc(PICK.job)}鍛冶</button>`);
+  if(PICK.grp) crumbs.push(`<span class="pk-crumb now">${esc(PICK.grp)}</span>`);
+  document.getElementById('pkCrumbs').innerHTML = crumbs.join('<span class="pk-sep">▶</span>');
+  let h = '';
+  if(!PICK.job){
+    h = '<div class="pk-q">職人を選んでください</div><div class="pk-grid jobs">';
+    for(const [job, grps] of PICK_TREE){
+      let n = 0; for(const ks of grps.values()) n += ks.length;
+      const on = G.preset !== 'custom' && cur && cur.job === job;
+      h += `<button class="pk-btn${on ? ' cur' : ''}" data-job="${esc(job)}">${esc(job)}鍛冶<small>${n}件</small></button>`;
+    }
+    h += '</div>';
+    h += `<button class="pk-custom${G.preset === 'custom' ? ' cur' : ''}" data-key="custom">手動設定(ゾーンを自分で入れる)</button>`;
+  }else if(!PICK.grp){
+    h = '<div class="pk-q">作りたい種類を選んでください</div><div class="pk-grid">';
+    for(const [grp, ks] of PICK_TREE.get(PICK.job)){
+      const on = G.preset !== 'custom' && cur && cur.job === PICK.job && cur.grp === grp;
+      h += `<button class="pk-btn${on ? ' cur' : ''}" data-grp="${esc(grp)}">${esc(grp)}<small>${ks.length}件</small></button>`;
+    }
+    h += '</div>';
+  }else{
+    const ks = PICK_TREE.get(PICK.job).get(PICK.grp);
+    h = '<div class="pk-q">商材を選んでください</div><div class="pk-list">';
+    for(const k of ks){
+      const p = PRESETS[k];
+      const rate = typeof p.rate === 'number' ? `<span class="pk-rate">約${p.rate}%</span>` : '';
+      h += `<button class="pk-item${k === G.preset ? ' cur' : ''}" data-key="${esc(k)}">`
+         + `<span class="pk-name">${esc(p.name)}</span>${rate}<span class="pk-lv">Lv${p.craft}</span></button>`;
+    }
+    h += '</div>';
+    if(ks.some(k => typeof PRESETS[k].rate === 'number'))
+      h += '<div class="pk-note">約◯%は大成功率の目安 ※職人Lv80、光★3の場合</div>';
   }
-  for(const g of groups.values()) sel.insertBefore(g, custom);
-  sel.value = 'kagayaki';
-})();
-
-// 商材の選択欄に、このツールの推奨どおりに打った時の大成功率の目安(PRESETS の rate)を添える。
-// 目安は選ぶ時だけ出す(一覧を開く直前に「名前(約80%)」へ替え、選び終わる・閉じると名前だけに戻す)。
-// 選択欄は標準の部品なので、見出しに出る文字と一覧の文字を別々にはできないため、この形にしている。
-// ( )の意味は、一覧の一番下(手動設定の下)の選べない行で説明する。
-(function(){
-  const sel = document.getElementById('s-preset');
-  if(!sel) return;
-  const rated = [];
-  for(const op of sel.querySelectorAll('option')){
-    const p = PRESETS[op.value];
-    if(p && typeof p.rate === 'number')
-      rated.push({ op, name: op.textContent, withRate: op.textContent + '(約' + p.rate + '%)' });
+  document.getElementById('pkBody').innerHTML = h;
+}
+document.getElementById('pickModal').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(!b || b.classList.contains('pad-close')) return;
+  const d = b.dataset;
+  if('nav' in d){ PICK = { job: d.nav === 'job' ? PICK.job : null, grp: null }; renderPicker(); }
+  else if('job' in d){ PICK = { job: d.job, grp: null }; renderPicker(); }
+  else if('grp' in d){ PICK.grp = d.grp; renderPicker(); }
+  else if('key' in d){
+    closePicker();
+    if(d.key !== G.preset) onPresetChange(d.key);   // 今と同じ商材を選んだ時は何もしない
   }
-  if(!rated.length) return;
-  const note = document.createElement('option');
-  note.disabled = true;
-  note.textContent = '( )は大成功率の目安 ※職人Lv80、光★3の場合';
-  sel.appendChild(note);
-  const show = on => { for(const r of rated) r.op.textContent = on ? r.withRate : r.name; };
-  ['focus', 'mousedown', 'touchstart'].forEach(ev => sel.addEventListener(ev, () => show(true), { passive: true }));
-  ['change', 'blur'].forEach(ev => sel.addEventListener(ev, () => show(false)));
-})();
+});
 ['s-level','s-hammer','s-star','s-trait'].forEach(id=>{
   document.getElementById(id).addEventListener('change', applySettings);
 });
