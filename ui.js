@@ -1166,7 +1166,8 @@ function load(){
 /* ====== 起動 ====== */
 // 商材の選択。169商材を1つの一覧から探すのは長すぎるので、職人(武器・防具・道具鍛冶) ▶ 種類 ▶ 商材 の順にたどる。
 // 職人の並びは出典の meluce.jp「ドラクエ10 職人ツール」のトップページと同じ 武器 → 防具 → 道具。
-// 種類と商材の並びは engine.js の CRAFT_ITEMS(同じサイトのデータの順)。開いた時は今の商材の種類の一覧から始め、
+// 種類の並びは engine.js の CRAFT_ITEMS(同じサイトのデータの順)。種類の中の商材は作成レベルの高い順
+// (利用者の指示。同じレベルは CRAFT_ITEMS の順)。開いた時は今の商材の種類の一覧から始め、
 // 上の道しるべで前の段に戻る。大成功率の目安(PRESETS の rate)がある商材は、名前の横に出す。
 const PICK_JOBS = ['武器', '防具', '道具'];
 const PICK_TREE = new Map();          // 職人 → 種類 → 商材のキーの並び
@@ -1178,6 +1179,8 @@ for(const k of PRESET_ORDER){
   if(!g.has(p.grp)) g.set(p.grp, []);
   g.get(p.grp).push(k);
 }
+for(const g of PICK_TREE.values()) for(const ks of g.values())
+  ks.sort((a, b) => (PRESETS[b].craft || 0) - (PRESETS[a].craft || 0));   // sort は同じ値の順を保つ
 let PICK = { job: null, grp: null };
 function openPicker(){
   const p = PRESETS[G.preset];
