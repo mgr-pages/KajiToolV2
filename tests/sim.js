@@ -128,6 +128,7 @@ async function playGame(E, preset, rng, useMC){
     }
     E(`litMassIndex = ${lit === null ? 'null' : lit};`);
     const ms = G.masses.map(m => ({ current: m.current, zoneLow: m.zoneLow, zoneHigh: m.zoneHigh }));
+    E(`PREV_SK = ${G.hist.length ? JSON.stringify(G.hist[G.hist.length - 1]) : 'null'};`);   // 直前の手(画面と同じ)
     const mv = mvEnd ? mvEnd : useMC ? await stratMCAsync(ms, G.focus, G.temp, PARAMS, cfg, null)
                      : stratB(ms, G.focus, G.temp, PARAMS, cfg);
     if(!mv || mv.c > G.focus) break;

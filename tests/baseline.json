@@ -33,13 +33,13 @@
       },
       "greedy": {
         "games": 300,
-        "great": 61.3,
+        "great": 60.7,
         "unreached": 0.7,
         "over": 3.3,
-        "avgErr": 6.65,
-        "avgMoves": 20.7,
-        "avgFocusLeft": 11.8,
-        "fingerprint": "2c5cd2a8"
+        "avgErr": 6.66,
+        "avgMoves": 20.6,
+        "avgFocusLeft": 14,
+        "fingerprint": "17478e8b"
       }
     },
     "amatsuyu": {
@@ -55,13 +55,13 @@
       },
       "greedy": {
         "games": 300,
-        "great": 51.7,
-        "unreached": 2,
-        "over": 7,
-        "avgErr": 8.16,
-        "avgMoves": 22.2,
-        "avgFocusLeft": 10.8,
-        "fingerprint": "ba143bc4"
+        "great": 52.3,
+        "unreached": 2.3,
+        "over": 6.7,
+        "avgErr": 7.97,
+        "avgMoves": 22.1,
+        "avgFocusLeft": 11.2,
+        "fingerprint": "aa131077"
       }
     },
     "hidane": {
@@ -92,20 +92,20 @@
         "great": 100,
         "unreached": 0,
         "over": 0,
-        "avgErr": 0,
-        "avgMoves": 22.5,
-        "avgFocusLeft": 5,
-        "fingerprint": "e486e29e"
+        "avgErr": 0.5,
+        "avgMoves": 20.5,
+        "avgFocusLeft": 6.5,
+        "fingerprint": "e8bb12b4"
       },
       "greedy": {
         "games": 300,
-        "great": 47.3,
+        "great": 46.7,
         "unreached": 0,
-        "over": 1,
-        "avgErr": 3.55,
-        "avgMoves": 18.8,
-        "avgFocusLeft": 21.8,
-        "fingerprint": "35a16517"
+        "over": 2,
+        "avgErr": 3.67,
+        "avgMoves": 18.4,
+        "avgFocusLeft": 26,
+        "fingerprint": "eb5934ca"
       }
     },
     "kimonsho": {
@@ -202,20 +202,20 @@
         "great": 100,
         "unreached": 0,
         "over": 0,
-        "avgErr": 0,
-        "avgMoves": 21.5,
-        "avgFocusLeft": 35.5,
-        "fingerprint": "e7bdefee"
+        "avgErr": 1.5,
+        "avgMoves": 20.5,
+        "avgFocusLeft": 22.5,
+        "fingerprint": "48c6ca23"
       },
       "greedy": {
         "games": 300,
-        "great": 60,
+        "great": 60.3,
         "unreached": 0.7,
         "over": 1.3,
-        "avgErr": 2.91,
-        "avgMoves": 18.8,
-        "avgFocusLeft": 19.8,
-        "fingerprint": "ef40b733"
+        "avgErr": 2.88,
+        "avgMoves": 18.5,
+        "avgFocusLeft": 23.3,
+        "fingerprint": "1c943d5f"
       }
     }
   }
