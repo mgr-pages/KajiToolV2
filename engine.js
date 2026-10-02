@@ -806,7 +806,13 @@ function modoriRedo(ms, f, t, P, cfg){
 //   (今は +0.7〜2.2秒・2〜5MB)。商材ごとのコメントにある先読みありの成績は、省力化の前の版で測った値。
 // ・候補選び(mcPrepare)は Worker で行う(mc-pool.js)。画面のスレッドで表を作ると最大4秒止まっていた。
 const LDP_TMAX = 2200, LDP_GMAX = 160, LDP_NT = LDP_TMAX / 50;     // 温度 50〜2200℃(50刻み)
-const LDP_SCALE = 65535, LDP_INV = 1 / 65535, LDP_CACHE_MAX = 24 * 1048576;
+const LDP_SCALE = 65535, LDP_INV = 1 / 65535;
+// 表の合計の上限。アプリ(Worker)のメモリを抑えるための値。検証のスクリプト(tools/analyze.js・tools/tune.js・tests/sim.js)は
+// 読み込んだ後に大きくする(LDP_CACHE_TEST_MB)。上限を超えると表を捨てて作り直すだけなので、上限を変えても結果は変わらない。
+//   上限 24MB では、戻りの地金(表が大きい)で作り直しを繰り返していた。4GB にすると 奇跡の鍛冶ハンマー 100局が約8分 → 19秒、
+//   記録は全局同じ(奇跡の鍛冶ハンマー・虹色のオーブ 各300局で確かめた)。1本の処理のメモリは最大 190MB ほど。
+let LDP_CACHE_MAX = 24 * 1048576;
+const LDP_CACHE_TEST_MB = 4096;
 const LDP_HIT_IDS = ['tataku', 'tekagen', 'nibai', 'sanbai', 'nerai', 'reppuu', 'yowanerai'];
 const LDP_CACHE = new Map();
 let IN_ROLLOUT = 0;                      // 先読みの試行の中か(mcRollout・tracedRollout が数える)

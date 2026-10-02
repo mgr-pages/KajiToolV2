@@ -47,6 +47,7 @@ function loadEngine(o){
   let src = fs.readFileSync(path.join(__dirname, '..', 'engine.js'), 'utf8');
   vm.runInThisContext(src, { filename: 'engine.js' });
   const E = c => vm.runInThisContext(c);
+  E('LDP_CACHE_MAX = LDP_CACHE_TEST_MB * 1048576;');   // 検証では総当たりの表を捨てずに使い回す(速さだけが変わる)
   // 先読みの設定は素材の mc に重ねる(mcConf が読む)
   if(o.mcs || o.mck || o.mc){
     const pr = E('PRESETS')[o.preset];

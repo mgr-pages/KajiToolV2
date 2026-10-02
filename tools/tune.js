@@ -22,6 +22,7 @@ if(process.argv[2] === '--worker'){
   Math.random = seeded(q.seed ^ 99);
   vm.runInThisContext(fs.readFileSync(ENGINE, 'utf8'), { filename: 'engine.js' });
   const E = c => vm.runInThisContext(c);
+  E('LDP_CACHE_MAX = LDP_CACHE_TEST_MB * 1048576;');   // 検証では総当たりの表を捨てずに使い回す(速さだけが変わる)
   const PR = E('PRESETS')[q.preset];
   process.on('message', job => {
     // 重みは素材の params に入れる(applyThreshold が毎局、既定値+素材の params に戻すため)

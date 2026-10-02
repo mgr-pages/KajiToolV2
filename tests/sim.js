@@ -64,6 +64,7 @@ function workerMain(task){
   Math.random = seeded(task.seed ^ 0x2545f491);
   vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'engine.js'), 'utf8'), { filename: 'engine.js' });
   const E = code => vm.runInThisContext(code);
+  E('LDP_CACHE_MAX = LDP_CACHE_TEST_MB * 1048576;');   // 検証では総当たりの表を捨てずに使い回す(速さだけが変わる)
   if(task.kind === 'power') return checkPowerTable(E);
   return runGames(E, task);
 }
