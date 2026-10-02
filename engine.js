@@ -1316,6 +1316,7 @@ function massError(current, ideal, zoneLow, zoneHigh){
 //   er   : 戻りの地金で、全マスがゾーンに入った後もやり直しの見込みを計算する(endRedo。1で使う。全商材・手動設定の既定。
 //          戻り以外の地金では何もしない)
 //   hsSetup : 必殺がチャージ済みの間、超4連打ちの形の4マスを詰めてから使う(hsDecide。1で使う。全商材・手動設定の既定)
+//   boostEff : 会心ターンの狙い打ち(boostAim)の前に、残るマスの残り距離の合計 ÷ boostEff の集中力を残す(既定 0 = 見ない)
 /* 評価パラメータ。素材ごとの効き方は検証済み(0にした時に結果が変わる対局の割合)。
    両方       cap adv land heat ov pr tmax te center far mpm slack effK slackMax
               rush wideAim pairSnipe
@@ -2095,6 +2096,13 @@ function stratB0(ms,f,t,P,cfg){
       // 残るマスを仕上げる集中力を確保できる時だけ撃つ
       const rest = ms.filter(m => m.current < m.zoneLow).length - tg.length;
       if(f - x.c < rest * (P.boostRes === undefined ? 24 : P.boostRes)) continue;
+      // boostEff: 残るマスの残り距離の合計 ÷ boostEff も残せる時だけ撃つ(既定 0 = 見ない)。
+      //   マスの数だけで測ると、遠いマスが残っていても高い狙い打ちを撃ち、終盤に集中力が尽きる。
+      if(P.boostEff > 0){
+        let ra = 0;
+        for(let j = 0; j < ms.length; j++){ if(tg.includes(j)) continue; const d = ms[j].zoneLow - ms[j].current; if(d > 0) ra += d; }
+        if(f - x.c < ra / P.boostEff) continue;
+      }
       const cr = tg.reduce((a,i)=>a+critForMass(x.sk, cfg, t, i), 0) / tg.length;
       const v = sum * cr / x.c;
       if(v > bV){ bV = v; bA = x; }
