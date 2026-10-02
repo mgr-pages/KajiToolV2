@@ -5,22 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>鍛冶アドバイザーV2.10</title>
+<title>鍛冶アドバイザーV2.11</title>
 <!-- アプリのアイコン。PNG は icon.svg から node tools/make-icons.js で作る -->
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=579b75f3">
+<link rel="stylesheet" href="style.css?v=4daf5fd7">
 </head>
 <body>
 
 <div class="hdr">
   <div class="hdr-title">
-    <select class="mat-sel" id="s-preset" onchange="onPresetChange()">
-      <!-- 商材は engine.js の CRAFT_ITEMS から、職人・種類ごとにまとめて ui.js が並べる -->
-      <option value="custom">手動設定</option>
-    </select>
+    <!-- 押すと「職人 ▶ 種類 ▶ 商材」の順に選ぶ画面を開く(一覧は engine.js の CRAFT_ITEMS から ui.js が作る) -->
+    <button class="mat-sel" id="s-preset" onclick="openPicker()" aria-haspopup="dialog">
+      <span class="ms-grp" id="v-grp"></span><span class="ms-name" id="v-name"></span>
+    </button>
     <span class="hint-cust" id="v-cust" style="display:none">要設定</span>
     <button class="hdr-reset" onclick="confirmReset()">最初から</button>
   </div>
@@ -144,6 +144,16 @@
   </div>
 </div>
 
+<!-- 商材の選択。職人 ▶ 種類 ▶ 商材 の順にたどる。上の道しるべを押すと前の段に戻る -->
+<div class="modal" id="pickModal" onclick="if(event.target===this)closePicker()">
+  <div class="pad pick">
+    <button class="pad-close" onclick="closePicker()">閉じる</button>
+    <div class="pad-hd">商材を選ぶ</div>
+    <div class="pk-crumbs" id="pkCrumbs"></div>
+    <div id="pkBody"></div>
+  </div>
+</div>
+
 <div class="modal" id="modal" onclick="if(event.target===this)closePad()">
   <div class="pad">
     <button class="pad-close" onclick="closePad()">閉じる</button>
@@ -167,9 +177,9 @@
   </div>
 </div>
 
-<script src="engine.js?v=579b75f3"></script>
-<script src="mc-pool.js?v=579b75f3"></script>
-<script src="gamelog.js?v=579b75f3"></script>
-<script src="ui.js?v=579b75f3"></script>
+<script src="engine.js?v=4daf5fd7"></script>
+<script src="mc-pool.js?v=4daf5fd7"></script>
+<script src="gamelog.js?v=4daf5fd7"></script>
+<script src="ui.js?v=4daf5fd7"></script>
 </body>
 </html>

@@ -487,14 +487,14 @@ table.sk .cst{text-align:right; font-weight:700;}
 }
 /* 柄はページ全体の地(html)に敷く。body に敷いて background-attachment:fixed にすると、
    iPhone の Safari などで柄が出ないことがあるため、固定もしない(ページと一緒に流れる)。 */
-:root{--css-ver:"579b75f3";}
+:root{--css-ver:"4daf5fd7";}
 .ver{margin-top:12px; font-size:10.5px; color:var(--dim); text-align:right;}
 .ver b{color:var(--red);}   /* 表示中の見た目のファイルの版(tools/stamp.py が付け直す) */
 html{
   /* 地は全面同じ色。上部を明るくするグラデーションは、ページの高さで途切れて
      下の方だけ色が変わって見えたためやめた。 */
   background:
-    url("bg-motif.svg?v=579b75f3") 0 0 / 900px 900px repeat,
+    url("bg-motif.svg?v=4daf5fd7") 0 0 / 900px 900px repeat,
     var(--bg);
 }
 body{background:transparent;}
@@ -617,3 +617,46 @@ body{background:transparent;}
 .cand-h.rc{color:var(--pink);}
 .cand.red{border-style:dashed; border-color:rgba(181,72,15,.7);}
 .cand.red.crit{border-color:rgba(196,26,143,.7);}
+
+/* =====================================================================
+   商材の選択: 職人 ▶ 種類 ▶ 商材 の順にたどる画面
+   ===================================================================== */
+/* 見出しの商材名。種類を小さく前に添え、長い名前は末尾を省く */
+.hdr-title .mat-sel{display:flex; align-items:baseline; gap:6px; text-align:left; cursor:pointer;
+  overflow:hidden; white-space:nowrap;}
+.hdr-title .mat-sel:active{background-color:var(--sunk);}
+.mat-sel .ms-grp{font-size:11px; font-weight:700; color:var(--dim); flex:0 0 auto;}
+.mat-sel .ms-grp:empty{display:none;}
+.mat-sel .ms-name{overflow:hidden; text-overflow:ellipsis; min-width:0;}
+.pad.pick{min-height:50vh;}
+.pk-crumbs{display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; margin-bottom:10px;}
+.pk-crumb{background:var(--panel); border:1px solid var(--line); color:var(--ember); border-radius:16px;
+  padding:6px 12px; font-size:13px; font-weight:700; box-shadow:var(--raise);}
+.pk-crumb:active{background:var(--sunk);}
+.pk-crumb.now{background:transparent; border-color:transparent; box-shadow:none; color:var(--text); padding:6px 4px;}
+.pk-sep{color:var(--dim); font-size:10px;}
+.pk-q{font-size:13px; color:var(--dim); margin:2px 0 8px;}
+.pk-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+.pk-grid.jobs{grid-template-columns:1fr;}
+.pk-btn{background:linear-gradient(180deg,#fffaf0,var(--panel)); border:1px solid var(--line); color:var(--text);
+  border-radius:10px; padding:12px 4px; font-size:15px; font-weight:700; box-shadow:var(--raise);
+  display:flex; flex-direction:column; align-items:center; gap:2px;}
+.pk-grid.jobs .pk-btn{flex-direction:row; justify-content:space-between; padding:15px 16px; font-size:17px;}
+.pk-btn small{font-size:11px; font-weight:600; color:var(--dim);}
+.pk-btn:active, .pk-item:active, .pk-custom:active{transform:translateY(2px); box-shadow:none; background:var(--sunk);}
+.pk-list{display:flex; flex-direction:column; gap:6px;}
+.pk-item{display:flex; align-items:center; gap:8px; text-align:left; width:100%;
+  background:linear-gradient(180deg,#fffaf0,var(--panel)); border:1px solid var(--line); color:var(--text);
+  border-radius:10px; padding:12px 14px; font-size:15px; font-weight:700; box-shadow:var(--raise);}
+.pk-item .pk-name{flex:1 1 auto; min-width:0;}
+.pk-item .pk-rate{font-size:12px; color:var(--green); white-space:nowrap;}
+.pk-item .pk-lv{font-size:11.5px; font-weight:600; color:var(--dim); white-space:nowrap;}
+.pk-btn.cur, .pk-item.cur, .pk-custom.cur{border-color:var(--ember); box-shadow:inset 0 0 0 1px var(--ember), var(--raise);}
+.pk-item.cur .pk-name, .pk-btn.cur{color:var(--ember);}
+.pk-custom{width:100%; margin-top:14px; background:transparent; border:1px dashed var(--line); color:var(--dim);
+  border-radius:10px; padding:12px; font-size:13px; font-weight:700;}
+.pk-note{font-size:11px; color:var(--dim); margin-top:10px;}
+@media (min-width:760px){
+  .pad.pick{width:520px; min-height:0;}
+  .mat-sel .ms-grp{font-size:13px;}
+}
