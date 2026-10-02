@@ -1169,6 +1169,7 @@ function load(){
 // 種類の並びは engine.js の CRAFT_ITEMS(同じサイトのデータの順)。種類の中の商材は作成レベルの高い順
 // (利用者の指示。同じレベルは CRAFT_ITEMS の順)。開いた時は今の商材の種類の一覧から始め、
 // 上の道しるべで前の段に戻る。大成功率の目安(PRESETS の rate)がある商材は、名前の横に出す。
+// 目安をまだ測っていない商材は「検証中」と出す(利用者の指示)。
 const PICK_JOBS = ['武器', '防具', '道具'];
 const PICK_TREE = new Map();          // 職人 → 種類 → 商材のキーの並び
 for(const j of PICK_JOBS) PICK_TREE.set(j, new Map());
@@ -1218,13 +1219,15 @@ function renderPicker(){
     h = '<div class="pk-q">商材を選んでください</div><div class="pk-list">';
     for(const k of ks){
       const p = PRESETS[k];
-      const rate = typeof p.rate === 'number' ? `<span class="pk-rate">約${p.rate}%</span>` : '';
+      const rate = typeof p.rate === 'number' ? `<span class="pk-rate">約${p.rate}%</span>` : '<span class="pk-rate pending">検証中</span>';
       h += `<button class="pk-item${k === G.preset ? ' cur' : ''}" data-key="${esc(k)}">`
          + `<span class="pk-name">${esc(p.name)}</span>${rate}<span class="pk-lv">Lv${p.craft}</span></button>`;
     }
     h += '</div>';
     if(ks.some(k => typeof PRESETS[k].rate === 'number'))
       h += '<div class="pk-note">約◯%は大成功率の目安 ※職人Lv80、光★3の場合</div>';
+    if(ks.some(k => typeof PRESETS[k].rate !== 'number'))
+      h += '<div class="pk-note">検証中は、大成功率の目安をまだ測っていない商材</div>';
   }
   document.getElementById('pkBody').innerHTML = h;
 }
