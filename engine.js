@@ -481,6 +481,16 @@ const ITEM_PARAM_OF = {
   げんぶの道着下:'orb',
   ぎんのルアー:'yum', ゴシックアーム:'yum', ゴシックグローブ:'yum', 天使のルアー:'yum', トゲトゲルアー:'yum', マデュライトルアー:'yum', プラチナ木工刀:'yum',
 };
+// 組の上に、商材ごとに1つだけ足す重み(小さな変更の見直し、2026-10-02)。
+//   今の設定の上で heat・cap・pr・tcost・litReady を1つだけ動かす8通りを、追加160商材に当てた(種44・各1000局、同じ局どうし)。
+//   z≥3 は3商材だけで(1087通りを比べたので、偶然でも1〜2件は出る)、選ぶのに使っていない種55・各2000局で確かめた2商材に入れた。
+//     ガナドールバンド(kham)heat 0 → 4: 65.3% → 69.8%(片方だけ 375対465、z=3.11)
+//     セレーネアックス(hid)heat 1 → 0: 55.0% → 56.4%(51対80、z=2.53)
+//     黄金の飾り弓 cap 18 は種55で差なし(z=0.38)で入れていない。
+const ITEM_PARAM_ADD = {
+  ガナドールバンド: { heat: 4 },
+  セレーネアックス: { heat: 0 },
+};
 (function(){
   const TH = [0, 0, 0, 2, 3, 5, 7, 9, 10];
   for(const [job, grp, name, grid, trait, craft] of CRAFT_ITEMS){
@@ -497,6 +507,7 @@ const ITEM_PARAM_OF = {
       const tol = grp in CRAFT_TOL ? CRAFT_TOL[grp] : TH[n - off.length];
       PRESETS[key] = { name, trait, threshold: tol, off: off.sort((a, b) => a - b), zones };
       if(ITEM_PARAM_OF[name]) PRESETS[key].params = Object.assign({}, ITEM_PARAMS[ITEM_PARAM_OF[name]]);
+      if(ITEM_PARAM_ADD[name]) PRESETS[key].params = Object.assign({}, PRESETS[key].params || {}, ITEM_PARAM_ADD[name]);
     }
     Object.assign(PRESETS[key], { job, grp, craft });
     PRESET_ORDER.push(key);
