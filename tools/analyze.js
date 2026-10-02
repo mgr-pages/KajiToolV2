@@ -12,6 +12,7 @@
      --mode greedy|mc   評価関数だけ(速い)か、アプリと同じ先読みか(既定 greedy)
      --seed N           乱数の種(既定 1)。局 g の種は seed と g から決まる
      --params JSON      評価の重みの上書き(素材の params に重ねる)
+     --replace 1        --params を重ねずに、素材の params を置き換える(商材ごとの重みの組を比べ直す用)
      --mcs N --mck N    先読みの試行回数・候補数を変える(実験用)
      --mc JSON          先読みの設定の上書き(例: '{"K":16,"gate":0}'。素材の mc に重ねる)
      --tape 1           乱数テープ: ロール・会心などの乱数を「何手目のどのマスか」で決める。打ち方が
@@ -30,12 +31,12 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 function args(){
-  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, tape:0, log:null, summary:null, from:0, fork:0, hs0:0, hsp:0, hsAt:-1, hsNow:0 };
+  const o = { preset:'bloom', games:1000, mode:'greedy', seed:1, params:null, mcs:null, mck:null, mc:null, tape:0, log:null, summary:null, from:0, fork:0, hs0:0, hsp:0, hsAt:-1, hsNow:0, replace:0 };
   const a = process.argv.slice(2);
   for(let i = 0; i < a.length; i++){
     const k = a[i].replace(/^--/, ''), v = a[++i];
     if(!(k in o)){ console.error('不明な引数: ' + a[i-1]); process.exit(2); }
-    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck','tape','from','fork','hs0','hsp','hsAt','hsNow'].includes(k) ? Number(v) : v);
+    o[k] = (k === 'params' || k === 'mc') ? JSON.parse(v) : (['games','seed','mcs','mck','tape','from','fork','hs0','hsp','hsAt','hsNow','replace'].includes(k) ? Number(v) : v);
   }
   return o;
 }
@@ -53,7 +54,7 @@ function loadEngine(o){
     const pr = E('PRESETS')[o.preset];
     pr.mc = Object.assign({}, pr.mc || {}, o.mc || {}, o.mck ? { K: o.mck } : {}, o.mcs ? { S: o.mcs } : {});
   }
-  if(o.params) E('PRESETS')[o.preset].params = Object.assign({}, E('PRESETS')[o.preset].params || {}, o.params);
+  if(o.params) E('PRESETS')[o.preset].params = Object.assign({}, o.replace ? {} : (E('PRESETS')[o.preset].params || {}), o.params);
   return E;
 }
 
