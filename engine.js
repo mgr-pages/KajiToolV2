@@ -1317,6 +1317,7 @@ function massError(current, ideal, zoneLow, zoneHigh){
 //          戻り以外の地金では何もしない)
 //   hsSetup : 必殺がチャージ済みの間、超4連打ちの形の4マスを詰めてから使う(hsDecide。1で使う。全商材・手動設定の既定)
 //   boostEff : 会心ターンの狙い打ち(boostAim)の前に、残るマスの残り距離の合計 ÷ boostEff の集中力を残す(既定 0 = 見ない)
+//   psEff : 2マス同時の本会心(pairSnipe)の前に、残るマスの残り距離の合計 ÷ psEff の集中力を残す(既定 0 = 見ない)
 /* 評価パラメータ。素材ごとの効き方は検証済み(0にした時に結果が変わる対局の割合)。
    両方       cap adv land heat ov pr tmax te center far mpm slack effK slackMax
               rush wideAim pairSnipe
@@ -1666,7 +1667,7 @@ let P_OPEN_TH = 0.65;
 
 // 上下ねらい打ちは2マス同時に本会心を狙える唯一の技。
 // 消費25で2マス分なので、単発のねらい打ち(16×2=32)より安い。
-function pairSnipe(ms, f, t, cfg){
+function pairSnipe(ms, f, t, cfg, P){
   const jn = SKILLS.find(s => s.id === 'jouge_nerai' && s.lv <= cfg.level);
   if(!jn) return null;
   const c = actualCostOf(jn, t, cfg.trait);
@@ -1681,7 +1682,14 @@ function pairSnipe(ms, f, t, cfg){
       const rI = rollsForMass(jn, t, cfg.trait, i) || r;
       return m.current + rI[rI.length-1] <= m.zoneHigh && m.current + 2*rI[0] >= m.zoneHigh;
     });
-    if(ok) return { sk: jn, tg, c, nt: Math.max(0, t + jn.tempDelta), overP: 0 };
+    if(!ok) continue;
+    // psEff: 残るマスの残り距離の合計 ÷ psEff の集中力を残せる時だけ撃つ(既定 0 = 見ない)
+    if(P && P.psEff > 0){
+      let ra = 0;
+      for(let j = 0; j < ms.length; j++){ if(tg.includes(j)) continue; const d = ms[j].zoneLow - ms[j].current; if(d > 0) ra += d; }
+      if(f - c < ra / P.psEff) continue;
+    }
+    return { sk: jn, tg, c, nt: Math.max(0, t + jn.tempDelta), overP: 0 };
   }
   return null;
 }
@@ -2062,7 +2070,7 @@ function stratB0(ms,f,t,P,cfg){
   }
   // ---- 2マス同時の本会心を最優先 ----
   if(P.pairSnipe > 0){
-    const ps = pairSnipe(ms, f, t, cfg);
+    const ps = pairSnipe(ms, f, t, cfg, P);
     if(ps) return ps;
   }
 
