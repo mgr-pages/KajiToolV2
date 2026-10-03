@@ -197,7 +197,7 @@ const PRESETS = {
   },
   // 超ようせいのひだね(地金特性:威力会心率上昇)
   //   200℃の倍数のたび、ゾーン未到達のマスからランダムに1つが点灯。
-  //   点灯マスは威力2倍・会心率+500%(37.2%)。非点灯マスは特性なしと同じ。
+  //   点灯マスは威力2倍・会心率+400%(31.0%)。非点灯マスは特性なしと同じ。
   //   ゾーンは3つの情報源で一致。ロール値と消費集中力は公開数値表と完全一致を確認済み。
   hidane: {
     name: '超ようせいのひだね',
@@ -605,7 +605,7 @@ function getPassiveCritPercent(level){
   if(level>=30) p += 0.3;
   return p;
 }
-let LIT_BONUS = 5.0;        // 点灯マスの会心率ボーナス(+500%)。実測値が無いための推定値。
+let LIT_BONUS = 4.0;        // 点灯マスの会心率ボーナス(+400%)。利用者の情報(+500%は有り得ない)。公開された実測値は無い。
 function computeCritRate(skill, level, hammerId, star, trait, temp, isLit){
   const passive = getPassiveCritPercent(level);
   const hammer = HAMMERS[hammerId];
@@ -617,11 +617,11 @@ function computeCritRate(skill, level, hammerId, star, trait, temp, isLit){
   // 開始直後は地金特性が発動しないため、会心率ボーナスも乗らない
   const active = (typeof isStartState==='function') ? !isStartState() : true;
   const traitBonus = (trait==='shuchu' && st.mod200 && active) ? 4.0 : 0;
-  // 威力会心率上昇(kaishin)の点灯マス。公開された検証値が存在しないため +500% を採用した。
-  // 根拠: 会心率の計算式をまとめた情報源が「ねらい打ち程度か+500%くらい」と予測していること、
-  // および実プレイヤーの打ち方が「集中効率の悪いねらい打ち(+600%)を捨てて点灯で会心を取る」
-  // となっており、点灯がねらい打ちと同程度でなければ成立しないこと。
-  // 実測ではないので、第5段階で公開されている大成功率(5〜8割)と突き合わせて検証する。
+  // 威力会心率上昇(kaishin)の点灯マス。+400%(利用者の情報。集中力変化の会心ターンと同じ上乗せ)。
+  // 以前は、会心率の計算式をまとめた情報源の「ねらい打ち程度か+500%くらい」という予測(体感)から +500% にしていたが、
+  // 利用者から「+500% は有り得ない」と聞いて +400% に直した。公開された実測値は見つかっていない
+  // (2026-10 に攻略サイト・冒険日誌・鍛冶シミュなどを調べた)。対局の記録から測る仕組みは
+  // tools/log-collector.gs(会心率の集計)と tools/crit-report.js。
   const litBonus  = (trait==='kaishin' && isLit && (st.mod400 || st.mod200) && active) ? LIT_BONUS : 0;
   const naraiBonus = skill && skill.crit ? 6.0 : 0;
   const finalPct = base * (1 + traitBonus + litBonus + naraiBonus);
@@ -2383,7 +2383,7 @@ function stratB0(ms,f,t,P,cfg){
       for(const rr of rI){const reach=m.current+2*rr;let n=0;
         for(let id=m.zoneLow;id<=m.zoneHigh;id++)if(id>m.current&&id<=reach)n++;
         c2+=(n/zn)/rI.length;}
-      // 会心率もマス単位で掛ける。点灯マスは +500% で技単位の値の6倍になる。
+      // 会心率もマス単位で掛ける。点灯マスは +400% で技単位の値の5倍になる。
       // (ロールだけマス単位にして会心率を技単位のままにしていたため、
       //  点灯マスの最大の価値=高確率で理想値ちょうどに止まることが評価に出ず、
       //  エンジンが点灯マスを避けているように見えていた)
@@ -2456,7 +2456,7 @@ function stratB0(ms,f,t,P,cfg){
       for(const i of x.tg){
         const m = ms[i];
         if(m.current >= m.zoneLow) continue;
-        // 点灯マスはロール2倍・会心率+500%なので、本会心の成立帯も価値もマスごとに違う。
+        // 点灯マスはロール2倍・会心率+400%なので、本会心の成立帯も価値もマスごとに違う。
         const rP = rollsForMass(x.sk, t, cfg.trait, i) || r;
         const critRate = critForMass(x.sk, cfg, t, i);
         // 今まさに使おうとしている技で、この位置から本会心が成立するか。
@@ -2878,7 +2878,7 @@ function mcRolloutBody(ms0, f, t, cfg, first){
     if(to <= 0) break;
     if(s > 0) rollLit(ms, to, cfg.trait, MC_RNG);   // 現在の手番の点灯は既知なので触らない
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
-    // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
+    // 点灯マスだけ威力2倍・会心率+400%なので、ロールと会心率はマスごとに引く
     if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
       // やり直しの手・みだれ打ち・必殺の効果中の手だけはゾーン内のマスも打つ
@@ -3293,7 +3293,7 @@ function tracedRolloutBody(ms0, f, t, cfg, first, out){
     out.push({ key: mv.sk.name + '|' + mv.tg.join(','),
                name: mv.sk.name, tg: mv.tg.slice(), temp: to,
                cost: mv.c, tempAfter: mv.nt, traitOn: !simFirstMove, mk: traitMark(to) });
-    // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
+    // 点灯マスだけ威力2倍・会心率+400%なので、ロールと会心率はマスごとに引く
     if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
       // やり直しの手・みだれ打ち・必殺の効果中の手だけはゾーン内のマスも打つ

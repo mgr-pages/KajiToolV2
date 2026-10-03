@@ -153,7 +153,7 @@ function traitNote(){
   }
   if(G.trait === 'kaishin') return `<div class="mk-note">
       <div><b class="mk-boost">✦ 点灯</b> 温度が200の倍数。未到達のマスから1つが光る。
-           光ったマスだけ威力2倍・会心率+500%。盤面でタップして指定する。</div></div>`;
+           光ったマスだけ威力2倍・会心率+${Math.round(LIT_BONUS*100)}%。盤面でタップして指定する。</div></div>`;
   return '';
 }
 
@@ -302,7 +302,7 @@ function renderSkills(){
   // 表は技ごとなのでマス単位の値を出せない。点灯中はその旨を添えて、表の値を鵜呑みにさせない
   if(G.trait === 'kaishin' && litMassIndex !== null)
     rows.push(`<tr><td colspan="4" style="font-size:11px;color:var(--dim)">`
-      + `上は通常マスの値。点灯中のマス${litMassIndex+1}はロール2倍・会心率+500%</td></tr>`);
+      + `上は通常マスの値。点灯中のマス${litMassIndex+1}はロール2倍・会心率+${Math.round(LIT_BONUS*100)}%</td></tr>`);
   document.getElementById('skTable').innerHTML = rows.join('');
 }
 
@@ -537,7 +537,7 @@ function applyExecuted(k){
     st.tg.forEach(i => {
       if(firstOf[i] === undefined && sk && sk.key){
         // その手の時点の特性状態を再現してから求める。
-        // 点灯マスはロール2倍・会心率+500%なので、候補値もその前提で作る。
+        // 点灯マスはロール2倍・会心率+400%なので、候補値もその前提で作る。
         // (これを怠ると、点灯マスを叩いた後の選択肢が通常の値しか出ず、正しく入力できない)
         const saved = simFirstMove;
         simFirstMove = (st.traitOn === undefined) ? saved : !st.traitOn;
@@ -645,7 +645,7 @@ async function doCalc(){
   if(CALC_BUSY) return;                       // 探索中の二重押しを防ぐ
   // 叩いたマスの数値が未入力のまま計算すると、打つ前の値で次の手を決めてしまう
   if(G.pending.length){ renderAll(); return; }
-  // 点灯マスが未指定のまま計算すると、威力2倍も会心率+500%も乗らない別物の手が出る
+  // 点灯マスが未指定のまま計算すると、威力2倍も会心率+400%も乗らない別物の手が出る
   if(needLitPick()){
     G.msg = '光ったマスをタップしてから計算してください';
     renderAll();
@@ -750,8 +750,16 @@ function markFx(idx, before, after){
 // red: 戻りで減った後の値を選んだ(減る前の値は範囲内のどれか)
 function pickValue(idx, val, wasCrit, red){
   if(!Number.isFinite(val)) return;      // 想定外の値では状態を壊さない
-  GameLog.ev('val', { mass: idx + 1, before: G.masses[idx].current, val, crit: !!wasCrit, red: !!red });
   const ob = G.obs && G.obs[idx];
+  // 会心率の集計用(tools/log-collector.gs): 叩いた技・叩いた時の温度・点灯マスか・見込みの会心率と、
+  // その値が会心でも会心でなくても出る値か。どの打撃か分からない値(まとめて実行して2回以上叩いた等)は amb
+  let hit = { amb: true };
+  if(ob && ob.rolls && !ob.modoriOnly){
+    const m = G.masses[idx], o = hitOutcomes(ob.before, ob.rolls, m.zoneLow, m.zoneHigh);
+    hit = { sk: ob.name, hitTemp: ob.temp, lit: !!ob.lit, cr: Math.round(ob.cr * 10000) / 10000,
+            both: o.normal.includes(val) && o.crit.includes(val) };
+  }
+  GameLog.ev('val', Object.assign({ mass: idx + 1, before: G.masses[idx].current, val, crit: !!wasCrit, red: !!red }, hit));
   // 打っていないマスの戻りは理想値と無関係なので、推定は更新しない
   if(ob && ob.rolls && !ob.modoriOnly) updatePost(idx, ob.before, ob.rolls, ob.cr, val, wasCrit, red ? ob.range : undefined);
   markFx(idx, G.masses[idx].current, val);
