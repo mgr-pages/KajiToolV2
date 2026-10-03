@@ -10,6 +10,11 @@
      5. 表示された URL(…/exec)を gamelog.js の GLOG_ENDPOINT に入れる
    1局ごとに「記録」シートへ1行を足す。手順の細かい中身は最後の列に JSON で入れる。
    doPost はアプリから送られた時に動く。エディタから doPost を直接実行すると、送られた中身が無いので止まる。
+   会心率の集計(下の「会心率の集計」):
+     ・スプレッドシートのメニュー [鍛冶アドバイザー] → [会心の集計を更新] で「会心の集計」シートを書き直す。
+     ・同じ URL を GET で開くと、集計の数字だけを JSON で返す(端末の番号・手順などは返さない)。
+       tools/crit-report.js で読んで、点灯マスなどの会心率の上乗せを推定する。
+   このファイルを書き換えたら、[デプロイ] → [デプロイを管理] → 鉛筆 → バージョン「新バージョン」で出し直す(URL は同じ)。
    ===================================================================== */
 const SPREADSHEET_ID = '';           // 空ならスクリプトを作ったスプレッドシートに書く
 const SHEET = '記録';
@@ -48,4 +53,138 @@ function testPost(){
                 final: { focus: 0, temp: 1000, masses: [0, 0, 0, 0, 0, 0] }, steps: [],
                 started: new Date().toISOString(), finished: new Date().toISOString(), zones: [] };
   doPost({ postData: { contents: JSON.stringify(rec) } });
+}
+
+/* ===================== 会心率の集計 =====================
+   エンジンの会心率の式(engine.js の computeCritRate)のうち、確かめられていない上乗せ
+   (威力会心率上昇の点灯マス +400%(利用者の情報)、ねらい打ち +600%、集中力変化の会心ターン +400%)を、
+   実際の対局の記録で確かめるための集計。
+   1回の打撃ごとに「地金特性 × 状況(点灯マス / 会心ターン / ふつう) × 技(ねらい系 / それ以外)」に分けて、
+   叩いた回数・会心の回数・基礎の会心率の合計(上乗せの無い会心率)・エンジンの見込みの会心率の合計を数える。
+   基礎の会心率の合計で会心の回数を割ると、基礎に対する倍率(実測)になる。
+   数えない打撃: 開始直後の1手(特性が乗らない)、必殺の効果中(必ず会心)、みだれ打ち(どのマスに当たったか分からない)、
+   まとめて実行して同じマスを2回以上叩いた打撃(どちらで会心が出たか分からない)、戻りで減った後の値、取り消した手。
+   記録の形:
+     ・新しい版のアプリ: 入れた値(val)に、叩いた技(sk)・叩いた時の温度(hitTemp)・点灯マスか(lit)・
+       見込みの会心率(cr)・会心でも会心でなくても出る値か(both)が付く。分けられない打撃には amb が付く。
+     ・古い版: 打った手(exec)の手順と点灯マス(lit)から、各マスを叩いた技・温度・点灯を組み立て直す。 */
+const CRIT_SHEET = '会心の集計';
+const CRIT_AIM = ['ねらい打ち', '上下ねらい打ち', '弱ねらい打ち'];
+const CRIT_SKIP = ['火力上げ', '冷やし込み', 'みだれ打ち', 'ヘパイトスの炎'];
+// engine.js の HAMMERS の critByStar(できのよさ 0〜3 ごとの会心率 %)と同じ
+const CRIT_HAMMER = { copper:[1.0,1.1,1.2,2.0], iron:[1.5,1.6,1.7,2.5], silver:[2.0,2.1,2.2,3.0],
+                      platinum:[2.5,2.6,2.7,3.5], super:[3.0,3.1,3.2,4.0], miracle:[3.3,3.4,3.5,4.3],
+                      light:[3.6,3.7,3.8,4.6] };
+// 上乗せの無い会心率(割合)。職人スキルの会心アップ + コツをつかんでいる(+1.0%) + ハンマー(engine.js と同じ)
+function critBase(level, hammer, star){
+  const lv = Number(level) || 0;
+  const passive = (lv >= 10 ? 0.1 : 0) + (lv >= 20 ? 0.2 : 0) + (lv >= 30 ? 0.3 : 0);
+  const h = CRIT_HAMMER[hammer]; const s = Number(star);
+  return (passive + 1.0 + (h && h[s] !== undefined ? h[s] : 0)) / 100;
+}
+// 1局の手順から打撃を取り出し、add(打撃) に渡す。
+// 打撃 = { sit: 状況, cls: 技の種類, crit: 会心か, base: 基礎の会心率, cr: 見込みの会心率, both: 会心でも会心でなくても出る値か(新しい版だけ) }
+function critHitsOf(trait, level, hammer, star, steps, add){
+  const base = critBase(level, hammer, star);
+  let cur = null, pend = [], hsOn = false;
+  const flush = () => { pend.forEach(add); pend = []; };
+  const sitOf = (t, lit) => (trait === 'kaishin' && lit) ? '点灯' :
+                            (trait === 'shuchu' && t % 200 === 0 && t % 400 !== 0) ? '会心ターン' : 'ふつう';
+  for(const st of steps || []){
+    if(!st || typeof st !== 'object') continue;
+    if(st.t === 'exec'){
+      flush();
+      cur = {};
+      const at = st.at || {}, list = Array.isArray(st.steps) ? st.steps : [];
+      const start = at.temp === 1000 && Array.isArray(at.masses) && at.masses.every(v => v === 0);
+      const cnt = {};
+      list.forEach(s => (s.tg || []).forEach(m => { cnt[m] = (cnt[m] || 0) + (s.sk === 'みだれ打ち' ? 2 : 1); }));
+      let t = at.temp;
+      list.forEach((s, k) => {
+        const hitting = CRIT_SKIP.indexOf(s.sk) < 0 && (s.tg || []).length > 0;
+        (s.tg || []).forEach(m => {
+          cur[m] = (cnt[m] > 1 || !hitting) ? { skip: true }
+                 : { sk: s.sk, t, lit: k === 0 && st.lit === m, sure: hsOn, start: start && k === 0 };
+        });
+        if(hitting) hsOn = false;                      // 必殺の効果は、次に叩いた手で消える
+        if(s.sk === 'ヘパイトスの炎') hsOn = true;
+        t = s.tempAfter;
+      });
+      continue;
+    }
+    if(st.t === 'undo'){ pend = []; cur = null; continue; }   // 取り消した手の値は数えない
+    if(st.t !== 'val' || st.red || st.amb) continue;
+    let h;
+    if(st.sk !== undefined && st.hitTemp !== undefined){        // 新しい版
+      h = { sk: st.sk, t: st.hitTemp, lit: !!st.lit, sure: Number(st.cr) >= 1, cr: Number(st.cr), both: !!st.both };
+      // 開始直後の1手は特性が乗らない(古い版と同じく、手順の側で判断する)
+      const c = cur && cur[st.mass]; if(c && c.start) h.start = true;
+    } else {
+      h = cur && cur[st.mass];
+    }
+    if(cur) cur[st.mass] = null;                                 // 同じマスの値は1回だけ数える
+    if(!h || h.skip || h.sure || h.start || CRIT_SKIP.indexOf(h.sk) >= 0 || typeof st.crit !== 'boolean') continue;
+    const sit = sitOf(h.t, h.lit), cls = CRIT_AIM.indexOf(h.sk) >= 0 ? 'ねらい系' : 'それ以外';
+    const mult = 1 + (sit === '会心ターン' ? 4 : 0) + (sit === '点灯' ? 4 : 0) + (cls === 'ねらい系' ? 6 : 0);
+    pend.push({ sit, cls, crit: st.crit, base, cr: h.cr !== undefined ? h.cr : Math.min(1, base * mult),
+                both: h.both, isNew: h.cr !== undefined });
+  }
+  flush();
+}
+// 記録の行(シートの値)から集計を作る。rows は「記録」シートの2行目以降
+function critAggregate(rows){
+  const col = n => HEAD.indexOf(n);
+  const iTrait = col('地金特性'), iLv = col('職人Lv'), iHam = col('ハンマー'), iStar = col('できのよさ'),
+        iRes = col('結果'), iJson = col('手順(JSON)');
+  const groups = {}, byTrait = {};
+  let records = 0, bad = 0, hits = 0;
+  for(const r of rows){
+    if(r[iRes] === '試験') continue;
+    let d;
+    try{ d = JSON.parse(r[iJson]); }catch(e){ bad++; continue; }
+    const trait = r[iTrait];
+    records++; byTrait[trait] = (byTrait[trait] || 0) + 1;
+    critHitsOf(trait, r[iLv], r[iHam], r[iStar], d && d.steps, h => {
+      const k = trait + '|' + h.sit + '|' + h.cls;
+      const g = groups[k] || (groups[k] = { trait, sit: h.sit, cls: h.cls, n: 0, crit: 0, sumBase: 0, sumCr: 0,
+                                            nNew: 0, nBoth: 0, critBoth: 0 });
+      g.n++; hits++; if(h.crit) g.crit++;
+      g.sumBase += h.base; g.sumCr += h.cr;
+      if(h.isNew){ g.nNew++; if(h.both){ g.nBoth++; if(h.crit) g.critBoth++; } }
+    });
+  }
+  const list = Object.keys(groups).sort().map(k => groups[k]);
+  return { generated: new Date().toISOString(), records, recordsByTrait: byTrait, badRows: bad, hits, groups: list };
+}
+function critSummary_(){
+  const ss = SPREADSHEET_ID ? SpreadsheetApp.openById(SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(SHEET);
+  const rows = sh && sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues() : [];
+  return critAggregate(rows);
+}
+// メニューから: 「会心の集計」シートを書き直す
+function updateCritSheet(){
+  const s = critSummary_();
+  const ss = SPREADSHEET_ID ? SpreadsheetApp.openById(SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CRIT_SHEET) || ss.insertSheet(CRIT_SHEET);
+  sh.clear();
+  const head = ['地金特性', '状況', '技', '叩いた回数', '会心の回数', '会心率(実測)', '会心率(エンジンの見込み)',
+                '基礎に対する倍率(実測)', '基礎に対する倍率(エンジン)', '会心でも会心でなくても出る値の回数'];
+  const body = s.groups.map(g => [g.trait, g.sit, g.cls, g.n, g.crit, g.n ? g.crit / g.n : '', g.n ? g.sumCr / g.n : '',
+                                  g.sumBase ? g.crit / g.sumBase : '', g.sumBase ? g.sumCr / g.sumBase : '', g.nBoth]);
+  sh.getRange(1, 1, 1, head.length).setValues([head]);
+  if(body.length) sh.getRange(2, 1, body.length, head.length).setValues(body);
+  sh.getRange(body.length + 3, 1, 1, 2).setValues([['集計した対局', s.records]]);
+  sh.getRange(body.length + 4, 1, 1, 2).setValues([['更新した日時', new Date()]]);
+  sh.setFrozenRows(1);
+}
+// GET: 集計の数字だけを返す(10分ごとに作り直す)
+function doGet(e){
+  const cache = CacheService.getScriptCache();
+  let txt = cache.get('critSummary');
+  if(!txt){ txt = JSON.stringify(critSummary_()); try{ cache.put('critSummary', txt, 600); }catch(err){} }
+  return ContentService.createTextOutput(txt).setMimeType(ContentService.MimeType.JSON);
+}
+function onOpen(){
+  SpreadsheetApp.getUi().createMenu('鍛冶アドバイザー').addItem('会心の集計を更新', 'updateCritSheet').addToUi();
 }

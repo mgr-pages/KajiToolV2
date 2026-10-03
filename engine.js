@@ -120,7 +120,9 @@ const PRESETS = {
     //   見送り(差なし、または悪化): turn 10/15・boostAim 0.5/0.9・boostPlan 1・save 25・cap 30・land 8・center 1/3/6・
     //   te 10・pr 0・adv 0.6・far 0・mpm 24・2マス残りの総当たり(ldp2、−10.4〜+0.9pt)・会心ターンへ温度を移す(bop)。
     params: { cap:24, adv:0.375, land:4.5, save:0, center:0, pr:0.4, boostPlan:0 },
-    mc: { gate: 0 },
+    // 先読み: 決め打ち(会心ターンの弱ねらい打ちなど。1局に約0.9回)も先読みにかける(early)。その局面で80局面を試し打ちすると、
+    //   決め打ちの手より先読みが選んだ手の方が +1.21pt(±0.35)良かった(選ぶ試行と良し悪しを測る試行を分けて測った)。
+    mc: { gate: 0, early: true },
     zones: [[200,208],[250,256],[250,256],[200,208],[0,0],[0,0]]
   },
   yumon: {
@@ -197,7 +199,7 @@ const PRESETS = {
   },
   // 超ようせいのひだね(地金特性:威力会心率上昇)
   //   200℃の倍数のたび、ゾーン未到達のマスからランダムに1つが点灯。
-  //   点灯マスは威力2倍・会心率+500%(37.2%)。非点灯マスは特性なしと同じ。
+  //   点灯マスは威力2倍・会心率+400%(31.0%)。非点灯マスは特性なしと同じ。
   //   ゾーンは3つの情報源で一致。ロール値と消費集中力は公開数値表と完全一致を確認済み。
   hidane: {
     name: '超ようせいのひだね',
@@ -481,6 +483,16 @@ const ITEM_PARAM_OF = {
   げんぶの道着下:'orb',
   ぎんのルアー:'yum', ゴシックアーム:'yum', ゴシックグローブ:'yum', 天使のルアー:'yum', トゲトゲルアー:'yum', マデュライトルアー:'yum', プラチナ木工刀:'yum',
 };
+// 組の上に、商材ごとに1つだけ足す重み(小さな変更の見直し、2026-10-02)。
+//   今の設定の上で heat・cap・pr・tcost・litReady を1つだけ動かす8通りを、追加160商材に当てた(種44・各1000局、同じ局どうし)。
+//   z≥3 は3商材だけで(1087通りを比べたので、偶然でも1〜2件は出る)、選ぶのに使っていない種55・各2000局で確かめた2商材に入れた。
+//     ガナドールバンド(kham)heat 0 → 4: 65.3% → 69.8%(片方だけ 375対465、z=3.11)
+//     セレーネアックス(hid)heat 1 → 0: 55.0% → 56.4%(51対80、z=2.53)
+//     黄金の飾り弓 cap 18 は種55で差なし(z=0.38)で入れていない。
+const ITEM_PARAM_ADD = {
+  ガナドールバンド: { heat: 4 },
+  セレーネアックス: { heat: 0 },
+};
 (function(){
   const TH = [0, 0, 0, 2, 3, 5, 7, 9, 10];
   for(const [job, grp, name, grid, trait, craft] of CRAFT_ITEMS){
@@ -497,6 +509,7 @@ const ITEM_PARAM_OF = {
       const tol = grp in CRAFT_TOL ? CRAFT_TOL[grp] : TH[n - off.length];
       PRESETS[key] = { name, trait, threshold: tol, off: off.sort((a, b) => a - b), zones };
       if(ITEM_PARAM_OF[name]) PRESETS[key].params = Object.assign({}, ITEM_PARAMS[ITEM_PARAM_OF[name]]);
+      if(ITEM_PARAM_ADD[name]) PRESETS[key].params = Object.assign({}, PRESETS[key].params || {}, ITEM_PARAM_ADD[name]);
     }
     Object.assign(PRESETS[key], { job, grp, craft });
     PRESET_ORDER.push(key);
@@ -594,7 +607,7 @@ function getPassiveCritPercent(level){
   if(level>=30) p += 0.3;
   return p;
 }
-let LIT_BONUS = 5.0;        // 点灯マスの会心率ボーナス(+500%)。実測値が無いための推定値。
+let LIT_BONUS = 4.0;        // 点灯マスの会心率ボーナス(+400%)。利用者の情報(+500%は有り得ない)。公開された実測値は無い。
 function computeCritRate(skill, level, hammerId, star, trait, temp, isLit){
   const passive = getPassiveCritPercent(level);
   const hammer = HAMMERS[hammerId];
@@ -606,11 +619,11 @@ function computeCritRate(skill, level, hammerId, star, trait, temp, isLit){
   // 開始直後は地金特性が発動しないため、会心率ボーナスも乗らない
   const active = (typeof isStartState==='function') ? !isStartState() : true;
   const traitBonus = (trait==='shuchu' && st.mod200 && active) ? 4.0 : 0;
-  // 威力会心率上昇(kaishin)の点灯マス。公開された検証値が存在しないため +500% を採用した。
-  // 根拠: 会心率の計算式をまとめた情報源が「ねらい打ち程度か+500%くらい」と予測していること、
-  // および実プレイヤーの打ち方が「集中効率の悪いねらい打ち(+600%)を捨てて点灯で会心を取る」
-  // となっており、点灯がねらい打ちと同程度でなければ成立しないこと。
-  // 実測ではないので、第5段階で公開されている大成功率(5〜8割)と突き合わせて検証する。
+  // 威力会心率上昇(kaishin)の点灯マス。+400%(利用者の情報。集中力変化の会心ターンと同じ上乗せ)。
+  // 以前は、会心率の計算式をまとめた情報源の「ねらい打ち程度か+500%くらい」という予測(体感)から +500% にしていたが、
+  // 利用者から「+500% は有り得ない」と聞いて +400% に直した。公開された実測値は見つかっていない
+  // (2026-10 に攻略サイト・冒険日誌・鍛冶シミュなどを調べた)。対局の記録から測る仕組みは
+  // tools/log-collector.gs(会心率の集計)と tools/crit-report.js。
   const litBonus  = (trait==='kaishin' && isLit && (st.mod400 || st.mod200) && active) ? LIT_BONUS : 0;
   const naraiBonus = skill && skill.crit ? 6.0 : 0;
   const finalPct = base * (1 + traitBonus + litBonus + naraiBonus);
@@ -2372,7 +2385,7 @@ function stratB0(ms,f,t,P,cfg){
       for(const rr of rI){const reach=m.current+2*rr;let n=0;
         for(let id=m.zoneLow;id<=m.zoneHigh;id++)if(id>m.current&&id<=reach)n++;
         c2+=(n/zn)/rI.length;}
-      // 会心率もマス単位で掛ける。点灯マスは +500% で技単位の値の6倍になる。
+      // 会心率もマス単位で掛ける。点灯マスは +400% で技単位の値の5倍になる。
       // (ロールだけマス単位にして会心率を技単位のままにしていたため、
       //  点灯マスの最大の価値=高確率で理想値ちょうどに止まることが評価に出ず、
       //  エンジンが点灯マスを避けているように見えていた)
@@ -2445,7 +2458,7 @@ function stratB0(ms,f,t,P,cfg){
       for(const i of x.tg){
         const m = ms[i];
         if(m.current >= m.zoneLow) continue;
-        // 点灯マスはロール2倍・会心率+500%なので、本会心の成立帯も価値もマスごとに違う。
+        // 点灯マスはロール2倍・会心率+400%なので、本会心の成立帯も価値もマスごとに違う。
         const rP = rollsForMass(x.sk, t, cfg.trait, i) || r;
         const critRate = critForMass(x.sk, cfg, t, i);
         // 今まさに使おうとしている技で、この位置から本会心が成立するか。
@@ -2754,12 +2767,43 @@ function stratB0(ms,f,t,P,cfg){
 // そこで1.65pt/局面を捨てていた。S・Kは大きいほど、THは低いほど良い。
 // 実局検証: いと +19.54/+13.64pt (t=2.93/2.24)、樹液 +20.00/+23.91pt (t=2.58/2.72)。
 const MC_K = 8, MC_S = 640, MC_GATE = 0.2, MC_TH = 0.5;
+// 際どい候補にだけ試し打ちを重ねる(race、既定 1280。0 なら重ねない)。最初の S 回で、基準(候補0)との差の t が raceLo を超えた候補だけに、
+// S 回ずつ試行を足していく(1候補あたり合計 race 回まで)。足すたびに t が raceLo 以下に落ちた候補は外し、一番良い t が raceHi 以上になるか、
+// 残る候補が無くなるか、上限に着いたらやめて、t > th の中で t が一番大きい候補を選ぶ。
+// 640回の見積もりは誤差が±2.5pt ほどあり、候補が7つあると、本当は差が無くても約7割の局面で誤差だけで t > 0.5 の候補が出る。
+// 例: まおうの錬金ランプの1900℃(全マス0、毎局同じ局面)で、超4連打ち(3600回の平均 60.3%)を捨てて左右打ち AB(57.1%)を選んでいた。
+// 良く見えた候補だけを深く確かめれば、誤差で良く見えた手は脱落する。全候補に足すより安く、同じだけ得をする。
+//   記録した試し打ち(選ぶ試行と良し悪しを測る試行を分けた)で、上限1280回・raceLo 0・raceHi 3・th 0.5 の時、今の決め方との差は
+//   まおうの錬金ランプ80局面 +0.33pt/局面(試し打ち1.32倍)、6商材240局面 +0.11pt(1.26倍)、決め打ちの局面80 +0.06pt(1.15倍)。
+//   候補を一律に足す決め方(合計1280回)は +0.31pt(1.61倍)/ +0.10pt(1.48倍)/ +0.07pt(1.33倍)。
+// 試行 j の乱数は j だけで決まるので、足しても「同じ局面なら同じ手」は変わらない。
+const MC_RACE = 1280, MC_RACE_LO = 0, MC_RACE_HI = 3;
 // 素材ごとの先読みの設定(PRESETS の mc で上書き)。gate を 0 にすると独走局面でも先読みする。
 // early を true にすると、貪欲が評価の前に手を決めた局面でも先読みする(火力上げを除く)。
 function mcConf(){
   const p = PRESETS[G.preset], o = (p && p.mc) || {};
   return { K: o.K || MC_K, S: o.S || MC_S, gate: o.gate === undefined ? MC_GATE : o.gate,
-           th: o.th === undefined ? MC_TH : o.th, early: !!o.early };
+           th: o.th === undefined ? MC_TH : o.th, early: !!o.early,
+           race: o.race === undefined ? MC_RACE : o.race,
+           raceLo: o.raceLo === undefined ? MC_RACE_LO : o.raceLo, raceHi: o.raceHi === undefined ? MC_RACE_HI : o.raceHi };
+}
+// 候補 a の、基準(候補0)との差の t(試行の合計 sd・sd2 と、試行の数 S。S は候補ごとの配列でもよい)
+function mcT(sd, sd2, a, S){
+  const n = Array.isArray(S) ? S[a] : S;
+  const md = sd[a]/n, vr = sd2[a]/n - md*md;
+  return md / Math.sqrt(Math.max(vr, 1e-9)/n);
+}
+// 試行を重ねるなら { act: 重ねる候補, from, to: 回す試行の範囲 } を返す(重ねないなら null)。S は候補ごとの済んだ試行の数。
+// 残っている候補はいつも一緒に重ねるので、同じ数の試行が済んでいる
+function mcMore(pool, sd, sd2, S){
+  const c = mcConf();
+  if(!(c.race > 0) || pool.length < 2) return null;
+  let bt = -Infinity; const live = [];
+  for(let a = 1; a < pool.length; a++){ const t = mcT(sd, sd2, a, S); if(t > c.raceLo){ live.push(a); if(t > bt) bt = t; } }
+  if(!live.length || bt >= c.raceHi) return null;
+  const grow = live.filter(a => S[a] + c.S <= c.race);
+  if(!grow.length) return null;
+  return { act: grow, from: S[grow[0]], to: S[grow[0]] + c.S };
 }
 const MC_CHUNK = 32;                 // この件数ごとに描画へ譲る
 let RANK = null;
@@ -2848,7 +2892,7 @@ function mcRolloutBody(ms0, f, t, cfg, first){
     if(to <= 0) break;
     if(s > 0) rollLit(ms, to, cfg.trait, MC_RNG);   // 現在の手番の点灯は既知なので触らない
     if(!mv){ mv = stratB(ms, fo, to, PARAMS, cfg); if(!mv || fo < mv.c) break; }
-    // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
+    // 点灯マスだけ威力2倍・会心率+400%なので、ロールと会心率はマスごとに引く
     if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
       // やり直しの手・みだれ打ち・必殺の効果中の手だけはゾーン内のマスも打つ
@@ -2942,13 +2986,15 @@ function mcPrepare(ms, f, t, P, cfg){
 // 試行 j0〜j1-1 を回し、候補ごとの「基準手との差」を sd・sd2 に足し込む。
 // 試行 j の乱数は seedBase と j だけで決まり、差は -1/0/1 の整数なので、
 // 試行をどう分割して(複数の Worker で)足しても合計は完全に一致する。
-function mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2){
-  const n = pool.length;
+// act を渡すと、その候補だけを回す(際どい候補にだけ試行を重ねる時。基準はいつも回す)
+function mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2, act){
+  const n = pool.length, list = act || null;
   for(let j = j0; j < j1; j++){
     const seed = (seedBase + Math.imul(j, 2654435761)) | 0;
     MC_RNG = mcRand(seed);
     const base = mcRollout(ms, f, t, cfg, pool[0]);
-    for(let a = 1; a < n; a++){
+    for(let k = 1; k < (list ? list.length + 1 : n); k++){
+      const a = list ? list[k - 1] : k;
       MC_RNG = mcRand(seed);                 // 共通乱数で候補間の差の分散を下げる
       const d = mcRollout(ms, f, t, cfg, pool[a]) - base;
       sd[a] += d; sd2[a] += d*d;
@@ -2963,14 +3009,21 @@ async function stratMCAsync(ms, f, t, P, cfg, onProgress){
   if(prep.move !== undefined) return prep.move;
   const { pool, seedBase } = prep;
   const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
-  const S = mcConf().S;
-  for(let j0 = 0; j0 < S; j0 += MC_CHUNK){
-    const j1 = Math.min(S, j0 + MC_CHUNK);
-    mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2);
-    if(onProgress) onProgress(j1, S, n);
-    await mcYield();
+  const S = new Array(n).fill(0);
+  let from = 0, to = mcConf().S, act = null, ext = false;
+  for(;;){
+    for(let j0 = from; j0 < to; j0 += MC_CHUNK){
+      const j1 = Math.min(to, j0 + MC_CHUNK);
+      mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2, act);
+      if(onProgress) onProgress(j1 - from, to - from, n, ext);
+      await mcYield();
+    }
+    if(act) for(const a of act) S[a] = to; else S.fill(to);
+    const more = mcMore(pool, sd, sd2, S);       // 際どい候補にだけ試行を重ねる
+    if(!more) break;
+    ({ act, from, to } = more); ext = true;
   }
-  return mcPick(pool, sd, sd2);
+  return mcPick(pool, sd, sd2, S);
 }
 
 /* ---- Worker との受け渡し ----
@@ -2997,14 +3050,12 @@ function moveFromWire(w){ const sk = skillById(w.sk);
   if(w.cooling) mv.cooling = true;
   if(w.redo) mv.redo = true;
   return mv; }
-function mcPick(pool, sd, sd2){
-  const { S, th } = mcConf();
+function mcPick(pool, sd, sd2, S){
+  const c = mcConf(); if(!S) S = c.S;
   let bi = 0, bt = 0;
   for(let a = 1; a < pool.length; a++){
-    const md = sd[a]/S, vr = sd2[a]/S - md*md;
-    const se = Math.sqrt(Math.max(vr, 1e-9)/S);
-    const tt = md/se;
-    if(tt > th && tt > bt){ bt = tt; bi = a; }
+    const tt = mcT(sd, sd2, a, S);
+    if(tt > c.th && tt > bt){ bt = tt; bi = a; }
   }
   return pool[bi];
 }
@@ -3260,7 +3311,7 @@ function tracedRolloutBody(ms0, f, t, cfg, first, out){
     out.push({ key: mv.sk.name + '|' + mv.tg.join(','),
                name: mv.sk.name, tg: mv.tg.slice(), temp: to,
                cost: mv.c, tempAfter: mv.nt, traitOn: !simFirstMove, mk: traitMark(to) });
-    // 点灯マスだけ威力2倍・会心率+500%なので、ロールと会心率はマスごとに引く
+    // 点灯マスだけ威力2倍・会心率+400%なので、ロールと会心率はマスごとに引く
     if(mv.sk.key) hitSeq(mv, MC_RNG).forEach(i=>{
       const m = ms[i];
       // やり直しの手・みだれ打ち・必殺の効果中の手だけはゾーン内のマスも打つ

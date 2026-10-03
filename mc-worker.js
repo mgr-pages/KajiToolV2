@@ -31,7 +31,7 @@ self.onmessage = function(e){
     // 進み具合を返しながら、MC_CHUNK 件ずつ回す
     for(let j0 = q.j0; j0 < q.j1; j0 += MC_CHUNK){
       const j1 = Math.min(q.j1, j0 + MC_CHUNK);
-      mcAccumulate(q.ms, q.f, q.t, q.cfg, pool, q.seedBase, j0, j1, sd, sd2);
+      mcAccumulate(q.ms, q.f, q.t, q.cfg, pool, q.seedBase, j0, j1, sd, sd2, q.act || null);   // act: 際どい候補だけを回す時
       self.postMessage({ id: q.id, type: 'progress', done: j1 - j0 });
     }
     self.postMessage({ id: q.id, type: 'done', sd, sd2 });
