@@ -2765,31 +2765,43 @@ function stratB0(ms,f,t,P,cfg){
 // そこで1.65pt/局面を捨てていた。S・Kは大きいほど、THは低いほど良い。
 // 実局検証: いと +19.54/+13.64pt (t=2.93/2.24)、樹液 +20.00/+23.91pt (t=2.58/2.72)。
 const MC_K = 8, MC_S = 640, MC_GATE = 0.2, MC_TH = 0.5;
-// 接戦の時の試し打ちの追加(extMax、既定 0 = 足さない)。S 回で一番良い候補の t が extLo 以上 extHi 未満
-// (乗り換えるかどうか際どい)なら、S 回ずつ足して合計 extMax 回まで増やし、全部の試行で選び直す。
+// 際どい候補にだけ試し打ちを重ねる(race、既定 0 = 重ねない)。最初の S 回で、基準(候補0)との差の t が raceLo を超えた候補だけに、
+// S 回ずつ試行を足していく(1候補あたり合計 race 回まで)。足すたびに t が raceLo 以下に落ちた候補は外し、一番良い t が raceHi 以上になるか、
+// 残る候補が無くなるか、上限に着いたらやめて、t > th の中で t が一番大きい候補を選ぶ。
+// 640回の見積もりは誤差が±2.5pt ほどあり、候補が7つあると、本当は差が無くても約7割の局面で誤差だけで t > 0.5 の候補が出る。
+// 例: まおうの錬金ランプの1900℃(全マス0、毎局同じ局面)で、超4連打ち(3600回の平均 60.3%)を捨てて左右打ち AB(57.1%)を選んでいた。
+// 良く見えた候補だけを深く確かめれば、誤差で良く見えた手は脱落する。全候補に足すより安く、同じだけ得をする。
+//   記録した試し打ち(選ぶ試行と良し悪しを測る試行を分けた)で、上限1280回・raceLo 0・raceHi 3・th 0.5 の時、今の決め方との差は
+//   まおうの錬金ランプ80局面 +0.33pt/局面(試し打ち1.32倍)、6商材240局面 +0.11pt(1.26倍)、決め打ちの局面80 +0.06pt(1.15倍)。
+//   候補を一律に足す決め方(合計1280回)は +0.31pt(1.61倍)/ +0.10pt(1.48倍)/ +0.07pt(1.33倍)。
 // 試行 j の乱数は j だけで決まるので、足しても「同じ局面なら同じ手」は変わらない。
-const MC_EXT_MAX = 0, MC_EXT_LO = 0, MC_EXT_HI = 2;
+const MC_RACE = 0, MC_RACE_LO = 0, MC_RACE_HI = 3;
 // 素材ごとの先読みの設定(PRESETS の mc で上書き)。gate を 0 にすると独走局面でも先読みする。
 // early を true にすると、貪欲が評価の前に手を決めた局面でも先読みする(火力上げを除く)。
 function mcConf(){
   const p = PRESETS[G.preset], o = (p && p.mc) || {};
   return { K: o.K || MC_K, S: o.S || MC_S, gate: o.gate === undefined ? MC_GATE : o.gate,
            th: o.th === undefined ? MC_TH : o.th, early: !!o.early,
-           extMax: o.extMax === undefined ? MC_EXT_MAX : o.extMax,
-           extLo: o.extLo === undefined ? MC_EXT_LO : o.extLo, extHi: o.extHi === undefined ? MC_EXT_HI : o.extHi };
+           race: o.race === undefined ? MC_RACE : o.race,
+           raceLo: o.raceLo === undefined ? MC_RACE_LO : o.raceLo, raceHi: o.raceHi === undefined ? MC_RACE_HI : o.raceHi };
 }
-// 候補 a の、基準(候補0)との差の t(試行 S 回分の合計 sd・sd2 から)
+// 候補 a の、基準(候補0)との差の t(試行の合計 sd・sd2 と、試行の数 S。S は候補ごとの配列でもよい)
 function mcT(sd, sd2, a, S){
-  const md = sd[a]/S, vr = sd2[a]/S - md*md;
-  return md / Math.sqrt(Math.max(vr, 1e-9)/S);
+  const n = Array.isArray(S) ? S[a] : S;
+  const md = sd[a]/n, vr = sd2[a]/n - md*md;
+  return md / Math.sqrt(Math.max(vr, 1e-9)/n);
 }
-// 試行を足すなら、次に回す試行の数を返す(足さないなら 0)。S は済んだ試行の数
+// 試行を重ねるなら { act: 重ねる候補, from, to: 回す試行の範囲 } を返す(重ねないなら null)。S は候補ごとの済んだ試行の数。
+// 残っている候補はいつも一緒に重ねるので、同じ数の試行が済んでいる
 function mcMore(pool, sd, sd2, S){
   const c = mcConf();
-  if(!(c.extMax > S) || pool.length < 2) return 0;
-  let bt = -Infinity;
-  for(let a = 1; a < pool.length; a++){ const t = mcT(sd, sd2, a, S); if(t > bt) bt = t; }
-  return (bt >= c.extLo && bt < c.extHi) ? Math.min(c.S, c.extMax - S) : 0;
+  if(!(c.race > 0) || pool.length < 2) return null;
+  let bt = -Infinity; const live = [];
+  for(let a = 1; a < pool.length; a++){ const t = mcT(sd, sd2, a, S); if(t > c.raceLo){ live.push(a); if(t > bt) bt = t; } }
+  if(!live.length || bt >= c.raceHi) return null;
+  const grow = live.filter(a => S[a] + c.S <= c.race);
+  if(!grow.length) return null;
+  return { act: grow, from: S[grow[0]], to: S[grow[0]] + c.S };
 }
 const MC_CHUNK = 32;                 // この件数ごとに描画へ譲る
 let RANK = null;
@@ -2972,13 +2984,15 @@ function mcPrepare(ms, f, t, P, cfg){
 // 試行 j0〜j1-1 を回し、候補ごとの「基準手との差」を sd・sd2 に足し込む。
 // 試行 j の乱数は seedBase と j だけで決まり、差は -1/0/1 の整数なので、
 // 試行をどう分割して(複数の Worker で)足しても合計は完全に一致する。
-function mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2){
-  const n = pool.length;
+// act を渡すと、その候補だけを回す(際どい候補にだけ試行を重ねる時。基準はいつも回す)
+function mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2, act){
+  const n = pool.length, list = act || null;
   for(let j = j0; j < j1; j++){
     const seed = (seedBase + Math.imul(j, 2654435761)) | 0;
     MC_RNG = mcRand(seed);
     const base = mcRollout(ms, f, t, cfg, pool[0]);
-    for(let a = 1; a < n; a++){
+    for(let k = 1; k < (list ? list.length + 1 : n); k++){
+      const a = list ? list[k - 1] : k;
       MC_RNG = mcRand(seed);                 // 共通乱数で候補間の差の分散を下げる
       const d = mcRollout(ms, f, t, cfg, pool[a]) - base;
       sd[a] += d; sd2[a] += d*d;
@@ -2993,17 +3007,19 @@ async function stratMCAsync(ms, f, t, P, cfg, onProgress){
   if(prep.move !== undefined) return prep.move;
   const { pool, seedBase } = prep;
   const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
-  let S = mcConf().S, from = 0, ext = false;
+  const S = new Array(n).fill(0);
+  let from = 0, to = mcConf().S, act = null, ext = false;
   for(;;){
-    for(let j0 = from; j0 < S; j0 += MC_CHUNK){
-      const j1 = Math.min(S, j0 + MC_CHUNK);
-      mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2);
-      if(onProgress) onProgress(j1, S, n, ext);
+    for(let j0 = from; j0 < to; j0 += MC_CHUNK){
+      const j1 = Math.min(to, j0 + MC_CHUNK);
+      mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2, act);
+      if(onProgress) onProgress(j1 - from, to - from, n, ext);
       await mcYield();
     }
-    const more = mcMore(pool, sd, sd2, S);       // 接戦なら試行を足す
+    if(act) for(const a of act) S[a] = to; else S.fill(to);
+    const more = mcMore(pool, sd, sd2, S);       // 際どい候補にだけ試行を重ねる
     if(!more) break;
-    from = S; S += more; ext = true;
+    ({ act, from, to } = more); ext = true;
   }
   return mcPick(pool, sd, sd2, S);
 }
