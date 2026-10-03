@@ -319,6 +319,35 @@ function redoLine(r){
   const pc = x => Math.round(x * 100) + '%';
   return `<div class="rec-sub">ゾーン内からもう一度ねらう: 大成功の見込み ${pc(r.erStop)} → ${pc(r.er)}</div>`;
 }
+// 打ち始めの温度操作(火力上げなど)が、この先も同じ手に決まる回数。まとめて「火力上げ ×3」と出し、主ボタン1回で反映する。
+// 全マスが0の間だけ見る(まだ叩いていないので結果が確定していて、手を決めるのも先読みを使わない決め打ちになる)。
+// 途中の温度ごとにアプリの判断(mcPrepare)をそのまま呼び、先読み無しで同じ手に決まる時だけ数えるので、
+// 1回ずつ「使った」を押した時と推奨手は同じになる。手順(G.plan)の先頭に並ぶ同じ手の数も超えない。
+// 威力会心率上昇は200℃の倍数で光ったマスを選ぶ必要があるので、そこで止める。
+function recChain(){
+  const r = G.rec;
+  if(!r || r.sk.key || r.tg.length || !G.plan.length || G.plan[0].name !== r.sk.name) return 1;
+  if(G.masses.some(m => !m.off && m.current !== 0)) return 1;
+  const saved = { temp: G.temp, focus: G.focus, prev: PREV_SK, lit: litMassIndex };
+  let k = 1;
+  try{
+    let t = r.nt, f = G.focus - r.c;
+    while(k < G.plan.length && G.plan[k].name === r.sk.name && !G.plan[k].tg.length && G.plan[k].temp === t){
+      if(G.trait === 'kaishin' && t % 200 === 0) break;
+      G.temp = t; G.focus = f; PREV_SK = r.sk.id; litMassIndex = null;
+      const ms = G.masses.map(m => ({ current:m.current, zoneLow:m.zoneLow, zoneHigh:m.zoneHigh }));
+      const prep = mcPrepare(ms, f, t, PARAMS, cfgOf());
+      if(prep.move === undefined || !prep.move || prep.move.sk.id !== r.sk.id || prep.move.c !== G.plan[k].cost) break;
+      k++; f -= prep.move.c; t = prep.move.nt;
+    }
+  } finally {
+    G.temp = saved.temp; G.focus = saved.focus; PREV_SK = saved.prev; litMassIndex = saved.lit;
+  }
+  return k;
+}
+// 主ボタン1回で反映する手の数(まとめていなければ1)
+function recCount(){ return (G.rec && G.recN > 1 && G.plan.length >= G.recN) ? G.recN : 1; }
+
 function renderRec(){
   const el = document.getElementById('rec');
   if(G.pending.length){ el.innerHTML = ''; return; }
@@ -342,6 +371,18 @@ function renderRec(){
   }
   // この手を打った後に残る集中力と温度も出す。
   // 仕上げに何発残せるかの判断に直結するため。
+  const n = recCount();
+  if(n > 1){
+    // 打ち始めの火力上げなど、続けて同じ手に決まる温度操作はまとめて出す(recChain)
+    const steps = G.plan.slice(0, n), cost = steps.reduce((a, x) => a + x.cost, 0), leftN = G.focus - cost;
+    const warnN = leftN < 40 ? ' style="color:var(--ember)"' : '';
+    el.innerHTML = `<div class="rec-main">
+      <div class="rec-skill">${r.sk.name} ×${n}</div>
+      <div class="rec-sub">${tgt} / 消費${cost}(${steps.map(x => x.cost).join('・')})</div>
+      <div class="rec-sub">実行後 → <b${warnN}>集中力 ${leftN}</b> / ${steps[n-1].tempAfter}℃</div>
+    </div>`;
+    return;
+  }
   const leftF = G.focus - r.c;
   const warn = leftF < 40 ? ' style="color:var(--ember)"' : '';
   el.innerHTML = `<div class="rec-main">
@@ -458,9 +499,10 @@ function primaryAction(){
   }
   if(needLitPick()) return { kind:'lit', label:'光ったマスをタップしてください' };
   if(G.rec && G.plan.length){
-    return { kind:'exec', label: G.rec.tg.length ? '打った' : '使った',
+    const n = recCount();
+    return { kind:'exec', label: G.rec.tg.length ? '打った' : (n > 1 ? `${n}回使った` : '使った'),
              sub: G.rec.tg.length ? '結果の入力へ' : '推奨手を計算',
-             run: () => applyExecuted(1) };
+             run: () => applyExecuted(n) };
   }
   const active = G.masses.filter(m => !m.off);
   // 戻りの地金では超過も取り戻せるので、超過が残る間は続ける(boardDone)
@@ -652,6 +694,7 @@ async function doCalc(){
     return;
   }
   CALC_BUSY = true;
+  G.recN = 1;
   const btn = document.getElementById('calcBtn');
   btn.disabled = true;
   setCalcProgress(0, '先読み中 0%');
@@ -684,7 +727,8 @@ async function doCalc(){
       setCalcProgress(1, '手順を組み立て中…');
       await new Promise(r=>setTimeout(r, 0));
       await MCPool.plan(ms, cfg, G.rec);
-      if(G.rec) GameLog.ev('rec', { sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1) });
+      G.recN = recChain();
+      if(G.rec) GameLog.ev('rec', Object.assign({ sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1) }, G.recN > 1 ? { n: G.recN } : {}));
     }
     renderAll();
   }catch(e){
