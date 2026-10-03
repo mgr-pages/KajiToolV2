@@ -27,11 +27,12 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .stat .val{font-size:16px; font-weight:800; font-variant-numeric:tabular-nums;}
 .stat.tap{cursor:pointer;}
 .stat.tap:active{background:#e6d5ae;}
-/* 必殺の状態。チャージ済み・効果中は目立たせる */
-.stat.hs .val{font-size:14px;}
+/* 必殺の状態。チャージ・効果中は目立たせる。値は折り返さない(3つの欄は同じ幅なので、文言は4字まで) */
+.stat.hs .val{font-size:14px; white-space:nowrap;}
 .stat.hs.on{border-color:var(--ember); background:#fbe3c8;}
 .stat.hs.on .val{color:var(--ember);}
 .stat.hs.used .val{color:var(--dim);}
+@media (max-width: 359px){ .stat.hs .val{font-size:12px;} }   /* 幅320pxでも「チャージ」が欄に収まるように */
 .badges{display:flex; gap:5px; margin-top:6px; flex-wrap:wrap;}
 .badge{font-size:10.5px; padding:3px 8px; border-radius:20px; font-weight:700;}
 .badge.boost{background:rgba(138,106,18,.13); color:var(--gold); border:1px solid rgba(138,106,18,.5);}
@@ -77,6 +78,9 @@ input,select,button{font-family:inherit; -webkit-appearance:none; appearance:non
 .cand.cur{border-color:var(--ember); color:var(--ember); box-shadow:inset 0 0 0 1px var(--ember);}
 /* 結果の選択(記録用) */
 .oc-row{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;}
+/* 必殺の状態の選択: 状態の名前の下に、どういう時に選ぶかを小さく出す */
+.hs-opt small{display:block; margin-top:4px; font-size:11px; font-weight:400; color:var(--dim); line-height:1.35;}
+.hs-opt.cur small{color:var(--ember);}
 .cand-more{width:100%; background:transparent; border:1px dashed var(--line);
   color:var(--dim); border-radius:7px; padding:10px; font-size:12.5px; margin:2px 0 10px;}
 /* ===== 推奨手順:各手の右に「ここまで打った」ボタン ===== */
@@ -487,14 +491,14 @@ table.sk .cst{text-align:right; font-weight:700;}
 }
 /* 柄はページ全体の地(html)に敷く。body に敷いて background-attachment:fixed にすると、
    iPhone の Safari などで柄が出ないことがあるため、固定もしない(ページと一緒に流れる)。 */
-:root{--css-ver:"e6d7b220";}
+:root{--css-ver:"9e619b3d";}
 .ver{margin-top:12px; font-size:10.5px; color:var(--dim); text-align:right;}
 .ver b{color:var(--red);}   /* 表示中の見た目のファイルの版(tools/stamp.py が付け直す) */
 html{
   /* 地は全面同じ色。上部を明るくするグラデーションは、ページの高さで途切れて
      下の方だけ色が変わって見えたためやめた。 */
   background:
-    url("bg-motif.svg?v=e6d7b220") 0 0 / 900px 900px repeat,
+    url("bg-motif.svg?v=9e619b3d") 0 0 / 900px 900px repeat,
     var(--bg);
 }
 body{background:transparent;}

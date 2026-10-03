@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>鍛冶アドバイザーV2.32</title>
+<title>鍛冶アドバイザーV2.33</title>
 <!-- アプリのアイコン。PNG は icon.svg から node tools/make-icons.js で作る -->
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=e6d7b220">
+<link rel="stylesheet" href="style.css?v=9e619b3d">
 </head>
 <body>
 
@@ -33,8 +33,8 @@
       <span class="lbl">集中力</span><span class="val" id="v-focus">253</span>
       <span class="edit" aria-hidden="true">✎</span>
     </div>
-    <!-- 必殺(ヘパイトスの炎)。チャージが来たら押す。使った後は効果中・使用済みを出す -->
-    <div class="stat tap hs" id="hsBox" onclick="toggleHS()">
+    <!-- 必殺(ヘパイトスの炎)。押すと状態(なし・チャージ・効果中・使用済み)を選ぶ画面を開く -->
+    <div class="stat tap hs" id="hsBox" onclick="openHS()">
       <span class="lbl">必殺</span><span class="val" id="v-hs">なし</span>
     </div>
   </div>
@@ -144,6 +144,20 @@
   </div>
 </div>
 
+<!-- 必殺の状態の選択。チャージが来た時に「チャージ」を選ぶ。使った手を反映しなかった時や押し間違えた時も、ここで合わせる -->
+<div class="modal" id="hsModal" onclick="if(event.target===this)closeHS()">
+  <div class="pad">
+    <button class="pad-close" onclick="closeHS()">閉じる</button>
+    <div class="pad-hd">必殺の状態を選んでください</div>
+    <div class="oc-row">
+      <button class="cand hs-opt" data-hs="none" onclick="setHS('none')">なし<small>チャージが来ていない</small></button>
+      <button class="cand hs-opt" data-hs="charged" onclick="setHS('charged')">チャージ<small>来たが、まだ使っていない</small></button>
+      <button class="cand hs-opt" data-hs="active" onclick="setHS('active')">効果中<small>使った。次に叩く技は必ず会心</small></button>
+      <button class="cand hs-opt" data-hs="used" onclick="setHS('used')">使用済み<small>使って、叩いた(効果は終わり)</small></button>
+    </div>
+  </div>
+</div>
+
 <!-- 商材の選択。職人 ▶ 種類 ▶ 商材 の順にたどる。上の道しるべを押すと前の段に戻る -->
 <div class="modal" id="pickModal" onclick="if(event.target===this)closePicker()">
   <div class="pad pick">
@@ -177,9 +191,9 @@
   </div>
 </div>
 
-<script src="engine.js?v=e6d7b220"></script>
-<script src="mc-pool.js?v=e6d7b220"></script>
-<script src="gamelog.js?v=e6d7b220"></script>
-<script src="ui.js?v=e6d7b220"></script>
+<script src="engine.js?v=9e619b3d"></script>
+<script src="mc-pool.js?v=9e619b3d"></script>
+<script src="gamelog.js?v=9e619b3d"></script>
+<script src="ui.js?v=9e619b3d"></script>
 </body>
 </html>

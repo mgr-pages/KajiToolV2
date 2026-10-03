@@ -244,6 +244,10 @@ const TRAIT_LABEL = {shuchu:'集中力変化', none:'特性なし', tataki:'た�
                      modori:'戻り', kaishin:'威力会心率上昇'};
 function traitLabel(t){ return TRAIT_LABEL[t] || t; }
 
+// 必殺の状態。[G.hs, G.hsUsed]。G.hs: 0 = 使えない / 1 = チャージ / 2 = 使った後で、次に叩く技が必ず会心(engine.js の HS)
+const HS_STATES = { none:[0, false], charged:[1, false], active:[2, true], used:[0, true] };
+const HS_LABEL = { none:'なし', charged:'チャージ', active:'効果中', used:'使用済み' };
+function hsKey(){ return G.hs === 1 ? 'charged' : G.hs === 2 ? 'active' : G.hsUsed ? 'used' : 'none'; }
 function renderHeader(){
   // 複数商材を扱うので、今どれを打っているかを最上段に常時出す
   const pp = PRESETS[G.preset];
@@ -265,10 +269,10 @@ function renderHeader(){
     (hm ? hm.name : G.hammerId) + '★' + G.star + ' / Lv' + G.level;
   document.getElementById('v-temp').textContent = G.temp;
   document.getElementById('v-focus').textContent = G.focus;
-  // 必殺: なし → (チャージが来たら押す)チャージ済み → (使う)効果中 → (叩く)使用済み
+  // 必殺: なし → (チャージが来たら選ぶ)チャージ → (使う)効果中 → (叩く)使用済み
   const hsBox = document.getElementById('hsBox'), hsV = document.getElementById('v-hs');
   if(hsBox && hsV){
-    hsV.textContent = G.hs === 1 ? 'チャージ済み' : G.hs === 2 ? '効果中' : G.hsUsed ? '使用済み' : 'なし';
+    hsV.textContent = HS_LABEL[hsKey()];
     hsBox.classList.toggle('on', G.hs === 1 || G.hs === 2);
     hsBox.classList.toggle('used', !G.hs && !!G.hsUsed);
   }
@@ -695,13 +699,16 @@ async function doCalc(){
   }
   CALC_BUSY = true;
   G.recN = 1;
+  // 計算中に必殺の状態を変えられた時は、古い状態で決めた手を出さずに、終わった所で計算し直す
+  let hs0 = G.hs || 0, again = false;
+  const hsMoved = () => (G.hs || 0) !== hs0;
   const btn = document.getElementById('calcBtn');
   btn.disabled = true;
   setCalcProgress(0, '先読み中 0%');
   await new Promise(r=>setTimeout(r, 20));
   try{
     const cfg = cfgOf();
-    HS = G.hs || 0;                   // 必殺の状態(先読みの Worker には mcSnapshot で渡る)
+    HS = hs0 = G.hs || 0;             // 必殺の状態(先読みの Worker には mcSnapshot で渡る)
     // 直前に打った手(火力上げの直後に冷やし込み、のような打ち消し合う温度操作を選ばないため)
     const lastH = G.hist.length ? G.hist[G.hist.length - 1] : null, lastSk = lastH ? skillByName(lastH.name) : null;
     PREV_SK = lastSk ? lastSk.id : null;
@@ -713,7 +720,7 @@ async function doCalc(){
     if(redo){
       G.rec = redo; G.msg = null;
       await MCPool.plan(ms, cfg, G.rec);
-      GameLog.ev('rec', { sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1), redo: true });
+      if(!hsMoved()) GameLog.ev('rec', { sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1), redo: true });
     } else if(boardDone(ms, G.trait)){
       G.rec=null; G.plan=[]; G.msg='<span style="color:var(--green)">全マス到達 — 仕上げてください</span>';
     } else if(G.temp<=0){
@@ -728,8 +735,9 @@ async function doCalc(){
       await new Promise(r=>setTimeout(r, 0));
       await MCPool.plan(ms, cfg, G.rec);
       G.recN = recChain();
-      if(G.rec) GameLog.ev('rec', Object.assign({ sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1) }, G.recN > 1 ? { n: G.recN } : {}));
+      if(G.rec && !hsMoved()) GameLog.ev('rec', Object.assign({ sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1) }, G.recN > 1 ? { n: G.recN } : {}));
     }
+    if(hsMoved()){ G.rec = null; G.plan = []; G.recN = 1; G.msg = null; again = true; }
     renderAll();
   }catch(e){
     document.getElementById('rec').innerHTML =
@@ -737,6 +745,7 @@ async function doCalc(){
   }
   setCalcProgress(null, '推奨手を計算');
   CALC_BUSY=false; syncCalcButton();
+  if(again && !G.pending.length) doCalc();
 }
 
 /* ====== テンキー ====== */
@@ -1304,14 +1313,24 @@ GameLog.restore();
 
 /* ====== 結果の選択(記録用) ====== */
 let OUTCOME_NEXT = null;
-// 必殺のチャージが来たら押す(もう一度押すと取り消し)。効果中・使用済みの時は何もしない
-// (使った手・叩いた手の取り消しは「直前の反映を取り消す」で戻る)
-function toggleHS(){
-  if(G.hs === 2 || (G.hsUsed && !G.hs)) return;
-  G.hs = G.hs === 1 ? 0 : 1;
-  GameLog.ev('hs', { state: G.hs });
+// 必殺の状態。欄を押すと選ぶ画面を開き、どの状態にも合わせられる
+// (チャージが来た時のほか、ゲームで使ったのにアプリで「使った」を押さなかった時や、押し間違えた時のため)。
+// 状態の名前と hsKey は、画面の表示(renderHeader)より前に置いてある
+function openHS(){
+  const k = hsKey();
+  document.querySelectorAll('#hsModal .hs-opt').forEach(b => b.classList.toggle('cur', b.dataset.hs === k));
+  document.getElementById('hsModal').classList.add('show');
+}
+function closeHS(){ document.getElementById('hsModal').classList.remove('show'); }
+function setHS(k){
+  closeHS();
+  const st = HS_STATES[k];
+  if(!st || k === hsKey()) return;
+  G.hs = st[0]; G.hsUsed = st[1];
+  GameLog.ev('hs', { state: G.hs, used: G.hsUsed });
   G.rec = null; G.plan = []; G.msg = null;
   renderAll(); save();
+  // 計算中なら、その計算が終わった所で計算し直す(doCalc)
   if(!G.pending.length && !CALC_BUSY) doCalc();
 }
 function askOutcome(next){ OUTCOME_NEXT = next; document.getElementById('outcomeModal').classList.add('show'); }
