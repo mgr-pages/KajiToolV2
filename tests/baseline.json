@@ -67,23 +67,23 @@
     "hidane": {
       "mc": {
         "games": 2,
-        "great": 50,
-        "unreached": 50,
+        "great": 100,
+        "unreached": 0,
         "over": 0,
-        "avgErr": 8,
-        "avgMoves": 22.5,
-        "avgFocusLeft": 22,
-        "fingerprint": "eeda5b9a"
+        "avgErr": 3.5,
+        "avgMoves": 21,
+        "avgFocusLeft": 50,
+        "fingerprint": "88d2408f"
       },
       "greedy": {
         "games": 300,
-        "great": 71.3,
-        "unreached": 3.7,
-        "over": 7,
-        "avgErr": 6.88,
-        "avgMoves": 23.2,
-        "avgFocusLeft": 16.5,
-        "fingerprint": "4f1a48f0"
+        "great": 57.3,
+        "unreached": 8.7,
+        "over": 11,
+        "avgErr": 9.09,
+        "avgMoves": 23.6,
+        "avgFocusLeft": 12.7,
+        "fingerprint": "e5fc5413"
       }
     },
     "bloom": {
@@ -111,23 +111,23 @@
     "kimonsho": {
       "mc": {
         "games": 2,
-        "great": 50,
+        "great": 100,
         "unreached": 0,
         "over": 0,
-        "avgErr": 2.5,
-        "avgMoves": 24,
-        "avgFocusLeft": 13.5,
-        "fingerprint": "d1a451f3"
+        "avgErr": 0,
+        "avgMoves": 23,
+        "avgFocusLeft": 27.5,
+        "fingerprint": "be1e8db6"
       },
       "greedy": {
         "games": 300,
-        "great": 73,
-        "unreached": 3.3,
-        "over": 2.7,
-        "avgErr": 2.99,
-        "avgMoves": 20.8,
-        "avgFocusLeft": 28.9,
-        "fingerprint": "080e1ab9"
+        "great": 56.3,
+        "unreached": 4.7,
+        "over": 4.7,
+        "avgErr": 5.28,
+        "avgMoves": 21.3,
+        "avgFocusLeft": 23.5,
+        "fingerprint": "33202096"
       }
     },
     "yumon": {
@@ -177,23 +177,23 @@
     "kajihammer": {
       "mc": {
         "games": 2,
-        "great": 100,
+        "great": 50,
         "unreached": 0,
         "over": 0,
-        "avgErr": 2.5,
-        "avgMoves": 19.5,
-        "avgFocusLeft": 26,
-        "fingerprint": "e1d9d5da"
+        "avgErr": 5,
+        "avgMoves": 20,
+        "avgFocusLeft": 39.5,
+        "fingerprint": "02a4404e"
       },
       "greedy": {
         "games": 300,
-        "great": 79.7,
-        "unreached": 0,
-        "over": 2.7,
-        "avgErr": 3.91,
-        "avgMoves": 18.3,
-        "avgFocusLeft": 45.1,
-        "fingerprint": "bdb0bbe1"
+        "great": 73.3,
+        "unreached": 1.3,
+        "over": 2.3,
+        "avgErr": 4.72,
+        "avgMoves": 18.5,
+        "avgFocusLeft": 37.2,
+        "fingerprint": "46e62915"
       }
     },
     "maoulamp": {
