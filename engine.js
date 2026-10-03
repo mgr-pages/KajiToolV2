@@ -2765,12 +2765,31 @@ function stratB0(ms,f,t,P,cfg){
 // そこで1.65pt/局面を捨てていた。S・Kは大きいほど、THは低いほど良い。
 // 実局検証: いと +19.54/+13.64pt (t=2.93/2.24)、樹液 +20.00/+23.91pt (t=2.58/2.72)。
 const MC_K = 8, MC_S = 640, MC_GATE = 0.2, MC_TH = 0.5;
+// 接戦の時の試し打ちの追加(extMax、既定 0 = 足さない)。S 回で一番良い候補の t が extLo 以上 extHi 未満
+// (乗り換えるかどうか際どい)なら、S 回ずつ足して合計 extMax 回まで増やし、全部の試行で選び直す。
+// 試行 j の乱数は j だけで決まるので、足しても「同じ局面なら同じ手」は変わらない。
+const MC_EXT_MAX = 0, MC_EXT_LO = 0, MC_EXT_HI = 2;
 // 素材ごとの先読みの設定(PRESETS の mc で上書き)。gate を 0 にすると独走局面でも先読みする。
 // early を true にすると、貪欲が評価の前に手を決めた局面でも先読みする(火力上げを除く)。
 function mcConf(){
   const p = PRESETS[G.preset], o = (p && p.mc) || {};
   return { K: o.K || MC_K, S: o.S || MC_S, gate: o.gate === undefined ? MC_GATE : o.gate,
-           th: o.th === undefined ? MC_TH : o.th, early: !!o.early };
+           th: o.th === undefined ? MC_TH : o.th, early: !!o.early,
+           extMax: o.extMax === undefined ? MC_EXT_MAX : o.extMax,
+           extLo: o.extLo === undefined ? MC_EXT_LO : o.extLo, extHi: o.extHi === undefined ? MC_EXT_HI : o.extHi };
+}
+// 候補 a の、基準(候補0)との差の t(試行 S 回分の合計 sd・sd2 から)
+function mcT(sd, sd2, a, S){
+  const md = sd[a]/S, vr = sd2[a]/S - md*md;
+  return md / Math.sqrt(Math.max(vr, 1e-9)/S);
+}
+// 試行を足すなら、次に回す試行の数を返す(足さないなら 0)。S は済んだ試行の数
+function mcMore(pool, sd, sd2, S){
+  const c = mcConf();
+  if(!(c.extMax > S) || pool.length < 2) return 0;
+  let bt = -Infinity;
+  for(let a = 1; a < pool.length; a++){ const t = mcT(sd, sd2, a, S); if(t > bt) bt = t; }
+  return (bt >= c.extLo && bt < c.extHi) ? Math.min(c.S, c.extMax - S) : 0;
 }
 const MC_CHUNK = 32;                 // この件数ごとに描画へ譲る
 let RANK = null;
@@ -2974,14 +2993,19 @@ async function stratMCAsync(ms, f, t, P, cfg, onProgress){
   if(prep.move !== undefined) return prep.move;
   const { pool, seedBase } = prep;
   const n = pool.length, sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
-  const S = mcConf().S;
-  for(let j0 = 0; j0 < S; j0 += MC_CHUNK){
-    const j1 = Math.min(S, j0 + MC_CHUNK);
-    mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2);
-    if(onProgress) onProgress(j1, S, n);
-    await mcYield();
+  let S = mcConf().S, from = 0, ext = false;
+  for(;;){
+    for(let j0 = from; j0 < S; j0 += MC_CHUNK){
+      const j1 = Math.min(S, j0 + MC_CHUNK);
+      mcAccumulate(ms, f, t, cfg, pool, seedBase, j0, j1, sd, sd2);
+      if(onProgress) onProgress(j1, S, n, ext);
+      await mcYield();
+    }
+    const more = mcMore(pool, sd, sd2, S);       // 接戦なら試行を足す
+    if(!more) break;
+    from = S; S += more; ext = true;
   }
-  return mcPick(pool, sd, sd2);
+  return mcPick(pool, sd, sd2, S);
 }
 
 /* ---- Worker との受け渡し ----
@@ -3008,14 +3032,12 @@ function moveFromWire(w){ const sk = skillById(w.sk);
   if(w.cooling) mv.cooling = true;
   if(w.redo) mv.redo = true;
   return mv; }
-function mcPick(pool, sd, sd2){
-  const { S, th } = mcConf();
+function mcPick(pool, sd, sd2, S){
+  const c = mcConf(); if(!S) S = c.S;
   let bi = 0, bt = 0;
   for(let a = 1; a < pool.length; a++){
-    const md = sd[a]/S, vr = sd2[a]/S - md*md;
-    const se = Math.sqrt(Math.max(vr, 1e-9)/S);
-    const tt = md/se;
-    if(tt > th && tt > bt){ bt = tt; bi = a; }
+    const tt = mcT(sd, sd2, a, S);
+    if(tt > c.th && tt > bt){ bt = tt; bi = a; }
   }
   return pool[bi];
 }

@@ -1,6 +1,7 @@
 /* =====================================================================
    先読みを複数の Worker(mc-worker.js)に分担させる。
    ・試行(mcConf().S 回)を Worker の数で分け、各 Worker が返した差の合計を足してから選ぶ。
+     接戦の時(engine.js の mcMore)は試行を足し、足した分もまた Worker の数で分ける。
      差は整数なので、分け方によらず画面側だけで計算した場合と同じ手になる。
    ・推奨手に続く想定手順の試行(buildPlan)も同じように分担する。
    ・候補選び(mcPrepare)も1つ目の Worker で行う。最後の1マスでは総当たりの表を作るので、
@@ -78,27 +79,32 @@ const MCPool = (function(){
     const { pool, seedBase } = prep;
     const n = pool.length;
     const base = { snap: mcSnapshot(), pool: pool.map(moveToWire), ms, f, t, cfg, seedBase };
-    // 試行を均等に分ける
-    const S = mcConf().S;
-    const k = Math.min(workers.length, S);
-    const per = Math.ceil(S / k);
-    let done = 0;
-    const tick = d => { done += d; if(onProgress) onProgress(done, S, n); };
-    let parts;
-    try{
-      parts = await Promise.all(Array.from({ length: k }, (_, i) => {
-        const j0 = i * per, j1 = Math.min(S, j0 + per);
-        return job(workers[i], Object.assign({ j0, j1 }, base), tick);
-      }));
-    }catch(e){
-      // 途中で失敗したら Worker をやめ、画面側で最初から計算し直す(同じ手になる)
-      console.warn('先読みの並列計算に失敗したため、画面側で計算します:', e.message);
-      shutdown();
-      return stratMCAsync(ms, f, t, P, cfg, onProgress);
-    }
+    // 試行を均等に分ける。接戦なら(mcMore)試行を足して、もう一度分ける
     const sd = new Array(n).fill(0), sd2 = new Array(n).fill(0);
-    for(const p of parts) for(let a = 0; a < n; a++){ sd[a] += p.sd[a]; sd2[a] += p.sd2[a]; }
-    return mcPick(pool, sd, sd2);
+    let S = mcConf().S, from = 0, done = 0, ext = false;
+    for(;;){
+      const cnt = S - from;
+      const k = Math.min(workers.length, cnt);
+      const per = Math.ceil(cnt / k);
+      const tick = d => { done += d; if(onProgress) onProgress(done, S, n, ext); };
+      let parts;
+      try{
+        parts = await Promise.all(Array.from({ length: k }, (_, i) => {
+          const j0 = from + i * per, j1 = Math.min(S, j0 + per);
+          return job(workers[i], Object.assign({ j0, j1 }, base), tick);
+        }));
+      }catch(e){
+        // 途中で失敗したら Worker をやめ、画面側で最初から計算し直す(同じ手になる)
+        console.warn('先読みの並列計算に失敗したため、画面側で計算します:', e.message);
+        shutdown();
+        return stratMCAsync(ms, f, t, P, cfg, onProgress);
+      }
+      for(const p of parts) for(let a = 0; a < n; a++){ sd[a] += p.sd[a]; sd2[a] += p.sd2[a]; }
+      const more = mcMore(pool, sd, sd2, S);
+      if(!more) break;
+      from = S; S += more; ext = true;
+    }
+    return mcPick(pool, sd, sd2, S);
   }
 
   // 推奨手に続く想定手順(engine.js の buildPlan と同じ結果)を、試行を分担して作る

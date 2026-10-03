@@ -678,8 +678,8 @@ async function doCalc(){
     } else {
       G.msg=null;
       // 先読みは Worker に分担させる(使えない環境では画面側で計算する。どちらも同じ手になる)
-      G.rec = await MCPool.strat(ms, G.focus, G.temp, PARAMS, cfg, (done, total, n)=>{
-        setCalcProgress(done/total, `先読み中 ${Math.round(done/total*100)}% (候補${n}手)`);
+      G.rec = await MCPool.strat(ms, G.focus, G.temp, PARAMS, cfg, (done, total, n, ext)=>{
+        setCalcProgress(done/total, `先読み中 ${Math.round(done/total*100)}% (候補${n}手${ext ? '・接戦のため追加中' : ''})`);
       });
       setCalcProgress(1, '手順を組み立て中…');
       await new Promise(r=>setTimeout(r, 0));
