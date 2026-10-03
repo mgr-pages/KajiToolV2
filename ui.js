@@ -678,6 +678,13 @@ function undoExec(){
 
 /* ====== 計算 ====== */
 let CALC_BUSY = false;
+let CALC_AGAIN = false;   // 計算中に、もう一度の計算を求められた(doCalc が呼ばれた)
+// 計算に使う局面(盤面・温度・集中力・必殺・点灯・直前の手・入力待ち・設定)。計算中にこれが変わった時
+// (温度・集中力・マスの値の手直し、必殺の切り替え、手順の「ここまで打った」、取り消しなど)は、その計算の手は別の局面のものなので出さない
+function calcKey(){
+  return JSON.stringify([G.preset, G.trait, G.level, G.hammerId, G.star, G.temp, G.focus, G.hs || 0, litMassIndex,
+    G.hist.length, G.pending, G.masses.map(m => [m.current, m.zoneLow, m.zoneHigh, !!m.off])]);
+}
 function setCalcProgress(pct, label){
   const btn = document.getElementById('calcBtn');
   const bar = document.getElementById('calcBar');
@@ -688,7 +695,8 @@ function setCalcProgress(pct, label){
   }
 }
 async function doCalc(){
-  if(CALC_BUSY) return;                       // 探索中の二重押しを防ぐ
+  // 探索中の二重押しを防ぐ。計算中に求められた時は控えておき、局面が変わっていれば終わった所で計算し直す
+  if(CALC_BUSY){ CALC_AGAIN = true; return; }
   // 叩いたマスの数値が未入力のまま計算すると、打つ前の値で次の手を決めてしまう
   if(G.pending.length){ renderAll(); return; }
   // 点灯マスが未指定のまま計算すると、威力2倍も会心率+400%も乗らない別物の手が出る
@@ -697,18 +705,18 @@ async function doCalc(){
     renderAll();
     return;
   }
-  CALC_BUSY = true;
+  CALC_BUSY = true; CALC_AGAIN = false;
   G.recN = 1;
-  // 計算中に必殺の状態を変えられた時は、古い状態で決めた手を出さずに、終わった所で計算し直す
-  let hs0 = G.hs || 0, again = false;
-  const hsMoved = () => (G.hs || 0) !== hs0;
+  let key0 = null, stale = false;
+  const moved = () => calcKey() !== key0;
   const btn = document.getElementById('calcBtn');
   btn.disabled = true;
   setCalcProgress(0, '先読み中 0%');
   await new Promise(r=>setTimeout(r, 20));
   try{
+    key0 = calcKey();
     const cfg = cfgOf();
-    HS = hs0 = G.hs || 0;             // 必殺の状態(先読みの Worker には mcSnapshot で渡る)
+    HS = G.hs || 0;                   // 必殺の状態(先読みの Worker には mcSnapshot で渡る)
     // 直前に打った手(火力上げの直後に冷やし込み、のような打ち消し合う温度操作を選ばないため)
     const lastH = G.hist.length ? G.hist[G.hist.length - 1] : null, lastSk = lastH ? skillByName(lastH.name) : null;
     PREV_SK = lastSk ? lastSk.id : null;
@@ -720,7 +728,7 @@ async function doCalc(){
     if(redo){
       G.rec = redo; G.msg = null;
       await MCPool.plan(ms, cfg, G.rec);
-      if(!hsMoved()) GameLog.ev('rec', { sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1), redo: true });
+      if(!moved()) GameLog.ev('rec', { sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1), redo: true });
     } else if(boardDone(ms, G.trait)){
       G.rec=null; G.plan=[]; G.msg='<span style="color:var(--green)">全マス到達 — 仕上げてください</span>';
     } else if(G.temp<=0){
@@ -735,9 +743,12 @@ async function doCalc(){
       await new Promise(r=>setTimeout(r, 0));
       await MCPool.plan(ms, cfg, G.rec);
       G.recN = recChain();
-      if(G.rec && !hsMoved()) GameLog.ev('rec', Object.assign({ sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1) }, G.recN > 1 ? { n: G.recN } : {}));
+      if(G.rec && !moved()) GameLog.ev('rec', Object.assign({ sk: G.rec.sk.name, tg: G.rec.tg.map(i => i + 1) }, G.recN > 1 ? { n: G.recN } : {}));
     }
-    if(hsMoved()){ G.rec = null; G.plan = []; G.recN = 1; G.msg = null; again = true; }
+    // 計算中に局面が変わっていたら、古い局面で決めた手は出さない(記録もしない)。
+    // 変えた側(手直し・必殺の切り替えなど)が推奨手を消して案内を出しているので、案内はそのまま残す
+    stale = moved();
+    if(stale){ G.rec = null; G.plan = []; G.recN = 1; }
     renderAll();
   }catch(e){
     document.getElementById('rec').innerHTML =
@@ -745,7 +756,11 @@ async function doCalc(){
   }
   setCalcProgress(null, '推奨手を計算');
   CALC_BUSY=false; syncCalcButton();
-  if(again && !G.pending.length) doCalc();
+  // 計算中に計算を求められていて(必殺の切り替え・最後の値の入力など)、局面が変わっていれば計算し直す。
+  // 同じ局面なら今の結果で足りる
+  const again = CALC_AGAIN && stale;
+  CALC_AGAIN = false;
+  if(again) doCalc();
 }
 
 /* ====== テンキー ====== */
@@ -1330,8 +1345,8 @@ function setHS(k){
   GameLog.ev('hs', { state: G.hs, used: G.hsUsed });
   G.rec = null; G.plan = []; G.msg = null;
   renderAll(); save();
-  // 計算中なら、その計算が終わった所で計算し直す(doCalc)
-  if(!G.pending.length && !CALC_BUSY) doCalc();
+  // 計算中なら、その計算が終わった所で計算し直す(doCalc の CALC_AGAIN)
+  if(!G.pending.length) doCalc();
 }
 function askOutcome(next){ OUTCOME_NEXT = next; document.getElementById('outcomeModal').classList.add('show'); }
 function closeOutcome(){ OUTCOME_NEXT = null; document.getElementById('outcomeModal').classList.remove('show'); }
